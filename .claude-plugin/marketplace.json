@@ -1,0 +1,8 @@
+{
+  "name": "vfkb",
+  "owner": { "name": "vilosource" },
+  "description": "vfkb (ViloForge KnowledgeBase) — per-project knowledge substrate for Claude Code.",
+  "plugins": [
+    { "name": "vfkb", "source": "./plugin" }
+  ]
+}
