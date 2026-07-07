@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vfkb": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb-mcp.mjs"],
+      "env": {
+        "VFKB_DATA_DIR": "${CLAUDE_PROJECT_DIR}/.vfkb"
+      }
+    }
+  }
+}

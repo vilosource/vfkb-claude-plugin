@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook session-start"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook stop"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook session-end"
+          }
+        ]
+      }
+    ]
+  }
+}
