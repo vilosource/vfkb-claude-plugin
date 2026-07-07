@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+
+# vfkb — derived/operational (only .vfkb/entries.jsonl is committed)
+.vfkb/index-meta.json
+.vfkb/.sessions/
+.vfkb/.signals/

@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb VFKB_PROJECT=vfkb-claude-plugin node ${CLAUDE_PROJECT_DIR:-.}/.vfkb/bin/bootstrap.mjs cli hook session-start"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb VFKB_PROJECT=vfkb-claude-plugin node ${CLAUDE_PROJECT_DIR:-.}/.vfkb/bin/bootstrap.mjs cli hook pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb VFKB_PROJECT=vfkb-claude-plugin node ${CLAUDE_PROJECT_DIR:-.}/.vfkb/bin/bootstrap.mjs cli hook stop"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb VFKB_PROJECT=vfkb-claude-plugin node ${CLAUDE_PROJECT_DIR:-.}/.vfkb/bin/bootstrap.mjs cli hook session-end"
+          }
+        ]
+      }
+    ]
+  }
+}
