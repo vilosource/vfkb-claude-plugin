@@ -15,10 +15,19 @@ plugin-level scoping applies. This repo exists to make that structurally impossi
 dependent on every consumer remembering a `--sparse` flag — it contains **only** what the plugin
 needs, deliberately kept separate from vfkb's dev repo.
 
+## Install
+
+See [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for a new project, or
+[`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md) if the project already uses the old `vfkb init`
+mechanism.
+
 ## Status
 
-Scaffolding only — the plugin manifest, skill, hooks, and bundled MCP server declaration
-(ADR-0045's Phase 1) have not been built yet. See ADR-0045 for the full plan.
+Phase 1 (ADR-0045) is built and verified: the plugin manifest, a human-facing skill, hooks, and a
+bundled MCP server declaration, all resolving vendored copies of vfkb's engine bundles. Verified
+via a contrast-based, multi-trial scenario (`scenarios/plugin-parity.md`) and dogfooded read-only
+against a real consumer (`okf-skill`) — see that scenario file and ADR-0045 for the full record.
+Being dogfooded internally next, starting with `vilosource/vfkb` itself.
 
 ## Relationship to vfkb
 
