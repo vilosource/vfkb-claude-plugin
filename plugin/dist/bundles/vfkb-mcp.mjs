@@ -30961,16 +30961,19 @@ function brainDir() {
   return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join(homedir(), ".vfkb");
 }
 function defaultProject() {
-  if (process.env.VFKB_PROJECT) return process.env.VFKB_PROJECT;
-  const explicit = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR;
-  if (explicit) {
-    const abs = resolve(explicit);
-    const name = basename(abs);
-    return name.startsWith(".") ? basename(dirname(abs)) || "spike" : name;
-  }
-  const root = process.env.CLAUDE_PROJECT_DIR;
-  if (root) return basename(resolve(root)) || "spike";
-  return basename(process.cwd()) || "spike";
+  const raw = (() => {
+    if (process.env.VFKB_PROJECT) return process.env.VFKB_PROJECT;
+    const explicit = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR;
+    if (explicit) {
+      const abs = resolve(explicit);
+      const name = basename(abs);
+      return name.startsWith(".") ? basename(dirname(abs)) : name;
+    }
+    const root = process.env.CLAUDE_PROJECT_DIR;
+    if (root) return basename(resolve(root));
+    return basename(process.cwd());
+  })();
+  return raw.replace(/["<>&]/g, "") || "spike";
 }
 function recordsFile() {
   return join(brainDir(), "entries.jsonl");

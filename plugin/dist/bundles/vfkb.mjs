@@ -15,16 +15,19 @@ function brainDir() {
   return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join(homedir(), ".vfkb");
 }
 function defaultProject() {
-  if (process.env.VFKB_PROJECT) return process.env.VFKB_PROJECT;
-  const explicit = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR;
-  if (explicit) {
-    const abs = resolve(explicit);
-    const name = basename(abs);
-    return name.startsWith(".") ? basename(dirname(abs)) || "spike" : name;
-  }
-  const root = process.env.CLAUDE_PROJECT_DIR;
-  if (root) return basename(resolve(root)) || "spike";
-  return basename(process.cwd()) || "spike";
+  const raw = (() => {
+    if (process.env.VFKB_PROJECT) return process.env.VFKB_PROJECT;
+    const explicit = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR;
+    if (explicit) {
+      const abs = resolve(explicit);
+      const name = basename(abs);
+      return name.startsWith(".") ? basename(dirname(abs)) : name;
+    }
+    const root = process.env.CLAUDE_PROJECT_DIR;
+    if (root) return basename(resolve(root));
+    return basename(process.cwd());
+  })();
+  return raw.replace(/["<>&]/g, "") || "spike";
 }
 function recordsFile() {
   return join(brainDir(), "entries.jsonl");
@@ -1171,7 +1174,7 @@ import { dirname as dirname2, join as join7 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.1.0" : "0.0.0-dev";
-var ENGINE_COMMIT = true ? "2fb286b" : "dev";
+var ENGINE_COMMIT = true ? "8cbec30" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
