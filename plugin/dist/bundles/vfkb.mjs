@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 
 // src/storage.ts
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 function isTombstone(r) {
@@ -13,6 +13,21 @@ function isTombstone(r) {
 }
 function brainDir() {
   return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join(homedir(), ".vfkb");
+}
+function defaultProject() {
+  const raw = (() => {
+    if (process.env.VFKB_PROJECT) return process.env.VFKB_PROJECT;
+    const explicit = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR;
+    if (explicit) {
+      const abs = resolve(explicit);
+      const name = basename(abs);
+      return name.startsWith(".") ? basename(dirname(abs)) : name;
+    }
+    const root = process.env.CLAUDE_PROJECT_DIR;
+    if (root) return basename(resolve(root));
+    return basename(process.cwd());
+  })();
+  return raw.replace(/["<>&]/g, "") || "spike";
 }
 function recordsFile() {
   return join(brainDir(), "entries.jsonl");
@@ -505,7 +520,7 @@ function trustGlyph(e) {
   const v = e.provenance.status === "verified" ? "\u2713" : e.provenance.status === "unverified" ? "\u26A0" : "";
   return `${v}${t}`;
 }
-function renderContextBundle(project = "spike", budget = SESSION_BUDGET_CHARS) {
+function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
   const superseded = supersededIds(all);
@@ -568,7 +583,7 @@ function initContextSpine() {
   writeContextSpine(CONTEXT_SPINE_SCAFFOLD);
   return { created: true, path: p };
 }
-function renderContext(project = "spike") {
+function renderContext(project = defaultProject()) {
   const all = readAll();
   const sup = supersededIds(all);
   const out = [`# ${project} \u2014 project context`, ""];
@@ -610,7 +625,7 @@ function renderContext(project = "spike") {
   }
   return out.join("\n").trim() + "\n";
 }
-function renderNaiveDump(project = "spike", budget = SESSION_BUDGET_CHARS, limit) {
+function renderNaiveDump(project = defaultProject(), budget = SESSION_BUDGET_CHARS, limit) {
   let entries = readAll().filter((e) => e.zone !== "archive").sort((a, b) => a.created.localeCompare(b.created));
   if (typeof limit === "number") entries = entries.slice(0, limit);
   const header = `<context project="${project}">
@@ -694,7 +709,7 @@ function renderResumeDigest(rec, all = readAll()) {
   for (const s of rec.signals ?? []) lines.push(`- ${s.label} (ASSERTED by caller): ${s.value}`);
   return lines.join("\n");
 }
-function renderResume(project = "spike", session = SessionState.load()) {
+function renderResume(project = defaultProject(), session = SessionState.load()) {
   const all = readAll();
   const prior = SessionState.records().find((r) => r.sessionId !== session.sessionId);
   const digest = prior ? renderResumeDigest(prior, all) : "## Resume\n- (first recorded session \u2014 no prior continuity)";
@@ -904,7 +919,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/gating.ts
-import { resolve } from "node:path";
+import { resolve as resolve2 } from "node:path";
 var WRITE_TOOLS = /* @__PURE__ */ new Set([
   "write",
   "edit",
@@ -922,8 +937,8 @@ function isBrainWrite(toolName, input, brain = brainDir()) {
   if (!toolName || !WRITE_TOOLS.has(toolName.toLowerCase())) return false;
   const p = extractPath(input);
   if (!p) return false;
-  const abs = resolve(p);
-  const root = resolve(brain);
+  const abs = resolve2(p);
+  const root = resolve2(brain);
   return abs === root || abs.startsWith(root + "/");
 }
 var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing files directly (keeps the index, freshness, and no-secrets invariants).";
@@ -1150,16 +1165,16 @@ function runSessionEnd(opts = {}) {
 
 // src/init.ts
 import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
-import { basename, join as join8 } from "node:path";
+import { basename as basename2, join as join8 } from "node:path";
 
 // src/manifest.ts
 import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname, join as join7 } from "node:path";
+import { dirname as dirname2, join as join7 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.1.0" : "0.0.0-dev";
-var ENGINE_COMMIT = true ? "2fb286b" : "dev";
+var ENGINE_COMMIT = true ? "8cbec30" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -1183,7 +1198,7 @@ function writeManifest(brainDir2) {
   const cur = readManifest(brainDir2);
   const next = currentManifest();
   if (cur && JSON.stringify(cur) === JSON.stringify(next)) return "skipped";
-  mkdirSync4(dirname(p), { recursive: true });
+  mkdirSync4(dirname2(p), { recursive: true });
   writeFileSync3(p, JSON.stringify(next, null, 2) + "\n");
   return existed ? "updated" : "created";
 }
@@ -1287,7 +1302,7 @@ function eventHasVfkb(arr2) {
   return JSON.stringify(arr2 ?? "").includes(BOOTSTRAP_REL);
 }
 function initProject(root, opts = {}) {
-  const project = opts.project || basename(root) || "project";
+  const project = opts.project || basename2(root) || "project";
   const changes = [];
   const brainDir2 = join8(root, ".vfkb");
   const entries = join8(brainDir2, "entries.jsonl");
@@ -1491,7 +1506,7 @@ function renderDoctor(report) {
 // src/import.ts
 import { existsSync as existsSync8, readdirSync as readdirSync2, readFileSync as readFileSync9, statSync } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename2, extname, join as join10 } from "node:path";
+import { basename as basename3, extname, join as join10 } from "node:path";
 var MYKB_FILES = {
   "decisions.jsonl": "decision",
   "facts.jsonl": "fact",
@@ -1548,7 +1563,7 @@ function mdTitle(path) {
     if (heading) return heading.replace(/^#\s+/, "").trim();
   } catch {
   }
-  return basename2(path, extname(path));
+  return basename3(path, extname(path));
 }
 function fromAdr(dir = "docs/adr") {
   if (!existsSync8(dir)) throw new Error(`ADR dir not found: ${dir}`);
@@ -1567,13 +1582,13 @@ function fromMarkdown(file) {
 
 // src/cli.ts
 function readStdin() {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let data = "";
-    if (process.stdin.isTTY) return resolve2("");
+    if (process.stdin.isTTY) return resolve3("");
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (c) => data += c);
-    process.stdin.on("end", () => resolve2(data));
-    setTimeout(() => resolve2(data), 2e3).unref?.();
+    process.stdin.on("end", () => resolve3(data));
+    setTimeout(() => resolve3(data), 2e3).unref?.();
   });
 }
 function flag(args, name) {
@@ -1661,7 +1676,7 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "context-block") {
-    process.stdout.write(renderContextBundle(sub || "spike"));
+    process.stdout.write(renderContextBundle(sub || defaultProject()));
     return;
   }
   if (cmd === "map") {
@@ -1675,12 +1690,12 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
 `);
       return;
     }
-    const project = (sub && !sub.startsWith("--") ? sub : void 0) || process.env.VFKB_PROJECT || "spike";
+    const project = (sub && !sub.startsWith("--") ? sub : void 0) || defaultProject();
     process.stdout.write(renderContext(project));
     return;
   }
   if (cmd === "resume") {
-    const project = (sub && !sub.startsWith("--") ? sub : void 0) || process.env.VFKB_PROJECT || "spike";
+    const project = (sub && !sub.startsWith("--") ? sub : void 0) || defaultProject();
     process.stdout.write(renderResume(project, SessionState.load()) + "\n");
     return;
   }
@@ -1764,7 +1779,7 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
   }
   if (cmd === "context-block-naive") {
     const lim = flag([sub, ...rest], "limit");
-    process.stdout.write(renderNaiveDump(sub && !sub.startsWith("--") ? sub : "spike", void 0, lim ? Number(lim) : void 0));
+    process.stdout.write(renderNaiveDump(sub && !sub.startsWith("--") ? sub : defaultProject(), void 0, lim ? Number(lim) : void 0));
     return;
   }
   if (cmd === "supersede") {
@@ -1812,7 +1827,7 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
   if (cmd === "hook") {
     if (sub === "session-start") {
       await readStdin();
-      const project = process.env.VFKB_PROJECT || "spike";
+      const project = defaultProject();
       const lim = flag(rest, "limit");
       const session = SessionState.load();
       const additionalContext = rest.includes("--naive") ? renderNaiveDump(project, void 0, lim ? Number(lim) : void 0) : renderResume(project, session);
