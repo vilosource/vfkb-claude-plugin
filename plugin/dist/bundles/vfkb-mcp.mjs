@@ -30947,18 +30947,259 @@ var StdioServerTransport = class {
 };
 
 // src/engine.ts
-import { randomBytes } from "node:crypto";
+import { randomBytes as randomBytes2 } from "node:crypto";
 
 // src/storage.ts
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join as join3, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
+
+// src/backend.ts
+import {
+  appendFileSync,
+  mkdirSync as mkdirSync2,
+  readFileSync as readFileSync2,
+  writeFileSync,
+  existsSync,
+  readdirSync
+} from "node:fs";
+import { join as join2 } from "node:path";
+
+// src/lock.ts
+import { openSync, closeSync, writeSync, readFileSync, unlinkSync, mkdirSync, statSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { join } from "node:path";
+var STALE_MS = 1e4;
+var ACQUIRE_TIMEOUT_MS = 5e3;
+var RETRY_MS = 25;
+var depth = 0;
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+function testHoldForRace() {
+  const ms = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
+  if (ms > 0) sleepSync(ms);
+}
+function withBrainLock(fn) {
+  if (process.env.VFKB_LOCK_DISABLED === "1") return fn();
+  if (depth > 0) {
+    depth++;
+    try {
+      return fn();
+    } finally {
+      depth--;
+    }
+  }
+  const lockPath = join(brainDir(), ".lock");
+  const started = Date.now();
+  let contended = false;
+  const ourContent = JSON.stringify({
+    pid: process.pid,
+    at: (/* @__PURE__ */ new Date()).toISOString(),
+    session_id: process.env.KB_SESSION_ID,
+    token: randomBytes(6).toString("hex")
+  });
+  for (; ; ) {
+    try {
+      mkdirSync(brainDir(), { recursive: true });
+      const fd = openSync(lockPath, "wx");
+      writeSync(fd, ourContent);
+      closeSync(fd);
+      break;
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      let holder;
+      let raw = "";
+      try {
+        raw = readFileSync(lockPath, "utf8");
+        holder = JSON.parse(raw);
+      } catch {
+        holder = void 0;
+      }
+      let age;
+      if (holder?.at) {
+        age = Date.now() - Date.parse(holder.at);
+      } else {
+        try {
+          age = Date.now() - statSync(lockPath).mtimeMs;
+        } catch {
+          continue;
+        }
+      }
+      const dead = typeof holder?.pid === "number" && !pidAlive(holder.pid);
+      if (dead || age > STALE_MS) {
+        try {
+          if (readFileSync(lockPath, "utf8") !== raw) continue;
+          unlinkSync(lockPath);
+        } catch {
+        }
+        process.stderr.write(
+          `vfkb: broke a stale brain lock (pid ${holder?.pid ?? "?"}${holder?.session_id ? `, session ${holder.session_id}` : ""})
+`
+        );
+        continue;
+      }
+      if (Date.now() - started > ACQUIRE_TIMEOUT_MS) {
+        process.stderr.write(
+          `vfkb: brain lock busy >${ACQUIRE_TIMEOUT_MS}ms (pid ${holder?.pid ?? "?"}${holder?.session_id ? `, session ${holder.session_id}` : ""}) \u2014 proceeding without the lock (fail-open)
+`
+        );
+        return fn();
+      }
+      contended = true;
+      sleepSync(RETRY_MS);
+    }
+  }
+  if (contended) {
+    process.stderr.write("vfkb: brain lock acquired after contention\n");
+  }
+  depth = 1;
+  try {
+    return fn();
+  } finally {
+    depth = 0;
+    try {
+      if (readFileSync(lockPath, "utf8") === ourContent) unlinkSync(lockPath);
+    } catch {
+    }
+  }
+}
+
+// src/backend.ts
+var dataDir = () => brainDir();
+var safeKey = (id) => id.replace(/[^A-Za-z0-9_-]/g, "_");
+var JsonlFsBackend = class {
+  name = "jsonl-fs";
+  location() {
+    return dataDir();
+  }
+  file() {
+    return join2(dataDir(), "entries.jsonl");
+  }
+  append(rec) {
+    mkdirSync2(dataDir(), { recursive: true });
+    appendFileSync(this.file(), JSON.stringify(rec) + "\n", "utf8");
+  }
+  readAllRaw() {
+    const f = this.file();
+    if (!existsSync(f)) return { records: [], malformed: [] };
+    const records = [];
+    const malformed2 = [];
+    const lines = readFileSync2(f, "utf8").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.trim().length === 0) continue;
+      try {
+        records.push(JSON.parse(l));
+      } catch (err) {
+        malformed2.push({ line: i + 1, issue: `unparseable JSON: ${err.message}`, raw: l.slice(0, 200) });
+      }
+    }
+    return { records, malformed: malformed2 };
+  }
+  readMetaRaw() {
+    const f = join2(dataDir(), "index-meta.json");
+    return existsSync(f) ? readFileSync2(f, "utf8") : null;
+  }
+  writeMetaRaw(json2) {
+    mkdirSync2(dataDir(), { recursive: true });
+    writeFileSync(join2(dataDir(), "index-meta.json"), json2, "utf8");
+  }
+  readSpine() {
+    const p = this.spinePath();
+    return existsSync(p) ? readFileSync2(p, "utf8").trim() : null;
+  }
+  writeSpine(content) {
+    mkdirSync2(dataDir(), { recursive: true });
+    writeFileSync(this.spinePath(), content);
+  }
+  spinePath() {
+    return join2(dataDir(), "context.md");
+  }
+  listSessionIds() {
+    const dir = join2(dataDir(), ".sessions");
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length));
+  }
+  readSessionRecord(id) {
+    const f = join2(dataDir(), ".sessions", `${safeKey(id)}.json`);
+    return existsSync(f) ? readFileSync2(f, "utf8") : null;
+  }
+  writeSessionRecord(id, json2) {
+    const dir = join2(dataDir(), ".sessions");
+    mkdirSync2(dir, { recursive: true });
+    writeFileSync(join2(dir, `${safeKey(id)}.json`), json2, "utf8");
+  }
+  withExclusive(fn) {
+    return withBrainLock(fn);
+  }
+};
+var jsonl = new JsonlFsBackend();
+var current = jsonl;
+function storageBackend() {
+  return current;
+}
+
+// src/validate.ts
+var ROLE = external_exports.enum(["architect", "pm", "executor", "judge", "human", "init", "import"]);
+var PROV_STATUS = external_exports.enum(["verified", "unverified", "stale", "expired"]);
+var entrySchema = external_exports.looseObject({
+  id: external_exports.string().min(1),
+  type: external_exports.enum(["fact", "decision", "gotcha", "pattern", "link"]).catch("fact"),
+  text: external_exports.string().catch(""),
+  tags: external_exports.array(external_exports.string()).catch([]),
+  zone: external_exports.enum(["incoming", "established", "archive"]).catch("incoming"),
+  author: external_exports.looseObject({ role: ROLE.catch("executor"), id: external_exports.string().optional() }).catch({ role: "executor" }),
+  refs: external_exports.looseObject({
+    supersedes: external_exports.string().optional(),
+    contradicts: external_exports.array(external_exports.string()).optional().catch(void 0)
+  }).optional().catch(void 0),
+  provenance: external_exports.looseObject({
+    status: PROV_STATUS.catch("unverified"),
+    date: external_exports.string().optional(),
+    source: external_exports.string().optional(),
+    detail: external_exports.string().optional(),
+    origin: external_exports.unknown().optional()
+  }).catch({ status: "unverified" }),
+  validity: external_exports.looseObject({
+    valid_from: external_exports.string().optional(),
+    valid_until: external_exports.string().optional(),
+    recorded_invalid_at: external_exports.string().optional()
+  }).catch({}),
+  status: external_exports.enum(["proposed", "accepted", "deprecated", "superseded"]).optional().catch(void 0),
+  why: external_exports.string().optional().catch(void 0),
+  constitutional: external_exports.boolean().optional().catch(void 0),
+  adr_no: external_exports.number().optional().catch(void 0),
+  session_id: external_exports.string().optional().catch(void 0),
+  created: external_exports.string().catch(""),
+  updated: external_exports.string().catch("")
+});
+function normalizeEntry(raw) {
+  const parsed = entrySchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, issue: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
+  }
+  const e = parsed.data;
+  if (!e.validity.valid_from) {
+    e.validity = { ...e.validity, valid_from: e.created || "1970-01-01T00:00:00.000Z" };
+  }
+  return { ok: true, entry: e };
+}
+
+// src/storage.ts
 function isTombstone(r) {
   return r.deleted === true;
 }
 function brainDir() {
-  return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join(homedir(), ".vfkb");
+  return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join3(homedir(), ".vfkb");
 }
 function defaultProject() {
   const raw = (() => {
@@ -30975,38 +31216,42 @@ function defaultProject() {
   })();
   return raw.replace(/["<>&]/g, "") || "spike";
 }
-function recordsFile() {
-  return join(brainDir(), "entries.jsonl");
-}
-function metaFile() {
-  return join(brainDir(), "index-meta.json");
-}
 function appendRecord(rec) {
-  mkdirSync(brainDir(), { recursive: true });
-  appendFileSync(recordsFile(), JSON.stringify(rec) + "\n", "utf8");
+  storageBackend().append(rec);
   writeMeta();
 }
-function contextSpinePath() {
-  return join(brainDir(), "context.md");
+function withExclusive(fn) {
+  return storageBackend().withExclusive(fn);
 }
 function readContextSpine() {
-  const p = contextSpinePath();
-  return existsSync(p) ? readFileSync(p, "utf8").trim() : null;
+  return storageBackend().readSpine();
+}
+var malformed = [];
+function lastMalformed() {
+  return [...malformed];
 }
 function readRecords() {
-  const f = recordsFile();
-  if (!existsSync(f)) return [];
-  return readFileSync(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+  const { records, malformed: bad } = storageBackend().readAllRaw();
+  malformed = [...bad];
+  return records;
 }
 function materialize(records = readRecords()) {
   const newest = /* @__PURE__ */ new Map();
   for (const r of records) {
+    if (!r || typeof r !== "object" || typeof r.id !== "string" || !r.id) {
+      malformed.push({ issue: "no usable id", raw: JSON.stringify(r).slice(0, 200) });
+      continue;
+    }
     const cur = newest.get(r.id);
     if (!cur || r.updated >= cur.updated) newest.set(r.id, r);
   }
   const out = [];
-  for (const r of newest.values())
-    if (!isTombstone(r)) out.push(r.tags ? r : { ...r, tags: [] });
+  for (const r of newest.values()) {
+    if (isTombstone(r)) continue;
+    const n = normalizeEntry(r);
+    if (n.ok) out.push(n.entry);
+    else malformed.push({ issue: n.issue, raw: JSON.stringify(r).slice(0, 200) });
+  }
   return out;
 }
 function contentHash(entries = materialize()) {
@@ -31014,10 +31259,10 @@ function contentHash(entries = materialize()) {
   return createHash("sha256").update(basis).digest("hex").slice(0, 16);
 }
 function readMeta() {
-  const f = metaFile();
-  if (!existsSync(f)) return null;
+  const raw = storageBackend().readMetaRaw();
+  if (raw === null) return null;
   try {
-    return JSON.parse(readFileSync(f, "utf8"));
+    return JSON.parse(raw);
   } catch {
     return null;
   }
@@ -31029,8 +31274,7 @@ function writeMeta() {
     entry_count: entries.length,
     last_write: (/* @__PURE__ */ new Date()).toISOString()
   };
-  mkdirSync(brainDir(), { recursive: true });
-  writeFileSync(metaFile(), JSON.stringify(meta3), "utf8");
+  storageBackend().writeMetaRaw(JSON.stringify(meta3));
   return meta3;
 }
 
@@ -31137,15 +31381,15 @@ function assertNoSecrets(text2) {
 }
 
 // src/counters.ts
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, existsSync as existsSync2 } from "node:fs";
-import { join as join2 } from "node:path";
+import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, existsSync as existsSync2 } from "node:fs";
+import { join as join4 } from "node:path";
 function signalsFile() {
-  return join2(brainDir(), ".signals", "counters.jsonl");
+  return join4(brainDir(), ".signals", "counters.jsonl");
 }
 function readSignals() {
   const f = signalsFile();
   if (!existsSync2(f)) return [];
-  return readFileSync2(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+  return readFileSync3(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
 }
 function tally(entryId, signals = readSignals()) {
   let helpful = 0;
@@ -31159,19 +31403,31 @@ function tally(entryId, signals = readSignals()) {
 }
 
 // src/session.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync2, existsSync as existsSync3, readdirSync } from "node:fs";
-import { join as join3 } from "node:path";
+import { spawnSync } from "node:child_process";
 function now() {
   return (/* @__PURE__ */ new Date()).toISOString();
+}
+function currentBranch() {
+  try {
+    const r = spawnSync("git", ["symbolic-ref", "--short", "-q", "HEAD"], {
+      encoding: "utf8",
+      timeout: 2e3
+    });
+    const b = (r.stdout || "").trim();
+    return r.status === 0 && b ? b : void 0;
+  } catch {
+    return void 0;
+  }
 }
 var SessionState = class _SessionState {
   data;
   injected = /* @__PURE__ */ new Set();
   captured = /* @__PURE__ */ new Set();
-  file;
+  persisted;
+  // false → ephemeral, in-memory only
   sessionId;
-  constructor(file2, sessionId) {
-    this.file = file2;
+  constructor(persisted, sessionId) {
+    this.persisted = persisted && !!sessionId;
     this.sessionId = sessionId;
     const ts = now();
     this.data = {
@@ -31180,11 +31436,17 @@ var SessionState = class _SessionState {
       lastAt: ts,
       turnCount: 0,
       injectedIds: [],
-      capturedIds: []
+      capturedIds: [],
+      // Identity surface (ADR-0039) — stamped at record creation, best-effort.
+      agentRole: process.env.VFKB_AGENT_ROLE || void 0,
+      agentLabel: process.env.VFKB_AGENT_LABEL || void 0,
+      branch: currentBranch(),
+      pid: process.pid
     };
-    if (file2 && existsSync3(file2)) {
+    const raw = this.persisted && sessionId ? storageBackend().readSessionRecord(sessionId) : null;
+    if (raw !== null) {
       try {
-        const loaded = JSON.parse(readFileSync3(file2, "utf8"));
+        const loaded = JSON.parse(raw);
         this.data = {
           sessionId,
           startedAt: loaded.startedAt ?? ts,
@@ -31193,7 +31455,12 @@ var SessionState = class _SessionState {
           injectedIds: loaded.injectedIds ?? [],
           capturedIds: loaded.capturedIds ?? [],
           note: loaded.note,
-          signals: loaded.signals
+          signals: loaded.signals,
+          // preserve the CREATION-time identity; never restamp on later loads
+          agentRole: loaded.agentRole,
+          agentLabel: loaded.agentLabel,
+          branch: loaded.branch,
+          pid: loaded.pid
         };
         this.injected = new Set(this.data.injectedIds);
         this.captured = new Set(this.data.capturedIds);
@@ -31202,20 +31469,22 @@ var SessionState = class _SessionState {
     }
   }
   static load(sessionId = process.env.KB_SESSION_ID) {
-    if (!sessionId) return new _SessionState(null);
-    const dir = join3(brainDir(), ".sessions");
-    const safe = sessionId.replace(/[^A-Za-z0-9_-]/g, "_");
-    return new _SessionState(join3(dir, `${safe}.json`), sessionId);
+    if (!sessionId) return new _SessionState(false);
+    return new _SessionState(true, sessionId);
   }
-  // The append-only record log: every persisted session record, newest-first by lastAt.
+  // The CONCURRENT-SESSION REGISTRY (ADR-0039 §4): every persisted session record
+  // against this brain, newest-first by lastAt. This is the surface other mechanisms
+  // consult to ask "which other sessions are/were active against this brain" —
+  // e.g. ADR-0040's lock logs its holder against it, and a future contradiction
+  // check can scope "concurrent" by [startedAt, lastAt] overlap. Append-only: one
+  // file per session id, never a shared mutable singleton.
   static records() {
-    const dir = join3(brainDir(), ".sessions");
-    if (!existsSync3(dir)) return [];
+    const be = storageBackend();
     const out = [];
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".json")) continue;
+    for (const id of be.listSessionIds()) {
       try {
-        out.push(JSON.parse(readFileSync3(join3(dir, f), "utf8")));
+        const raw = be.readSessionRecord(id);
+        if (raw !== null) out.push(JSON.parse(raw));
       } catch {
       }
     }
@@ -31249,14 +31518,12 @@ var SessionState = class _SessionState {
     return this.data.startedAt;
   }
   save() {
-    if (!this.file) return;
+    if (!this.persisted || !this.sessionId) return;
     this.data.sessionId = this.sessionId;
     this.data.lastAt = now();
     this.data.injectedIds = [...this.injected];
     this.data.capturedIds = [...this.captured];
-    const dir = join3(brainDir(), ".sessions");
-    mkdirSync3(dir, { recursive: true });
-    writeFileSync2(this.file, JSON.stringify(this.data), "utf8");
+    storageBackend().writeSessionRecord(this.sessionId, JSON.stringify(this.data));
   }
 };
 
@@ -31270,7 +31537,7 @@ function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function newId() {
-  return randomBytes(6).toString("hex");
+  return randomBytes2(6).toString("hex");
 }
 function deriveTrust(role) {
   if (role === "human") return "operator";
@@ -31297,7 +31564,12 @@ function addEntry(type, text2, opts = {}) {
     tags: opts.tags ?? [],
     zone: opts.zone ?? (deriveTrust(role) === "operator" ? "established" : "incoming"),
     author: { role },
-    refs: opts.supersedes ? { supersedes: opts.supersedes } : void 0,
+    refs: opts.supersedes || opts.contradicts?.length ? {
+      supersedes: opts.supersedes,
+      contradicts: opts.contradicts?.length ? opts.contradicts : void 0
+    } : void 0,
+    why: opts.why?.trim() || void 0,
+    // structural rationale (ADR-0042 §1)
     provenance: {
       status: opts.provStatus ?? (deriveTrust(role) === "operator" ? "verified" : "unverified"),
       date: ts,
@@ -31307,6 +31579,7 @@ function addEntry(type, text2, opts = {}) {
     // default a brand-new decision to `proposed` (an RFC, ADR-0007) unless told.
     status: opts.status ?? (isDecisionFamily(type) ? "proposed" : void 0),
     constitutional: isDecisionFamily(type) ? opts.constitutional : void 0,
+    session_id: opts.sessionId ?? process.env.KB_SESSION_ID ?? void 0,
     created: ts,
     updated: ts
   };
@@ -31337,7 +31610,7 @@ function buildContextMap() {
     }
   }
   const topTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 8).map(([tag, n]) => ({ tag, n }));
-  return { total: all.length, byType, byZone, decisions, topTags };
+  return { total: all.length, byType, byZone, decisions, topTags, malformed: lastMalformed().length };
 }
 function renderContextMap(map2 = buildContextMap()) {
   const types = Object.entries(map2.byType).filter(([, n]) => n > 0).map(([t, n]) => `${t} ${n}`).join(" \xB7 ");
@@ -31348,36 +31621,50 @@ function renderContextMap(map2 = buildContextMap()) {
 ${map2.total} entries \xB7 ${types} \xB7 zones: established ${map2.byZone.established}/incoming ${map2.byZone.incoming}
 ${decLine}
 top tags: ${tags2}
-pull more: search <terms> \xB7 filter by type/tag/status/author
+` + (map2.malformed ? `\u26A0 ${map2.malformed} malformed record${map2.malformed === 1 ? "" : "s"} excluded (ADR-0042 \u2014 inspect the brain file)
+` : "") + `pull more: search <terms> \xB7 filter by type/tag/status/author
 </vfkb-map>`;
 }
 function supersede(oldId, text2, opts = {}) {
-  const old = readAll().find((e) => e.id === oldId);
-  if (!old) throw new Error(`no such entry: ${oldId}`);
-  if (!isDecisionFamily(old.type)) {
-    throw new Error(`entry ${oldId} is not a decision \u2014 fluid types are edited, not superseded`);
-  }
-  return addEntry("decision", text2, {
-    role: opts.role ?? "human",
-    why: opts.why,
-    tags: opts.tags,
-    status: opts.status ?? "accepted",
-    constitutional: opts.constitutional ?? old.constitutional,
-    supersedes: oldId
+  return withExclusive(() => {
+    const all = readAll();
+    const old = all.find((e) => e.id === oldId);
+    if (!old) throw new Error(`no such entry: ${oldId}`);
+    if (!isDecisionFamily(old.type)) {
+      throw new Error(`entry ${oldId} is not a decision \u2014 fluid types are edited, not superseded`);
+    }
+    if (supersededIds(all).has(oldId)) {
+      throw new Error(
+        `entry ${oldId} is already superseded \u2014 superseding it again would fork the lineage; supersede its live successor instead`
+      );
+    }
+    testHoldForRace();
+    return addEntry("decision", text2, {
+      role: opts.role ?? "human",
+      why: opts.why,
+      tags: opts.tags,
+      status: opts.status ?? "accepted",
+      constitutional: opts.constitutional ?? old.constitutional,
+      supersedes: oldId,
+      sessionId: opts.sessionId
+    });
   });
 }
 function transitionDecision(id, status) {
   if (status === "superseded") {
     throw new Error("`superseded` is derived from a supersession edge \u2014 use supersede()");
   }
-  const cur = readAll().find((e) => e.id === id);
-  if (!cur) throw new Error(`no such entry: ${id}`);
-  if (!isDecisionFamily(cur.type)) {
-    throw new Error(`entry ${id} is not a decision \u2014 use updateEntry() for fluid types`);
-  }
-  const next = { ...cur, status, updated: nowIso() };
-  appendRecord(next);
-  return next;
+  return withExclusive(() => {
+    const cur = readAll().find((e) => e.id === id);
+    if (!cur) throw new Error(`no such entry: ${id}`);
+    if (!isDecisionFamily(cur.type)) {
+      throw new Error(`entry ${id} is not a decision \u2014 use updateEntry() for fluid types`);
+    }
+    testHoldForRace();
+    const next = { ...cur, status, updated: nowIso() };
+    appendRecord(next);
+    return next;
+  });
 }
 function supersededIds(entries = readAll()) {
   const s = /* @__PURE__ */ new Set();
@@ -31630,11 +31917,12 @@ var SEARCH_DEFAULT_LIMIT = 25;
 var ENTRY_TYPE = external_exports.enum(["fact", "decision", "gotcha", "pattern", "link"]);
 var ZONE = external_exports.enum(["incoming", "established", "archive"]);
 var STATUS = external_exports.enum(["proposed", "accepted", "deprecated", "superseded"]);
-var ROLE = external_exports.enum(["architect", "pm", "executor", "judge", "human", "init", "import"]);
+var ROLE2 = external_exports.enum(["architect", "pm", "executor", "judge", "human", "init", "import"]);
 function line(e) {
   const adr = typeof e.adr_no === "number" ? ` ADR-${String(e.adr_no).padStart(4, "0")}` : "";
   const st = e.status ? `/${e.status}` : "";
-  return `${e.id} [${e.type} ${deriveTrust(e.author.role)}/${e.provenance.status}${st}${adr}] ${e.text}`;
+  const contra = e.refs?.contradicts?.length ? ` \u2694 contradicts ${e.refs.contradicts.join(",")}` : "";
+  return `${e.id} [${e.type} ${deriveTrust(e.author.role)}/${e.provenance.status}${st}${adr}]${contra} ${e.text}`;
 }
 function text(s) {
   return { content: [{ type: "text", text: s }] };
@@ -31662,7 +31950,7 @@ function tags(csv) {
   return csv ? csv.split(",").map((t) => t.trim()).filter(Boolean) : void 0;
 }
 function envRole() {
-  const p = ROLE.safeParse(process.env.VFKB_ROLE);
+  const p = ROLE2.safeParse(process.env.VFKB_ROLE);
   return p.success ? p.data : void 0;
 }
 var projectName = defaultProject;
@@ -31677,7 +31965,7 @@ server.registerTool(
       zone: ZONE.optional(),
       status: STATUS.optional().describe("effective decision status"),
       tags: external_exports.string().optional().describe("comma-separated; entry must have ALL"),
-      author_role: ROLE.optional(),
+      author_role: ROLE2.optional(),
       verified: external_exports.boolean().optional().describe("true \u2192 return ONLY verified knowledge (provenance verified); excludes unverified/agent-authored entries"),
       limit: external_exports.number().int().positive().optional(),
       include_stale: external_exports.boolean().optional(),
@@ -31749,9 +32037,10 @@ server.registerTool(
     inputSchema: {
       type: ENTRY_TYPE,
       text: external_exports.string(),
-      why: external_exports.string().optional().describe('rationale; folded into the text as a "Why: \u2026" line (esp. for decisions)'),
+      why: external_exports.string().optional().describe('rationale; stored structurally AND folded into the text as a "Why: \u2026" line (esp. for decisions)'),
       tags: external_exports.string().optional().describe("comma-separated"),
-      role: ROLE.optional().describe("author role; defaults to executor (agent)"),
+      contradicts: external_exports.string().optional().describe("comma-separated ids of entries this one contradicts (structural reference, ADR-0042)"),
+      role: ROLE2.optional().describe("author role; defaults to executor (agent)"),
       status: STATUS.optional().describe("decision family only"),
       constitutional: external_exports.boolean().optional().describe("decision family only (ADR-0008)")
     }
@@ -31761,6 +32050,7 @@ server.registerTool(
       role: envRole() ?? a.role ?? "executor",
       why: a.why,
       tags: tags(a.tags),
+      contradicts: tags(a.contradicts),
       status: a.status,
       constitutional: a.constitutional
     });
@@ -31774,8 +32064,8 @@ server.registerTool(
     inputSchema: {
       old_id: external_exports.string(),
       text: external_exports.string(),
-      why: external_exports.string().optional().describe('rationale for the new decision; folded into its text as a "Why: \u2026" line'),
-      role: ROLE.optional()
+      why: external_exports.string().optional().describe('rationale for the new decision; stored structurally AND folded into its text as a "Why: \u2026" line'),
+      role: ROLE2.optional()
     }
   },
   async (a) => {
