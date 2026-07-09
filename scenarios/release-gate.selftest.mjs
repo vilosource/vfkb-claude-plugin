@@ -188,6 +188,45 @@ const CASES = [
     expect: /\[delivery\].*does not carry the disclosure verbatim/s,
     break: (r) => write(r, 'README.md', `# plugin\n\n<!-- ${DISCLOSURE}\n`),
   },
+  // Round 4. Every classifier above was anchored to column 0, so ONE level of
+  // blockquote nesting slipped all of them. Found by review, not by the author.
+  {
+    name: 'EVASION — fenced block nested one blockquote deep (`> ```)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', '# plugin\n\n> ```\n> ' + DISCLOSURE + '\n> ```\n'),
+  },
+  {
+    name: 'EVASION — indented code nested one blockquote deep',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n>     ${DISCLOSURE}\n`),
+  },
+  {
+    name: 'EVASION — <script> nested one blockquote deep',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n> <script>\n> ${DISCLOSURE}\n> </script>\n`),
+  },
+  {
+    name: 'EVASION — <p style="display:none"> (a tag no blacklist enumerated)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<p style="display:none">\n${DISCLOSURE}\n</p>\n`),
+  },
+  // FALSE-RED guards. A Brake that blocks an honest release is its own failure
+  // mode, so these must stay GREEN.
+  {
+    name: 'FALSE-RED guard — an unterminated <!-- inside an inline code span',
+    expect: null,
+    break: (r) => write(r, 'README.md', '# plugin\n\nUse the `<!--` marker in hooks.\n\n> ' + DISCLOSURE + '\n'),
+  },
+  {
+    name: 'FALSE-RED guard — disclosure as an indented continuation of a list item',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n- outer\n\n    ${DISCLOSURE}\n`),
+  },
+  {
+    name: 'FALSE-RED guard — a line that is an autolink, not an HTML tag',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<https://example.com/docs>\n\n> ${DISCLOSURE}\n`),
+  },
   {
     // Guard against over-correction: a README that legitimately contains code
     // blocks must still pass when the disclosure is real prose.

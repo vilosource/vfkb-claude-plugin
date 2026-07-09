@@ -195,30 +195,52 @@ function checkRecord(repo, slug, version) {
 //
 // So this scans blocks and keeps only prose, rather than enumerating hiding
 // places. Anything unterminated swallows the rest of the file, exactly as a
-// renderer would treat it. Raw HTML blocks are dropped wholesale: `<details>`
-// renders collapsed, `<script>`/`<style>` are stripped by GitHub's sanitizer,
-// and the rest are not worth adjudicating — dropping them fails CLOSED, which
-// is the safe direction for a Brake.
-const HTML_BLOCK = /^\s*<(script|style|details|summary|div|section|aside|template|iframe|noscript)\b/i;
+// renderer would treat it.
+//
+// Two corrections from round 4, both found by review, not by the author:
+//   - Every classifier was anchored to column 0, so ONE blockquote level
+//     (`> ```), `>     indented`, `> <script>`) slipped all of them. The
+//     blockquote marker is now peeled BEFORE classifying. `norm()` strips it
+//     afterwards anyway, so peeling early costs nothing.
+//   - The HTML step was still an enumerated tag list — the very blacklist the
+//     rewrite claimed to retire, and `<p style="display:none">` walked past it.
+//     ANY raw-HTML block is now dropped. Dropping fails CLOSED, the safe
+//     direction for a Brake; an autolink (`<https://…>`) is not a tag.
+//
+// And one false RED: an unterminated `<!--` inside an inline code span
+// (`` Use the `<!--` marker ``) swallowed the rest of the file, blocking an
+// honest, disclosing README. A Brake that blocks an honest release is its own
+// failure mode, so code spans are masked before the comment scan.
+
+// CommonMark type-1 raw text: content runs to the closing tag, not a blank line.
+const RAW_TEXT = /^(script|style|pre|textarea)$/i;
+// A line that opens a raw-HTML block. Autolinks and `<3` are not tags.
+const HTML_OPEN = /^<\/?([a-zA-Z][a-zA-Z0-9-]*)/;
+// Blockquote markers, any depth: `>`, `> >`, `>>`.
+const QUOTE = /^[ \t]*(?:>[ \t]?)+/;
+// Inline code spans — masked so their contents never look like markup.
+const maskCodeSpans = (s) => s.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (m) => ' '.repeat(m.length));
 
 function visibleProse(md) {
-  const lines = md.split(/\r?\n/);
   const out = [];
   let fence = null;
-  let html = null;
+  let html = null; // {tag, rawText}
   let comment = false;
+  let inList = false;
 
-  for (let raw of lines) {
-    let L = raw;
+  for (const raw of md.split(/\r?\n/)) {
+    // Classify on the line as the reader sees it: peel blockquote markers first.
+    let L = raw.replace(QUOTE, '');
 
     if (comment) {
       const e = L.indexOf('-->');
-      if (e < 0) continue; // still inside; unterminated swallows to EOF
+      if (e < 0) continue; // unterminated: swallows to EOF, as a renderer does
       L = L.slice(e + 3);
       comment = false;
     }
+    // Find `<!--` only outside inline code spans, then cut it from the real line.
     for (;;) {
-      const s = L.indexOf('<!--');
+      const s = maskCodeSpans(L).indexOf('<!--');
       if (s < 0) break;
       const e = L.indexOf('-->', s + 4);
       if (e >= 0) L = `${L.slice(0, s)} ${L.slice(e + 3)}`;
@@ -240,17 +262,32 @@ function visibleProse(md) {
     }
 
     if (html) {
-      if (new RegExp(`</${html}\\s*>`, 'i').test(L)) html = null;
+      if (html.rawText) {
+        if (new RegExp(`</${html.tag}\\s*>`, 'i').test(L)) html = null;
+      } else if (L.trim() === '') {
+        html = null; // CommonMark type-6/7 blocks end at a blank line
+      }
       continue;
     }
-    const tag = L.match(HTML_BLOCK);
-    if (tag) {
-      if (!new RegExp(`</${tag[1]}\\s*>`, 'i').test(L)) html = tag[1];
+    const tag = L.trimStart().match(HTML_OPEN);
+    if (tag && !/^<https?:/i.test(L.trimStart())) {
+      const rawText = RAW_TEXT.test(tag[1]);
+      // A block closed on its own line ends here; otherwise it stays open.
+      const closed = rawText
+        ? new RegExp(`</${tag[1]}\\s*>`, 'i').test(L)
+        : false;
+      if (!closed) html = { tag: tag[1], rawText };
       continue;
     }
 
-    // Indented code block: 4 spaces or a tab, opening after a blank line.
-    if (/^(?: {4}|\t)/.test(L) && (out.length === 0 || out[out.length - 1].trim() === '')) continue;
+    // Track list context: an indented line under a list item is a lazy paragraph
+    // continuation (prose), not an indented code block.
+    if (/^\s{0,3}(?:[-*+]|\d+[.)])\s/.test(L)) inList = true;
+    else if (L.trim() !== '' && !/^(?: {4}|\t)/.test(L)) inList = false;
+
+    // Indented code block: 4 spaces or a tab, opening after a blank line,
+    // outside any list.
+    if (!inList && /^(?: {4}|\t)/.test(L) && (out.length === 0 || out[out.length - 1].trim() === '')) continue;
 
     out.push(L);
   }
