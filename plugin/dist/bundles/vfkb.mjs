@@ -15334,6 +15334,21 @@ function trustGlyph(e) {
   const v = e.provenance.status === "verified" ? "\u2713" : e.provenance.status === "unverified" ? "\u26A0" : "";
   return `${v}${t}`;
 }
+var HANDOFF_PIN_CAP_CHARS = 2e3;
+function latestHandoff(all = readAll(), today = nowIso().slice(0, 10), superseded = supersededIds(all)) {
+  let latest = null;
+  for (const e of all) {
+    if (!(e.tags.includes("handoff") || e.tags.includes("next"))) continue;
+    if (!isInjectable(e, today, superseded)) continue;
+    if (!latest) {
+      latest = e;
+      continue;
+    }
+    const cmp = e.updated.localeCompare(latest.updated) || e.created.localeCompare(latest.created);
+    if (cmp >= 0) latest = e;
+  }
+  return latest;
+}
 function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
@@ -15355,10 +15370,19 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
     body += "\n";
   }
   const constitutionalIds = new Set(constitution.map((c) => c.id));
+  const handoff = latestHandoff(all, today, superseded);
+  if (handoff && !constitutionalIds.has(handoff.id)) {
+    const text = handoff.text.length > HANDOFF_PIN_CAP_CHARS ? `${handoff.text.slice(0, HANDOFF_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${handoff.id} for the rest)` : handoff.text;
+    body += `## Last handoff
+- [${handoff.type} ${trustGlyph(handoff)}] ${text}
+
+`;
+  }
   body += renderContextMap() + "\n\n";
   let dropped = 0;
   for (const e of injectable) {
     if (constitutionalIds.has(e.id)) continue;
+    if (handoff && e.id === handoff.id) continue;
     const line = `- [${e.type} ${trustGlyph(e)}] ${e.text}
 `;
     if (header.length + body.length + line.length + footer.length > budget) {
@@ -16322,7 +16346,7 @@ import { dirname as dirname3, join as join9 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.1.0" : "0.0.0-dev";
-var ENGINE_COMMIT = true ? "0d2ed40" : "dev";
+var ENGINE_COMMIT = true ? "7c20d4d" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
