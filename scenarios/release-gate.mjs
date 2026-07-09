@@ -183,6 +183,80 @@ function checkRecord(repo, slug, version) {
   return { ok: ok && rec.pluginVersion === version, reasons, rec };
 }
 
+// ---------------------------------------------------------------------------
+// Markdown → the prose a human actually reads.
+//
+// ADR-0051's ruling is that THE VIOLATION IS SILENCE, so a disclosure the reader
+// never reads does not satisfy the Brake. Three rounds of adversarial review
+// beat a regex blacklist here: `<!-- -->`, then a fenced block, then a 4-space
+// indented block, `<script>`, `<style>`, `<details>`, and an UNTERMINATED fence
+// or comment (which hide everything after them). Each patch invited the next
+// syntax.
+//
+// So this scans blocks and keeps only prose, rather than enumerating hiding
+// places. Anything unterminated swallows the rest of the file, exactly as a
+// renderer would treat it. Raw HTML blocks are dropped wholesale: `<details>`
+// renders collapsed, `<script>`/`<style>` are stripped by GitHub's sanitizer,
+// and the rest are not worth adjudicating — dropping them fails CLOSED, which
+// is the safe direction for a Brake.
+const HTML_BLOCK = /^\s*<(script|style|details|summary|div|section|aside|template|iframe|noscript)\b/i;
+
+function visibleProse(md) {
+  const lines = md.split(/\r?\n/);
+  const out = [];
+  let fence = null;
+  let html = null;
+  let comment = false;
+
+  for (let raw of lines) {
+    let L = raw;
+
+    if (comment) {
+      const e = L.indexOf('-->');
+      if (e < 0) continue; // still inside; unterminated swallows to EOF
+      L = L.slice(e + 3);
+      comment = false;
+    }
+    for (;;) {
+      const s = L.indexOf('<!--');
+      if (s < 0) break;
+      const e = L.indexOf('-->', s + 4);
+      if (e >= 0) L = `${L.slice(0, s)} ${L.slice(e + 3)}`;
+      else {
+        L = L.slice(0, s);
+        comment = true;
+        break;
+      }
+    }
+
+    if (fence) {
+      if (new RegExp(`^\\s{0,3}${fence}`).test(L)) fence = null;
+      continue;
+    }
+    const open = L.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (open) {
+      fence = open[1];
+      continue;
+    }
+
+    if (html) {
+      if (new RegExp(`</${html}\\s*>`, 'i').test(L)) html = null;
+      continue;
+    }
+    const tag = L.match(HTML_BLOCK);
+    if (tag) {
+      if (!new RegExp(`</${tag[1]}\\s*>`, 'i').test(L)) html = tag[1];
+      continue;
+    }
+
+    // Indented code block: 4 spaces or a tab, opening after a blank line.
+    if (/^(?: {4}|\t)/.test(L) && (out.length === 0 || out[out.length - 1].trim() === '')) continue;
+
+    out.push(L);
+  }
+  return out.join('\n');
+}
+
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
 const nonEmptyFile = (p) => existsSync(p) && statSync(p).isFile() && statSync(p).size > 0;
 
@@ -336,27 +410,18 @@ function checkDelivery(repo, version) {
     const readme = join(repo, 'README.md');
     const raw = existsSync(readme) ? readFileSync(readme, 'utf8') : '';
 
-    // The Brake exists so a release cannot go SILENT. A disclosure a reader
-    // never sees IS silence, so the match must happen in text that renders.
-    // Removed before matching:
-    //   - HTML comments — invisible on GitHub, npm, and every rendered view.
-    //     An earlier version passed on `<!-- Delivery is unproven: … -->`.
-    //   - fenced code blocks — the disclosure must be STATED, not exhibited as
-    //     sample output. (Inline backticks stay: `code` renders inline.)
-    const visible = (s) =>
-      s
-        .replace(/<!--[\s\S]*?-->/g, ' ')
-        .replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[^\n]*$/gm, ' ');
-
-    // Then compare through Markdown: the disclosure may be quoted, bolded, and
+    // Match only in prose the reader actually sees (see visibleProse above),
+    // then compare through Markdown: the disclosure may be quoted, bolded, and
     // rewrapped. Strip blockquote markers and emphasis, collapse whitespace.
+    // Inline backticks are kept as visible — `code` renders inline.
     const norm = (s) =>
-      visible(s)
+      visibleProse(s)
         .replace(/^[ \t]*>+[ \t]?/gm, '')
         .replace(/[*_`]/g, '')
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
+    // The disclosure text itself is authored prose; normalize it the same way.
     if (!norm(raw).includes(norm(disclosure))) {
       fails.push(
         `delivery is unproven and README.md does not carry the disclosure verbatim.\n` +

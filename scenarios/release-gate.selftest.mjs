@@ -155,6 +155,51 @@ const CASES = [
     expect: /\[delivery\].*README\.md does not carry the disclosure verbatim/s,
     break: (r) => write(r, 'README.md', '# plugin\n\n```\n' + DISCLOSURE + '\n```\n'),
   },
+  // Round 3 of adversarial review. Each of these was GREEN against the patch
+  // that closed the round-2 holes: the blacklist grew a new gap per syntax.
+  // They are why the check now scans blocks and keeps only prose.
+  {
+    name: 'EVASION — disclosure in a 4-space indented code block (exhibited, not stated)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n    ${DISCLOSURE}\n`),
+  },
+  {
+    name: 'EVASION — disclosure inside <script> (GitHub renders nothing at all)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<script>\n${DISCLOSURE}\n</script>\n`),
+  },
+  {
+    name: 'EVASION — disclosure inside <style>',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<style>\n${DISCLOSURE}\n</style>\n`),
+  },
+  {
+    name: 'EVASION — disclosure inside <details> (renders collapsed by default)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<details><summary>notes</summary>\n${DISCLOSURE}\n</details>\n`),
+  },
+  {
+    name: 'EVASION — UNTERMINATED code fence (renders everything after it as code)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', '# plugin\n\n```\n' + DISCLOSURE + '\n'),
+  },
+  {
+    name: 'EVASION — UNTERMINATED HTML comment (swallows the rest of the file)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<!-- ${DISCLOSURE}\n`),
+  },
+  {
+    // Guard against over-correction: a README that legitimately contains code
+    // blocks must still pass when the disclosure is real prose.
+    name: 'a real README with fences and HTML elsewhere still passes',
+    expect: null,
+    break: (r) =>
+      write(
+        r,
+        'README.md',
+        `# plugin\n\n\`\`\`bash\nclaude plugin install vfkb\n\`\`\`\n\n<details><summary>changelog</summary>\nstuff\n</details>\n\n> [!IMPORTANT]\n> **${DISCLOSURE}**\n\n    indented example\n`,
+      ),
+  },
   {
     name: 'EVASION — a single-trial record passing as DEMONSTRATED (ADR-0022 §5 says N>=3)',
     expect: /\[evidence\].*trials=1.*requires N>=3/s,
