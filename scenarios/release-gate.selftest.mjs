@@ -142,6 +142,61 @@ const CASES = [
       write(r, 'README.md', `# plugin\n\n> [!IMPORTANT]\n> **${md.split('\n').join('\n> ')}**\n`);
     },
   },
+  // ---- evasions: the cases the original selftest missed ----
+  // Found by an adversarial review agent (brain 2bc7b3631afe), not by the
+  // author, who only ever tested the obvious breakages. Both were live GREEN.
+  {
+    name: 'EVASION — disclosure buried in an HTML comment (invisible to every reader)',
+    expect: /\[delivery\].*README\.md does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<!-- ${DISCLOSURE} -->\n`),
+  },
+  {
+    name: 'EVASION — disclosure buried in a fenced code block (exhibited, not stated)',
+    expect: /\[delivery\].*README\.md does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', '# plugin\n\n```\n' + DISCLOSURE + '\n```\n'),
+  },
+  {
+    name: 'EVASION — a single-trial record passing as DEMONSTRATED (ADR-0022 §5 says N>=3)',
+    expect: /\[evidence\].*trials=1.*requires N>=3/s,
+    break: (r) => {
+      const rec = goodRecord('brief-skill', '0.4.0');
+      rec.trials = 1;
+      rec.arms.wired.trials = [trial(true)];
+      rec.arms.contrast.trials = [trial(false)];
+      write(r, 'scenarios/records/brief-skill.json', rec);
+    },
+  },
+  {
+    name: 'EVASION — contrast arm scores on a field no trial carries, so it holds vacuously',
+    expect: /\[evidence\].*not a boolean on every trial.*vacuously/s,
+    break: (r) => {
+      const rec = goodRecord('brief-skill', '0.4.0');
+      rec.arms.contrast.predicate = ['nonexistent_field'];
+      rec.arms.contrast.trials = [trial(true), trial(true), trial(true)]; // leaks on every trial
+      write(r, 'scenarios/records/brief-skill.json', rec);
+    },
+  },
+  {
+    name: 'EVASION — a skill ships in the tree but is not declared, so nothing checks it',
+    expect: /\[packaging\].*skill "ghost" ships in the tree but is not declared/s,
+    break: (r) => write(r, 'plugin/skills/ghost/SKILL.md', '---\nname: ghost\n---\n'),
+  },
+  // ---- malformed inputs must be REPORTED, not thrown ----
+  {
+    name: 'plugin.json missing → a finding, not a stack trace',
+    expect: /\[packaging\].*plugin\.json is missing or unreadable/s,
+    break: (r) => rmSync(join(r, 'plugin/.claude-plugin/plugin.json')),
+  },
+  {
+    name: 'marketplace.json does not parse → a finding, not a stack trace',
+    expect: /\[packaging\].*marketplace\.json does not parse/s,
+    break: (r) => write(r, '.claude-plugin/marketplace.json', '{ nope'),
+  },
+  {
+    name: 'a quoted `agent: "vfkb:briefer"` frontmatter value still resolves',
+    expect: null,
+    break: (r) => write(r, 'plugin/skills/brief/SKILL.md', '---\nname: brief\nagent: "vfkb:briefer"\n---\n\n# brief\n'),
+  },
   {
     name: 'delivery claims PROVEN with no install-path record',
     expect: /\[delivery\].*claims delivery is PROVEN.*missing record/s,

@@ -10,10 +10,21 @@
 // Three Brakes, all deterministic. No LLM, no auth, no network.
 //
 //   1. EVIDENCE   Every required scenario record exists, is bound to THIS
-//                 plugin version, and MEETS the ADR-0022 criterion — which the
-//                 gate RECOMPUTES from the per-trial observations. It never
-//                 reads a `demonstrated` or `passed` field; a record asserting
-//                 its own verdict is not evidence (RFC-024 §2a).
+//                 plugin version, carries N>=3 trials (ADR-0022 §5), and MEETS
+//                 the ADR-0022 criterion — which the gate RECOMPUTES from the
+//                 per-trial observations. It never reads a `demonstrated` or
+//                 `passed` field; a record asserting its own verdict is not
+//                 evidence (RFC-024 §2a).
+//
+//                 KNOWN LIMIT, stated rather than implied: the gate recomputes
+//                 the verdict from each trial's boolean observations, but those
+//                 booleans are not themselves rederived from raw evidence — the
+//                 records truncate `out`, so the sentinel a trial claims to have
+//                 seen is not in the record to check. A hand-forged record can
+//                 still pass. This closes RFC-024 §2a's specific bug (a
+//                 `demonstrated:true` record with a failing arm) but not the
+//                 whole class. Closing it needs the records to carry their raw
+//                 evidence, which needs the L4s re-run. Not done; not claimed.
 //
 //   2. PACKAGING  Every component the plugin declares exists in the tree that
 //                 ships: declared skills, the agents their frontmatter names,
@@ -39,9 +50,15 @@ import { fileURLToPath } from 'node:url';
 // Scenario records the gate requires, and the arm roles it recomputes against.
 const REQUIRED = ['brief-skill'];
 
+// ADR-0022 §5 — "Each scenario runs N=3 trials".
+const MIN_TRIALS = 3;
+
 // The plugin's declared surface. A tree missing any of these is a broken
 // release. This list is the declaration of record: a deleted skill directory
 // cannot declare its own absence, so it cannot be derived from the tree.
+// It is checked in BOTH directions — a skill present in the tree but absent
+// here would otherwise ship entirely unchecked, and the list would rot in
+// exactly the way the Brake exists to prevent.
 const DECLARED = { skills: ['vfkb', 'brief'], agents: ['briefer'] };
 
 // The scenario whose committed record — and only that record — flips delivery
@@ -75,8 +92,16 @@ export function verdict(rec) {
     );
     return { ok: false, reasons };
   }
-  if (!Number.isInteger(rec.trials) || rec.trials < 1) {
-    reasons.push(`record declares trials=${rec.trials}`);
+  // ADR-0022 §5: "Each scenario runs N=3 trials." The gate previously enforced
+  // only the >=2/3 THRESHOLD and silently dropped the SAMPLE SIZE, so a record
+  // with trials:1 (positive 1/1, contrast 0/1) passed as DEMONSTRATED — i.e.
+  // the hurried single-trial smoke-check release that ADR-0050 was written to
+  // stop sailed through the Brake written to stop it.
+  if (!Number.isInteger(rec.trials) || rec.trials < MIN_TRIALS) {
+    reasons.push(
+      `record declares trials=${rec.trials}; ADR-0022 §5 requires N>=${MIN_TRIALS} ` +
+        `(a single-shot run cannot separate flakiness from a real result)`,
+    );
     return { ok: false, reasons };
   }
   const arms = Object.entries(rec.arms ?? {});
@@ -96,6 +121,18 @@ export function verdict(rec) {
     if (!Array.isArray(arm.trials) || arm.trials.length !== rec.trials) {
       reasons.push(
         `arm "${name}" carries ${arm.trials?.length ?? 0} trials but the record declares ${rec.trials}`,
+      );
+      continue;
+    }
+    // A predicate naming a field no trial carries is vacuously unsatisfiable:
+    // `hits` is 0 for every trial, so a contrast arm that leaked on all three
+    // still "holds". That is the anti-vacuity guarantee (ADR-0029, "a proof
+    // that cannot fail proves nothing") failing on its own terms.
+    const missing = arm.predicate.filter((p) => arm.trials.some((t) => typeof t[p] !== 'boolean'));
+    if (missing.length) {
+      reasons.push(
+        `arm "${name}" scores on [${missing}], which is not a boolean on every trial — ` +
+          `the predicate cannot be evaluated, so the arm would pass vacuously`,
       );
       continue;
     }
@@ -154,7 +191,12 @@ function frontmatter(text, key) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return undefined;
   const line = m[1].split(/\r?\n/).find((l) => l.startsWith(`${key}:`));
-  return line?.slice(key.length + 1).trim();
+  // YAML permits `agent: "vfkb:briefer"`; unquoted is what we ship, but a quoted
+  // value would otherwise send the gate looking for `agents/briefer".md`.
+  return line
+    ?.slice(key.length + 1)
+    .trim()
+    .replace(/^['"]|['"]$/g, '');
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +205,22 @@ function frontmatter(text, key) {
 function checkPackaging(repo) {
   const fails = [];
   const P = join(repo, 'plugin');
+
+  // Drift, the other way: a skill shipped but never declared is a skill no
+  // packaging check ever looks at.
+  let shipped = [];
+  try {
+    shipped = readdirSync(join(P, 'skills'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    fails.push('plugin/skills is missing or unreadable');
+  }
+  for (const s of shipped) {
+    if (!DECLARED.skills.includes(s)) {
+      fails.push(`skill "${s}" ships in the tree but is not declared in the gate's DECLARED list — add it, so it is checked`);
+    }
+  }
 
   for (const skill of DECLARED.skills) {
     const md = join(P, 'skills', skill, 'SKILL.md');
@@ -208,11 +266,19 @@ function checkPackaging(repo) {
     }
   }
 
-  // The marketplace must point at a plugin that exists.
+  // The marketplace must point at a plugin that exists. It must also parse —
+  // an unparseable manifest is a reportable packaging failure, not a stack trace.
   const mp = join(repo, '.claude-plugin', 'marketplace.json');
   if (!existsSync(mp)) fails.push('missing .claude-plugin/marketplace.json');
   else {
-    for (const p of readJson(mp).plugins ?? []) {
+    let manifest;
+    try {
+      manifest = readJson(mp);
+    } catch (e) {
+      fails.push(`.claude-plugin/marketplace.json does not parse: ${e.message}`);
+      return fails;
+    }
+    for (const p of manifest.plugins ?? []) {
       if (!existsSync(join(repo, p.source, '.claude-plugin', 'plugin.json'))) {
         fails.push(`marketplace lists plugin "${p.name}" at ${p.source}, which has no .claude-plugin/plugin.json`);
       }
@@ -268,17 +334,30 @@ function checkDelivery(repo, version) {
       return fails;
     }
     const readme = join(repo, 'README.md');
-    const text = existsSync(readme) ? readFileSync(readme, 'utf8') : '';
-    // Compare through Markdown: the disclosure may be quoted, bolded, and
+    const raw = existsSync(readme) ? readFileSync(readme, 'utf8') : '';
+
+    // The Brake exists so a release cannot go SILENT. A disclosure a reader
+    // never sees IS silence, so the match must happen in text that renders.
+    // Removed before matching:
+    //   - HTML comments — invisible on GitHub, npm, and every rendered view.
+    //     An earlier version passed on `<!-- Delivery is unproven: … -->`.
+    //   - fenced code blocks — the disclosure must be STATED, not exhibited as
+    //     sample output. (Inline backticks stay: `code` renders inline.)
+    const visible = (s) =>
+      s
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[^\n]*$/gm, ' ');
+
+    // Then compare through Markdown: the disclosure may be quoted, bolded, and
     // rewrapped. Strip blockquote markers and emphasis, collapse whitespace.
     const norm = (s) =>
-      s
+      visible(s)
         .replace(/^[ \t]*>+[ \t]?/gm, '')
         .replace(/[*_`]/g, '')
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
-    if (!norm(text).includes(norm(disclosure))) {
+    if (!norm(raw).includes(norm(disclosure))) {
       fails.push(
         `delivery is unproven and README.md does not carry the disclosure verbatim.\n` +
           `         Required: ${disclosure}\n` +
@@ -294,7 +373,18 @@ export function runGate(repo) {
   const failures = [];
   const notes = [];
 
-  const version = readJson(join(repo, 'plugin', '.claude-plugin', 'plugin.json')).version;
+  // The plugin manifest is the gate's anchor. If it is missing or malformed the
+  // gate must SAY so — an uncaught throw still fails CI, but it fails with a
+  // stack trace instead of a finding, and it bypasses the structured report.
+  let version;
+  try {
+    version = readJson(join(repo, 'plugin', '.claude-plugin', 'plugin.json')).version;
+  } catch (e) {
+    return { failures: [`[packaging] plugin/.claude-plugin/plugin.json is missing or unreadable: ${e.message}`], notes, version: undefined };
+  }
+  if (typeof version !== 'string' || !version) {
+    return { failures: ['[packaging] plugin/.claude-plugin/plugin.json declares no version'], notes, version };
+  }
 
   for (const slug of REQUIRED) {
     const r = checkRecord(repo, slug, version);
