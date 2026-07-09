@@ -29,6 +29,14 @@ via a contrast-based, multi-trial scenario (`scenarios/plugin-parity.md`) and do
 against a real consumer (`okf-skill`) — see that scenario file and ADR-0045 for the full record.
 Being dogfooded internally next, starting with `vilosource/vfkb` itself.
 
+v0.4.0 adds session-start continuity end-to-end (vfkb ADR-0049): the vendored engine **pins the
+newest handoff/next-tagged entry** (`## Last handoff`) at the top of the injected session-start
+context — deterministic, no model — and ships **`/vfkb:brief`**, an opt-in enriched briefing
+(handoff → git delta → GitHub queue → discrepancies) that runs entirely on a **Haiku-pinned**
+agent (`agents/briefer.md`) so invoking it stays cheap on any billing model. Both arms verified
+live via `--plugin-dir` sandboxes: wired brief named the seeded next-step exactly; a
+handoff-less contrast reported UNKNOWN rather than inventing one.
+
 ## Relationship to vfkb
 
 This repo tracks its own development using **vfkb** (dogfooding, same pattern as

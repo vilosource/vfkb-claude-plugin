@@ -1,8 +1,8 @@
 {
   "name": "vfkb",
   "displayName": "vfkb \u2014 ViloForge KnowledgeBase",
-  "description": "Per-project knowledge substrate: session continuity, decision/gotcha/pattern capture, and search \u2014 via a human-facing skill (agents get the same via the bundled MCP server).",
-  "version": "0.3.0",
+  "description": "Per-project knowledge substrate: session continuity, decision/gotcha/pattern capture, and search \u2014 via human-facing skills incl. /vfkb:brief session-start briefing (agents get the same via the bundled MCP server).",
+  "version": "0.4.0",
   "author": {
     "name": "vilosource"
   },
