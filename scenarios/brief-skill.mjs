@@ -29,6 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verdict } from './release-gate.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -95,14 +96,21 @@ function runArm(dir) {
 console.log(`vfkb-claude-plugin brief-skill L4  (outer=${OUTER_MODEL}, trials=${TRIALS})`);
 console.log('wired hit = sentinel in brief AND haiku observed in modelUsage (the fork pin)\n');
 
-const arms = { wired: [], contrast: [] };
+// Record shape v2 (RFC-024 §2a): each arm declares its role and the predicate
+// its trials are judged on, and carries the raw per-trial observations. The
+// verdict is never written down — the gate recomputes it from these trials, so
+// a hand-edited pass count cannot smuggle a release through.
+const arms = {
+  wired: { role: 'positive', predicate: ['sentinel', 'haiku'], trials: [] },
+  contrast: { role: 'contrast', predicate: ['sentinel'], trials: [] },
+};
 for (let t = 1; t <= TRIALS; t++) {
   for (const arm of ['wired', 'contrast']) {
     const dir = buildSandbox(arm === 'wired');
     process.stdout.write(`  trial ${t}  ${arm.padEnd(9)} … `);
     const r = runArm(dir);
     rmSync(dir, { recursive: true, force: true });
-    arms[arm].push(r);
+    arms[arm].trials.push(r);
     const tag = arm === 'wired'
       ? (r.sentinel && r.haiku ? 'HIT' : `miss (sentinel=${r.sentinel} haiku=${r.haiku})`)
       : (r.sentinel ? 'LEAK' : 'clean');
@@ -110,23 +118,25 @@ for (let t = 1; t <= TRIALS; t++) {
   }
 }
 
-const wiredN = arms.wired.filter((r) => r.sentinel && r.haiku).length;
-const contrastN = arms.contrast.filter((r) => r.sentinel).length;
-const need = Math.ceil((2 * TRIALS) / 3);
-const demonstrated = wiredN >= need && wiredN > contrastN;
-console.log(`\nwired: ${wiredN}/${TRIALS} (sentinel+haiku)   |   contrast leaks: ${contrastN}/${TRIALS}`);
-console.log(demonstrated
-  ? `DEMONSTRATED — /vfkb:brief briefs from the handoff on the pinned haiku fork (≥${need}/${TRIALS}, > contrast)`
-  : `NOT demonstrated (need wired ≥${need}/${TRIALS} AND > contrast)`);
-
 const pluginVersion = JSON.parse(
   readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8'),
 ).version;
+const record = {
+  scenario: 'brief-skill', recordVersion: 2, pluginVersion, outerModel: OUTER_MODEL,
+  trials: TRIALS, generated: new Date().toISOString(), arms,
+};
+
+// Judge with the gate's own function, so the runner and the Brake can never
+// disagree about what DEMONSTRATED means.
+const { ok: demonstrated, reasons } = verdict(record);
+const wiredN = arms.wired.trials.filter((r) => r.sentinel && r.haiku).length;
+const contrastN = arms.contrast.trials.filter((r) => r.sentinel).length;
+console.log(`\nwired: ${wiredN}/${TRIALS} (sentinel+haiku)   |   contrast leaks: ${contrastN}/${TRIALS}`);
+console.log(demonstrated
+  ? `DEMONSTRATED — /vfkb:brief briefs from the handoff on the pinned haiku fork (ADR-0022, recomputed)`
+  : `NOT demonstrated — ${reasons.join('; ')}`);
+
 mkdirSync(join(REPO, 'scenarios/records'), { recursive: true });
-writeFileSync(
-  join(REPO, 'scenarios/records/brief-skill.json'),
-  JSON.stringify({ scenario: 'brief-skill', pluginVersion, outerModel: OUTER_MODEL, trials: TRIALS,
-    generated: new Date().toISOString(), wired: wiredN, contrast: contrastN, demonstrated, arms }, null, 2),
-);
+writeFileSync(join(REPO, 'scenarios/records/brief-skill.json'), JSON.stringify(record, null, 2) + '\n');
 console.log(`record → scenarios/records/brief-skill.json (pluginVersion=${pluginVersion})`);
 process.exit(demonstrated ? 0 : 1);

@@ -1,70 +1,64 @@
 {
   "scenario": "brief-skill",
+  "recordVersion": 2,
   "pluginVersion": "0.4.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
   "generated": "2026-07-09T07:33:41.100Z",
-  "wired": 3,
-  "contrast": 0,
-  "demonstrated": true,
   "arms": {
-    "wired": [
-      {
-        "sentinel": true,
-        "haiku": true,
-        "models": [
-          "claude-haiku-4-5-20251001"
-        ],
-        "out": "**Last done** — Ingest refactor shipped and verified end-to-end as of 2026-07-09 07:30Z. **Moved since** — One",
-        "err": ""
-      },
-      {
-        "sentinel": true,
-        "haiku": true,
-        "models": [
-          "claude-haiku-4-5-20251001"
-        ],
-        "out": "No GitHub remote available. Now I'll compile the brief. **Last done** — Ingest refactor shipped and verified e",
-        "err": ""
-      },
-      {
-        "sentinel": true,
-        "haiku": true,
-        "models": [
-          "claude-haiku-4-5-20251001"
-        ],
-        "out": "--- ## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end as of 2026-07-09 07",
-        "err": ""
-      }
-    ],
-    "contrast": [
-      {
-        "sentinel": false,
-        "haiku": true,
-        "models": [
-          "claude-haiku-4-5-20251001"
-        ],
-        "out": "**Last done:** No handoff recorded. Project initialized with scaffold commit (2026-07-09). **Moved since:** No",
-        "err": ""
-      },
-      {
-        "sentinel": false,
-        "haiku": true,
-        "models": [
-          "claude-haiku-4-5-20251001"
-        ],
-        "out": "**Final brief:** **Last done** — No handoff recorded. One gotcha documented (2026-07-09 07:32Z): \"shard worker",
-        "err": ""
-      },
-      {
-        "sentinel": false,
-        "haiku": true,
-        "models": [
-          "claude-haiku-4-5-20251001"
-        ],
-        "out": "Based on the checklist: **Last done** — No handoff is recorded in vfkb. The most recent git activity is commit",
-        "err": ""
-      }
-    ]
+    "wired": {
+      "role": "positive",
+      "predicate": ["sentinel", "haiku"],
+      "trials": [
+        {
+          "sentinel": true,
+          "haiku": true,
+          "models": ["claude-haiku-4-5-20251001"],
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end as of 2026-07-09 07:30Z. **Moved since** — One",
+          "err": ""
+        },
+        {
+          "sentinel": true,
+          "haiku": true,
+          "models": ["claude-haiku-4-5-20251001"],
+          "out": "No GitHub remote available. Now I'll compile the brief. **Last done** — Ingest refactor shipped and verified e",
+          "err": ""
+        },
+        {
+          "sentinel": true,
+          "haiku": true,
+          "models": ["claude-haiku-4-5-20251001"],
+          "out": "--- ## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end as of 2026-07-09 07",
+          "err": ""
+        }
+      ]
+    },
+    "contrast": {
+      "role": "contrast",
+      "predicate": ["sentinel"],
+      "trials": [
+        {
+          "sentinel": false,
+          "haiku": true,
+          "models": ["claude-haiku-4-5-20251001"],
+          "out": "**Last done:** No handoff recorded. Project initialized with scaffold commit (2026-07-09). **Moved since:** No",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "models": ["claude-haiku-4-5-20251001"],
+          "out": "**Final brief:** **Last done** — No handoff recorded. One gotcha documented (2026-07-09 07:32Z): \"shard worker",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "models": ["claude-haiku-4-5-20251001"],
+          "out": "Based on the checklist: **Last done** — No handoff is recorded in vfkb. The most recent git activity is commit",
+          "err": ""
+        }
+      ]
+    }
   }
 }

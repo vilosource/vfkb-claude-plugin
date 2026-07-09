@@ -21,6 +21,19 @@ See [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for a new project, or
 [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md) if the project already uses the old `vfkb init`
 mechanism.
 
+> [!IMPORTANT]
+> **Delivery is unproven: this plugin's install and upgrade path has never been verified
+> end-to-end by a sandboxed proof. Per-capability L4s load the plugin from a source tree and
+> therefore prove the capability, not its delivery.**
+>
+> Delivery and upgrade are capabilities in their own right, distinct from the capabilities they
+> carry. Releases may ship with this gap open ([ADR-0051](https://github.com/vilosource/vfkb/blob/main/docs/adr/ADR-0051-delivery-honesty.md),
+> the operator's Reading B ruling) — but the gap must be named, and this disclosure is enforced by
+> [`scenarios/release-gate.mjs`](scenarios/release-gate.mjs) in CI rather than left to prose. It is
+> removed automatically, and only, when `scenarios/records/install-path.json` lands DEMONSTRATED.
+>
+> Machine-readable status: [`DELIVERY-STATUS.json`](DELIVERY-STATUS.json).
+
 ## Status
 
 Phase 1 (ADR-0045) is built and verified: the plugin manifest, a human-facing skill, hooks, and a
