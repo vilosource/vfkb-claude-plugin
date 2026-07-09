@@ -1,0 +1,23 @@
+{
+  "$schema": "https://github.com/vilosource/vfkb/blob/main/docs/rfc/RFC-024-staleness-detection-and-delivery-honesty.md",
+  "$comment": [
+    "Machine-readable delivery-status assertion (vfkb ADR-0051, RFC-024 §6).",
+    "DELIVERY and UPGRADE are capabilities, distinct from the capabilities they carry.",
+    "Neither has ever been proven for this plugin: --plugin-dir, which the per-capability",
+    "L4s use, loads from a source tree and bypasses the marketplace clone, marketplace.json",
+    "resolution, the version cache, installed_plugins.json, and scope/startup resolution.",
+    "",
+    "Per the operator's Reading B ruling, releases MAY continue with delivery unproven.",
+    "THE VIOLATION IS SILENCE. scenarios/release-gate.mjs fails this repo's CI when",
+    "`delivery` is `unproven` and README.md does not carry `disclosure` verbatim, and",
+    "fails when `delivery` claims a proof that the committed record does not support.",
+    "",
+    "`delivery` is not a dial. The gate DERIVES the true status from",
+    "scenarios/records/install-path.json and fails on any mismatch, so this field flips",
+    "to `proven` only, and automatically, when that record lands DEMONSTRATED and",
+    "version-bound. Editing it by hand goes red."
+  ],
+  "delivery": "unproven",
+  "proofRecord": "install-path",
+  "disclosure": "Delivery is unproven: this plugin's install and upgrade path has never been verified end-to-end by a sandboxed proof. Per-capability L4s load the plugin from a source tree and therefore prove the capability, not its delivery."
+}
