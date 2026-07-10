@@ -251,11 +251,25 @@ function hidesContent(attrs) {
   for (let a; (a = ATTR.exec(attrs)); ) {
     const name = a[1].toLowerCase();
     const value = a[2] ?? a[3] ?? a[4];
-    if (name === 'hidden' && String(value ?? '').toLowerCase() !== 'false') return true;
+    // `hidden` is an HTML boolean attribute: its PRESENCE hides the element.
+    // `hidden="false"` still hides. An earlier carve-out for that value read as
+    // sensible and was spec-wrong — and it failed OPEN, which is the wrong
+    // direction: an author could hide the disclosure behind markup that reads
+    // "not hidden" to a reviewer skimming the diff.
+    if (name === 'hidden') return true;
     if (name === 'style' && /display\s*:\s*none/i.test(value ?? '')) return true;
   }
   return false;
 }
+
+// Inline elements sit INSIDE a sentence: replacing them with a space inserts one
+// that the author never wrote. `run <code>verify</code>.` became `run verify .`,
+// so any disclosure ending a clause with inline code or emphasis could never
+// match its own README — a denial-of-release on fully visible text. Block-level
+// elements are boundaries and DO become a space.
+const INLINE = /^(a|abbr|b|bdi|bdo|cite|code|data|del|dfn|em|i|ins|kbd|mark|q|rp|rt|ruby|s|samp|small|span|strong|sub|sup|time|u|var|wbr)$/i;
+const stripTags = (html) =>
+  html.replace(/<\/?([a-z][a-z0-9-]*)\b[^>]*>/gi, (_m, tag) => (INLINE.test(tag) ? '' : ' '));
 
 /** The text a reader sees when GitHub renders this markdown. */
 function renderVisibleText(md) {
@@ -266,8 +280,14 @@ function renderVisibleText(md) {
     html = html.replace(new RegExp(`<${tag}\\b[\\s\\S]*?(</${tag}\\s*>|$)`, 'gi'), ' ');
   }
 
-  // Elements hidden by attribute, and everything they contain.
-  for (let guard = 0; guard < 100; guard++) {
+  // Elements hidden by attribute, and everything they contain. The loop runs
+  // until no hidden element remains: an earlier `guard < 100` bound stopped
+  // SILENTLY, so a README with 120 hidden decoys followed by a hidden wrapper
+  // left the disclosure "visible" and the gate green. A Brake that gives up
+  // quietly is worse than one that fails. This bound only catches a
+  // non-shrinking loop, and it raises rather than returns a wrong answer.
+  for (let guard = 0; ; guard++) {
+    if (guard > 10000) throw new Error('hidden-element removal did not converge');
     OPEN_TAG.lastIndex = 0;
     let m;
     let hit = null;
@@ -278,7 +298,8 @@ function renderVisibleText(md) {
       }
     }
     if (!hit) break;
-    const [tag, name, , ] = [hit[0], hit[1]];
+    const tag = hit[0];
+    const name = hit[1];
     const start = hit.index;
     if (VOID.test(name)) {
       // A void element hides nothing; drop the tag alone. Truncating here is
@@ -291,7 +312,7 @@ function renderVisibleText(md) {
     // No closing tag: the element is open to the end, so it hides the rest.
     html = html.slice(0, start) + ' ' + (end < 0 ? '' : rest.slice(end));
   }
-  return decodeEntities(html.replace(/<[^>]*>/g, ' '));
+  return decodeEntities(stripTags(html));
 }
 
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
@@ -447,22 +468,24 @@ function checkDelivery(repo, version) {
     const readme = join(repo, 'README.md');
     const raw = existsSync(readme) ? readFileSync(readme, 'utf8') : '';
 
-    // Render, then keep only what a reader can read (renderVisibleText above).
-    // The disclosure may be quoted, bolded and rewrapped — rendering resolves
-    // all of that, so the comparison is plain text with whitespace collapsed.
-    // Backticks are stripped on BOTH sides: rendering turns `x` into <code>x</code>
-    // and then into `x`, so an operator-authored disclosure that contains inline
-    // code must normalize the same way or it can never match.
-    const flatten = (s) => s.replace(/`/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    // Render BOTH sides through the same pipeline. The disclosure in
+    // DELIVERY-STATUS.json is authored markdown too — it may carry `inline code`
+    // or **emphasis** — so normalizing one side by hand (stripping backticks but
+    // not asterisks, say) makes an honest README unmatchable against its own
+    // disclosure. Rendering both is the only symmetry that holds for every
+    // markdown construct an operator might write.
+    const flatten = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
     let visible;
+    let wanted;
     try {
       visible = renderVisibleText(raw);
+      wanted = renderVisibleText(disclosure);
     } catch (e) {
       // A malformed README must produce a finding, not a stack trace.
       fails.push(`README.md could not be rendered to check the disclosure: ${e.message}`);
       return fails;
     }
-    if (!flatten(visible).includes(flatten(disclosure))) {
+    if (!flatten(visible).includes(flatten(wanted))) {
       fails.push(
         `delivery is unproven and README.md does not carry the disclosure verbatim.\n` +
           `         Required: ${disclosure}\n` +

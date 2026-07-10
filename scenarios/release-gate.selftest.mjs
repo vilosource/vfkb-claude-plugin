@@ -279,14 +279,69 @@ const CASES = [
     break: (r) => write(r, 'README.md', `# plugin\n\n<img hidden src="x.png">\n\n${DISCLOSURE}\n`),
   },
   {
-    // The disclosure text is operator-authored in DELIVERY-STATUS.json. Dropping
-    // inline <code> silently rejected any disclosure written with backticks.
-    name: 'FALSE-RED guard — a disclosure containing inline code renders and matches',
+    // The disclosure text is operator-authored in DELIVERY-STATUS.json.
+    //
+    // The FIRST version of this guard used `run \`claude plugin update\` to
+    // refresh` — inline code followed by a SPACE, which is the one adjacent
+    // context that survived the bug it was meant to catch. It passed while the
+    // gate rejected `run \`verify\`.` A guard shaped to miss its own bug is
+    // worth less than no guard, because it reads as coverage. Punctuation-
+    // adjacent now, which is where inline elements actually break.
+    name: 'FALSE-RED guard — inline code immediately before a period',
     expect: null,
     break: (r) => {
-      const d = 'Delivery is unproven: run `claude plugin update` to refresh, then verify.';
+      const d = 'Delivery is unproven: run `verify`.';
       write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: d });
       write(r, 'README.md', `# plugin\n\n> ${d}\n`);
+    },
+  },
+  {
+    name: 'FALSE-RED guard — bold immediately before a period',
+    expect: null,
+    break: (r) => {
+      const d = 'Delivery is unproven: it is **really** unproven.';
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: d });
+      write(r, 'README.md', `# plugin\n\n> ${d}\n`);
+    },
+  },
+  {
+    // Symmetric rendering alone would let both sides carry the SAME spurious
+    // space. This is the case that needs inline tags to vanish rather than
+    // become a space: the disclosure marks up a word the README states plainly.
+    name: 'FALSE-RED guard — disclosure uses inline code; README states it as plain prose',
+    expect: null,
+    break: (r) => {
+      write(r, 'DELIVERY-STATUS.json', {
+        delivery: 'unproven',
+        proofRecord: 'install-path',
+        disclosure: 'Delivery is unproven: run `verify`.',
+      });
+      write(r, 'README.md', '# plugin\n\n> Delivery is unproven: run verify.\n');
+    },
+  },
+  {
+    name: 'FALSE-RED guard — inline code before a comma, mid-sentence',
+    expect: null,
+    break: (r) => {
+      const d = 'Delivery is unproven: see the `docs`, then ship.';
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: d });
+      write(r, 'README.md', `# plugin\n\n> ${d}\n`);
+    },
+  },
+  // `hidden` is an HTML boolean attribute: presence hides, whatever the value.
+  {
+    name: 'EVASION — <div hidden="false"> still hides (boolean attribute)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<div hidden="false">\n\n${DISCLOSURE}\n\n</div>\n`),
+  },
+  {
+    // A bounded removal loop stopped silently after 100 elements, so decoys
+    // exhausted the budget and the real wrapper survived, "visible".
+    name: 'EVASION — 120 hidden decoys ahead of the hidden wrapper',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => {
+      const decoys = Array.from({ length: 120 }, (_, i) => `<span hidden>x${i}</span>`).join('\n');
+      write(r, 'README.md', `# plugin\n\n${decoys}\n\n<div hidden>\n\n${DISCLOSURE}\n\n</div>\n`);
     },
   },
   // These two still hide, and must still go red.
