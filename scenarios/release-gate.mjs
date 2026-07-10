@@ -485,6 +485,21 @@ function checkDelivery(repo, version) {
       fails.push(`README.md could not be rendered to check the disclosure: ${e.message}`);
       return fails;
     }
+    // A disclosure that renders to nothing makes `.includes()` vacuously true and
+    // switches this Brake off silently — `disclosure: "<!-- unproven -->"` or
+    // `"<div hidden>…</div>"` passes against a README that says nothing at all.
+    // The raw-field emptiness check above cannot see it: the field is non-empty,
+    // its RENDERED form is not. A near-empty one ("." matches every README) is
+    // the same defect wearing a shorter string.
+    const MIN_DISCLOSURE = 20;
+    if (flatten(wanted).length < MIN_DISCLOSURE) {
+      fails.push(
+        `DELIVERY-STATUS.json's \`disclosure\` renders to ${JSON.stringify(flatten(wanted))} ` +
+          `(${flatten(wanted).length} visible chars, minimum ${MIN_DISCLOSURE}) — a disclosure that renders to ` +
+          `nothing matches every README and disables this check. Write it as plain, visible prose.`,
+      );
+      return fails;
+    }
     if (!flatten(visible).includes(flatten(wanted))) {
       fails.push(
         `delivery is unproven and README.md does not carry the disclosure verbatim.\n` +

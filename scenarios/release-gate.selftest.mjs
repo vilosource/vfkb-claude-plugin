@@ -328,6 +328,34 @@ const CASES = [
       write(r, 'README.md', `# plugin\n\n> ${d}\n`);
     },
   },
+  // The Brake must not be able to switch ITSELF off. Rendering both sides means
+  // a `disclosure` that renders to nothing makes `.includes('')` vacuously true,
+  // and a completely silent README passes. The raw-field emptiness check cannot
+  // see it: the field is non-empty; its rendered form is not.
+  {
+    name: 'SELF-DISABLING — disclosure is an HTML comment (renders to nothing)',
+    expect: /\[delivery\].*renders to .*disables this check/s,
+    break: (r) => {
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: '<!-- delivery is unproven -->' });
+      write(r, 'README.md', '# plugin\n\nThis README says nothing about delivery.\n');
+    },
+  },
+  {
+    name: 'SELF-DISABLING — disclosure hidden inside <div hidden>',
+    expect: /\[delivery\].*renders to .*disables this check/s,
+    break: (r) => {
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: '<div hidden>Delivery is unproven.</div>' });
+      write(r, 'README.md', '# plugin\n\nThis README says nothing about delivery.\n');
+    },
+  },
+  {
+    name: 'SELF-DISABLING — a disclosure too short to inform anyone',
+    expect: /\[delivery\].*minimum 20/s,
+    break: (r) => {
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: '.' });
+      write(r, 'README.md', '# plugin\n\nAnything at all.\n');
+    },
+  },
   // `hidden` is an HTML boolean attribute: presence hides, whatever the value.
   {
     name: 'EVASION — <div hidden="false"> still hides (boolean attribute)',
