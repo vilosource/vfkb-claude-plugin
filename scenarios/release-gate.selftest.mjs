@@ -13,7 +13,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runGate } from './release-gate.mjs';
+import { runGate, checkVendor } from './release-gate.mjs';
 
 const DISCLOSURE =
   "Delivery is unproven: this plugin's install and upgrade path has never been verified " +
@@ -257,6 +257,49 @@ const CASES = [
     expect: null,
     break: (r) => write(r, 'README.md', `# plugin\n\n<table><tr><td>\n\n${DISCLOSURE}\n\n</td></tr></table>\n`),
   },
+  // Round 6. Deciding "is it hidden?" by substring-matching `hidden` in the
+  // opening tag matched attribute VALUES — and on a void element the removal
+  // then deleted the rest of the document, disclosure included.
+  {
+    name: 'FALSE-RED guard — an attribute VALUE containing the word "hidden"',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<div title="not hidden ">\n\n${DISCLOSURE}\n\n</div>\n`),
+  },
+  {
+    name: 'FALSE-RED guard — <img alt="logo hidden on print"> above the disclosure',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<img src="x.png" alt="logo hidden on print">\n\n${DISCLOSURE}\n`),
+  },
+  {
+    // A void element hides nothing, so a `hidden` one must drop only its own
+    // tag. Removing "to the closing tag" finds none and deletes the rest of the
+    // document — disclosure included.
+    name: 'FALSE-RED guard — a void element with a real `hidden` attribute above the disclosure',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<img hidden src="x.png">\n\n${DISCLOSURE}\n`),
+  },
+  {
+    // The disclosure text is operator-authored in DELIVERY-STATUS.json. Dropping
+    // inline <code> silently rejected any disclosure written with backticks.
+    name: 'FALSE-RED guard — a disclosure containing inline code renders and matches',
+    expect: null,
+    break: (r) => {
+      const d = 'Delivery is unproven: run `claude plugin update` to refresh, then verify.';
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: d });
+      write(r, 'README.md', `# plugin\n\n> ${d}\n`);
+    },
+  },
+  // These two still hide, and must still go red.
+  {
+    name: 'EVASION — a genuine `hidden` attribute still hides',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<div hidden>\n\n${DISCLOSURE}\n\n</div>\n`),
+  },
+  {
+    name: 'EVASION — an unclosed hidden element hides everything after it',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<div hidden>\n\n${DISCLOSURE}\n`),
+  },
   {
     name: 'FALSE-RED guard — an unterminated <!-- inside an inline code span',
     expect: null,
@@ -370,7 +413,37 @@ const CASES = [
   },
 ];
 
+// The vendored renderer guards every check below it, so it gets its own can-fail
+// case. It validates the file this process LOADED, not one inside a fixture
+// tree — so it cannot be driven from `fixture()`, and without this it would be
+// the one Brake never watched failing (ADR-0029).
 let bad = 0;
+let total = CASES.length;
+{
+  const dir = mkdtempSync(join(tmpdir(), 'gate-vendor-'));
+  const pristine = join(dir, 'ok.mjs');
+  const tampered = join(dir, 'tampered.mjs');
+  const real = new URL('./vendor/marked.esm.mjs', import.meta.url);
+  writeFileSync(pristine, readFileSync(real));
+  writeFileSync(tampered, `${readFileSync(real, 'utf8')}\n// one byte too many\n`);
+
+  const cases = [
+    ['the real vendored renderer', undefined, 0],
+    ['a byte-identical copy', pristine, 0],
+    ['a tampered copy', tampered, 1],
+    ['a missing file', join(dir, 'nope.mjs'), 1],
+  ];
+  total += cases.length;
+  for (const [label, path, wantFails] of cases) {
+    const got = checkVendor(path).length;
+    if ((got > 0) !== (wantFails > 0)) {
+      console.error(`  FAIL   vendor integrity: ${label} — expected ${wantFails ? 'red' : 'green'}, got ${got} failure(s)`);
+      bad++;
+    } else console.log(`  ok     vendor integrity: ${label} — ${got ? 'red' : 'green'}, as required`);
+  }
+  rmSync(dir, { recursive: true, force: true });
+}
+
 for (const c of CASES) {
   const root = fixture();
   let failures;
@@ -404,7 +477,7 @@ for (const c of CASES) {
 
 console.log();
 if (bad) {
-  console.error(`release-gate selftest FAILED: ${bad}/${CASES.length} case(s) wrong`);
+  console.error(`release-gate selftest FAILED: ${bad}/${total} case(s) wrong`);
   process.exit(1);
 }
-console.log(`release-gate selftest passed: ${CASES.length}/${CASES.length} cases (the Brake is connected)`);
+console.log(`release-gate selftest passed: ${total}/${total} cases (the Brake is connected)`);

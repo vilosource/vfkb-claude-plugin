@@ -230,10 +230,32 @@ const decodeEntities = (s) =>
     return m;
   });
 
-const DROP = ['pre', 'code', 'script', 'style', 'details'];
+// `pre` covers exhibited blocks (and the `<code>` marked nests inside it).
+// Inline `<code>` is NOT dropped: it renders, so a disclosure written with
+// backticks must still count. Dropping it silently rejected any operator-authored
+// disclosure containing inline code.
+const DROP = ['pre', 'script', 'style', 'details'];
 
-// An element whose opening tag hides it: `hidden`, or `display:none` in a style.
-const HIDDEN_OPEN = /<([a-z][a-z0-9-]*)\b[^>]*?(?:\shidden(?=[\s/>])|style\s*=\s*(['"])[^'"]*display\s*:\s*none[^'"]*\2)[^>]*>/i;
+// Elements that cannot contain anything, so they can never hide anything.
+const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+
+// Any opening tag. Whether it HIDES is decided by parsing its attributes, not by
+// looking for the substring "hidden" — `<img alt="logo hidden on print">` and
+// `<div title="not hidden ">` are both perfectly visible, and a substring match
+// on them dropped the rest of the document.
+const OPEN_TAG = /<([a-z][a-z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
+const ATTR = /([a-z_:][-\w:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+
+function hidesContent(attrs) {
+  ATTR.lastIndex = 0;
+  for (let a; (a = ATTR.exec(attrs)); ) {
+    const name = a[1].toLowerCase();
+    const value = a[2] ?? a[3] ?? a[4];
+    if (name === 'hidden' && String(value ?? '').toLowerCase() !== 'false') return true;
+    if (name === 'style' && /display\s*:\s*none/i.test(value ?? '')) return true;
+  }
+  return false;
+}
 
 /** The text a reader sees when GitHub renders this markdown. */
 function renderVisibleText(md) {
@@ -243,14 +265,31 @@ function renderVisibleText(md) {
     // Unterminated elements swallow to end of document, as a parser would.
     html = html.replace(new RegExp(`<${tag}\\b[\\s\\S]*?(</${tag}\\s*>|$)`, 'gi'), ' ');
   }
-  // Elements explicitly hidden by attribute, and everything they contain.
-  for (;;) {
-    const m = html.match(HIDDEN_OPEN);
-    if (!m) break;
-    const close = new RegExp(`</${m[1]}\\s*>`, 'i');
-    const rest = html.slice(m.index + m[0].length);
-    const end = rest.search(close);
-    html = html.slice(0, m.index) + ' ' + (end < 0 ? '' : rest.slice(end));
+
+  // Elements hidden by attribute, and everything they contain.
+  for (let guard = 0; guard < 100; guard++) {
+    OPEN_TAG.lastIndex = 0;
+    let m;
+    let hit = null;
+    while ((m = OPEN_TAG.exec(html))) {
+      if (hidesContent(m[2])) {
+        hit = m;
+        break;
+      }
+    }
+    if (!hit) break;
+    const [tag, name, , ] = [hit[0], hit[1]];
+    const start = hit.index;
+    if (VOID.test(name)) {
+      // A void element hides nothing; drop the tag alone. Truncating here is
+      // what turned an <img alt="…hidden…"> into a deleted document.
+      html = html.slice(0, start) + ' ' + html.slice(start + tag.length);
+      continue;
+    }
+    const rest = html.slice(start + tag.length);
+    const end = rest.search(new RegExp(`</${name}\\s*>`, 'i'));
+    // No closing tag: the element is open to the end, so it hides the rest.
+    html = html.slice(0, start) + ' ' + (end < 0 ? '' : rest.slice(end));
   }
   return decodeEntities(html.replace(/<[^>]*>/g, ' '));
 }
@@ -411,8 +450,19 @@ function checkDelivery(repo, version) {
     // Render, then keep only what a reader can read (renderVisibleText above).
     // The disclosure may be quoted, bolded and rewrapped — rendering resolves
     // all of that, so the comparison is plain text with whitespace collapsed.
-    const flatten = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
-    if (!flatten(renderVisibleText(raw)).includes(flatten(disclosure))) {
+    // Backticks are stripped on BOTH sides: rendering turns `x` into <code>x</code>
+    // and then into `x`, so an operator-authored disclosure that contains inline
+    // code must normalize the same way or it can never match.
+    const flatten = (s) => s.replace(/`/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    let visible;
+    try {
+      visible = renderVisibleText(raw);
+    } catch (e) {
+      // A malformed README must produce a finding, not a stack trace.
+      fails.push(`README.md could not be rendered to check the disclosure: ${e.message}`);
+      return fails;
+    }
+    if (!flatten(visible).includes(flatten(disclosure))) {
       fails.push(
         `delivery is unproven and README.md does not carry the disclosure verbatim.\n` +
           `         Required: ${disclosure}\n` +
@@ -424,9 +474,13 @@ function checkDelivery(repo, version) {
 }
 
 // ---------------------------------------------------------------------------
-/** The gate's one dependency must be the bytes we vendored, or nothing below means anything. */
-function checkVendor() {
-  const file = join(dirname(fileURLToPath(import.meta.url)), 'vendor', 'marked.esm.mjs');
+/**
+ * The gate's one dependency must be the bytes we vendored, or nothing below
+ * means anything. It checks the renderer this process actually LOADED — next to
+ * the script, not inside `repo` — so a fixture tree cannot make it pass.
+ * `file` is injectable purely so the selftest can watch it go red (ADR-0029).
+ */
+export function checkVendor(file = join(dirname(fileURLToPath(import.meta.url)), 'vendor', 'marked.esm.mjs')) {
   if (!existsSync(file)) return [`vendored markdown renderer is missing (${file})`];
   const got = createHash('sha256').update(readFileSync(file)).digest('hex');
   return got === MARKED_SHA256
