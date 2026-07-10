@@ -210,8 +210,53 @@ const CASES = [
     expect: /\[delivery\].*does not carry the disclosure verbatim/s,
     break: (r) => write(r, 'README.md', `# plugin\n\n<p style="display:none">\n${DISCLOSURE}\n</p>\n`),
   },
+  // Round 5. The hand-rolled scanner peeled blockquote markers but not LIST
+  // markers, so the whole class reopened one `- ` deep. These pass now because
+  // a real CommonMark renderer resolves block structure — the scanner is gone.
+  {
+    name: 'EVASION — fenced block inside a list item (`- ```)',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', '# plugin\n\n- ```\n  ' + DISCLOSURE + '\n  ```\n'),
+  },
+  {
+    name: 'EVASION — fenced block inside a list inside a blockquote',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', '# plugin\n\n> - ```\n>   ' + DISCLOSURE + '\n>   ```\n'),
+  },
+  {
+    name: 'EVASION — <script> inside a list item',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n- <script>\n  ${DISCLOSURE}\n  </script>\n`),
+  },
+  {
+    name: 'EVASION — element hidden by style="display:none"',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<div style="display:none">\n\n${DISCLOSURE}\n\n</div>\n`),
+  },
+  {
+    name: 'EVASION — element hidden by the `hidden` attribute',
+    expect: /\[delivery\].*does not carry the disclosure verbatim/s,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<p hidden>\n\n${DISCLOSURE}\n\n</p>\n`),
+  },
   // FALSE-RED guards. A Brake that blocks an honest release is its own failure
-  // mode, so these must stay GREEN.
+  // mode, so these must stay GREEN. The first two are the common README shape:
+  // a badge or line-break immediately above the disclosure paragraph. The
+  // hand-rolled scanner rejected both.
+  {
+    name: 'FALSE-RED guard — <br> immediately above the disclosure, no blank line',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<br>\n${DISCLOSURE}\n`),
+  },
+  {
+    name: 'FALSE-RED guard — an <img> badge line above the disclosure',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<img src="badge.svg">\n${DISCLOSURE}\n`),
+  },
+  {
+    name: 'FALSE-RED guard — the disclosure inside a <table> cell (it renders)',
+    expect: null,
+    break: (r) => write(r, 'README.md', `# plugin\n\n<table><tr><td>\n\n${DISCLOSURE}\n\n</td></tr></table>\n`),
+  },
   {
     name: 'FALSE-RED guard — an unterminated <!-- inside an inline code span',
     expect: null,

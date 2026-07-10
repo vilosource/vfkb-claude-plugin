@@ -44,8 +44,14 @@
 //   node scenarios/release-gate.mjs          # gate this repo
 // ============================================================================
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { marked } from './vendor/marked.esm.mjs';
+
+// The gate's single dependency, vendored verbatim (scenarios/vendor/PROVENANCE.md).
+// Verified on every run: a vendored blob nobody can check is its own trust problem.
+const MARKED_SHA256 = '35398f546525d5e79a8f2f8738635d3ecbd277618cba2ada874e9d27dc9e88f0';
 
 // Scenario records the gate requires, and the arm roles it recomputes against.
 const REQUIRED = ['brief-skill'];
@@ -184,114 +190,69 @@ function checkRecord(repo, slug, version) {
 }
 
 // ---------------------------------------------------------------------------
-// Markdown → the prose a human actually reads.
+// Markdown → the text a human actually reads.
 //
-// ADR-0051's ruling is that THE VIOLATION IS SILENCE, so a disclosure the reader
-// never reads does not satisfy the Brake. Three rounds of adversarial review
-// beat a regex blacklist here: `<!-- -->`, then a fenced block, then a 4-space
-// indented block, `<script>`, `<style>`, `<details>`, and an UNTERMINATED fence
-// or comment (which hide everything after them). Each patch invited the next
-// syntax.
+// ADR-0051 rules that THE VIOLATION IS SILENCE, so a disclosure the reader never
+// reads does not satisfy the Brake. Deciding *what renders* is a property of the
+// renderer, and five rounds of adversarial review proved a hand-rolled scanner
+// cannot decide it: each version leaked one way (the disclosure hidden in an
+// HTML comment, a fenced block, an indented block, `<script>`, `<style>`, an
+// unterminated fence, a blockquote-nested fence, a list-nested fence) or
+// over-rejected the other (an `<img>` badge line above the disclosure paragraph
+// blocked an honest release). Ten-plus holes, none found by the author.
 //
-// So this scans blocks and keeps only prose, rather than enumerating hiding
-// places. Anything unterminated swallows the rest of the file, exactly as a
-// renderer would treat it.
+// So the markdown is rendered by a real CommonMark implementation, and the
+// question becomes what to remove from the RENDERED output:
 //
-// Two corrections from round 4, both found by review, not by the author:
-//   - Every classifier was anchored to column 0, so ONE blockquote level
-//     (`> ```), `>     indented`, `> <script>`) slipped all of them. The
-//     blockquote marker is now peeled BEFORE classifying. `norm()` strips it
-//     afterwards anyway, so peeling early costs nothing.
-//   - The HTML step was still an enumerated tag list — the very blacklist the
-//     rewrite claimed to retire, and `<p style="display:none">` walked past it.
-//     ANY raw-HTML block is now dropped. Dropping fails CLOSED, the safe
-//     direction for a Brake; an autolink (`<https://…>`) is not a tag.
+//   <pre>, <code>   — exhibited as sample output, not stated as prose
+//   <script>, <style> — GitHub's sanitizer drops these entirely: literal silence
+//   <details>       — renders collapsed; the reader must click to see it
+//   <!-- -->        — invisible everywhere
 //
-// And one false RED: an unterminated `<!--` inside an inline code span
-// (`` Use the `<!--` marker ``) swallowed the rest of the file, blocking an
-// honest, disclosing README. A Brake that blocks an honest release is its own
-// failure mode, so code spans are masked before the comment scan.
+// Everything else keeps its text: `<br>`, `<img>`, `<table>`, `<div>` and any
+// other passthrough HTML render their content, so they must not hide it.
+//
+// Deliberately stricter than GitHub in two places, both failing CLOSED:
+//   - `<details>` content is treated as unread (it renders collapsed).
+//   - an element carrying `hidden` or `style="display:none"` is treated as
+//     invisible. GitHub's sanitizer probably strips `style` and renders it
+//     anyway — but that is a claim about a proprietary sanitizer we cannot
+//     verify, and a Brake must not stake the disclosure on it. The cost of
+//     being wrong is a false RED on a README that hides its own disclosure in
+//     a `display:none` div, which is not a README anyone writes honestly.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'", '#x27': "'" };
+const decodeEntities = (s) =>
+  s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+    const key = e.toLowerCase();
+    if (ENTITIES[key] !== undefined) return ENTITIES[key];
+    if (/^#x/i.test(e)) return String.fromCodePoint(parseInt(e.slice(2), 16));
+    if (/^#/.test(e)) return String.fromCodePoint(parseInt(e.slice(1), 10));
+    return m;
+  });
 
-// CommonMark type-1 raw text: content runs to the closing tag, not a blank line.
-const RAW_TEXT = /^(script|style|pre|textarea)$/i;
-// A line that opens a raw-HTML block. Autolinks and `<3` are not tags.
-const HTML_OPEN = /^<\/?([a-zA-Z][a-zA-Z0-9-]*)/;
-// Blockquote markers, any depth: `>`, `> >`, `>>`.
-const QUOTE = /^[ \t]*(?:>[ \t]?)+/;
-// Inline code spans — masked so their contents never look like markup.
-const maskCodeSpans = (s) => s.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (m) => ' '.repeat(m.length));
+const DROP = ['pre', 'code', 'script', 'style', 'details'];
 
-function visibleProse(md) {
-  const out = [];
-  let fence = null;
-  let html = null; // {tag, rawText}
-  let comment = false;
-  let inList = false;
+// An element whose opening tag hides it: `hidden`, or `display:none` in a style.
+const HIDDEN_OPEN = /<([a-z][a-z0-9-]*)\b[^>]*?(?:\shidden(?=[\s/>])|style\s*=\s*(['"])[^'"]*display\s*:\s*none[^'"]*\2)[^>]*>/i;
 
-  for (const raw of md.split(/\r?\n/)) {
-    // Classify on the line as the reader sees it: peel blockquote markers first.
-    let L = raw.replace(QUOTE, '');
-
-    if (comment) {
-      const e = L.indexOf('-->');
-      if (e < 0) continue; // unterminated: swallows to EOF, as a renderer does
-      L = L.slice(e + 3);
-      comment = false;
-    }
-    // Find `<!--` only outside inline code spans, then cut it from the real line.
-    for (;;) {
-      const s = maskCodeSpans(L).indexOf('<!--');
-      if (s < 0) break;
-      const e = L.indexOf('-->', s + 4);
-      if (e >= 0) L = `${L.slice(0, s)} ${L.slice(e + 3)}`;
-      else {
-        L = L.slice(0, s);
-        comment = true;
-        break;
-      }
-    }
-
-    if (fence) {
-      if (new RegExp(`^\\s{0,3}${fence}`).test(L)) fence = null;
-      continue;
-    }
-    const open = L.match(/^\s{0,3}(`{3,}|~{3,})/);
-    if (open) {
-      fence = open[1];
-      continue;
-    }
-
-    if (html) {
-      if (html.rawText) {
-        if (new RegExp(`</${html.tag}\\s*>`, 'i').test(L)) html = null;
-      } else if (L.trim() === '') {
-        html = null; // CommonMark type-6/7 blocks end at a blank line
-      }
-      continue;
-    }
-    const tag = L.trimStart().match(HTML_OPEN);
-    if (tag && !/^<https?:/i.test(L.trimStart())) {
-      const rawText = RAW_TEXT.test(tag[1]);
-      // A block closed on its own line ends here; otherwise it stays open.
-      const closed = rawText
-        ? new RegExp(`</${tag[1]}\\s*>`, 'i').test(L)
-        : false;
-      if (!closed) html = { tag: tag[1], rawText };
-      continue;
-    }
-
-    // Track list context: an indented line under a list item is a lazy paragraph
-    // continuation (prose), not an indented code block.
-    if (/^\s{0,3}(?:[-*+]|\d+[.)])\s/.test(L)) inList = true;
-    else if (L.trim() !== '' && !/^(?: {4}|\t)/.test(L)) inList = false;
-
-    // Indented code block: 4 spaces or a tab, opening after a blank line,
-    // outside any list.
-    if (!inList && /^(?: {4}|\t)/.test(L) && (out.length === 0 || out[out.length - 1].trim() === '')) continue;
-
-    out.push(L);
+/** The text a reader sees when GitHub renders this markdown. */
+function renderVisibleText(md) {
+  let html = marked.parse(md, { async: false });
+  html = html.replace(/<!--[\s\S]*?(-->|$)/g, ' ');
+  for (const tag of DROP) {
+    // Unterminated elements swallow to end of document, as a parser would.
+    html = html.replace(new RegExp(`<${tag}\\b[\\s\\S]*?(</${tag}\\s*>|$)`, 'gi'), ' ');
   }
-  return out.join('\n');
+  // Elements explicitly hidden by attribute, and everything they contain.
+  for (;;) {
+    const m = html.match(HIDDEN_OPEN);
+    if (!m) break;
+    const close = new RegExp(`</${m[1]}\\s*>`, 'i');
+    const rest = html.slice(m.index + m[0].length);
+    const end = rest.search(close);
+    html = html.slice(0, m.index) + ' ' + (end < 0 ? '' : rest.slice(end));
+  }
+  return decodeEntities(html.replace(/<[^>]*>/g, ' '));
 }
 
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
@@ -447,19 +408,11 @@ function checkDelivery(repo, version) {
     const readme = join(repo, 'README.md');
     const raw = existsSync(readme) ? readFileSync(readme, 'utf8') : '';
 
-    // Match only in prose the reader actually sees (see visibleProse above),
-    // then compare through Markdown: the disclosure may be quoted, bolded, and
-    // rewrapped. Strip blockquote markers and emphasis, collapse whitespace.
-    // Inline backticks are kept as visible — `code` renders inline.
-    const norm = (s) =>
-      visibleProse(s)
-        .replace(/^[ \t]*>+[ \t]?/gm, '')
-        .replace(/[*_`]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-    // The disclosure text itself is authored prose; normalize it the same way.
-    if (!norm(raw).includes(norm(disclosure))) {
+    // Render, then keep only what a reader can read (renderVisibleText above).
+    // The disclosure may be quoted, bolded and rewrapped — rendering resolves
+    // all of that, so the comparison is plain text with whitespace collapsed.
+    const flatten = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!flatten(renderVisibleText(raw)).includes(flatten(disclosure))) {
       fails.push(
         `delivery is unproven and README.md does not carry the disclosure verbatim.\n` +
           `         Required: ${disclosure}\n` +
@@ -471,9 +424,23 @@ function checkDelivery(repo, version) {
 }
 
 // ---------------------------------------------------------------------------
+/** The gate's one dependency must be the bytes we vendored, or nothing below means anything. */
+function checkVendor() {
+  const file = join(dirname(fileURLToPath(import.meta.url)), 'vendor', 'marked.esm.mjs');
+  if (!existsSync(file)) return [`vendored markdown renderer is missing (${file})`];
+  const got = createHash('sha256').update(readFileSync(file)).digest('hex');
+  return got === MARKED_SHA256
+    ? []
+    : [`vendored marked.esm.mjs has sha256 ${got}, expected ${MARKED_SHA256} — see scenarios/vendor/PROVENANCE.md`];
+}
+
 export function runGate(repo) {
   const failures = [];
   const notes = [];
+
+  const vendor = checkVendor();
+  failures.push(...vendor.map((m) => `[vendor] ${m}`));
+  if (vendor.length === 0) notes.push('vendor ok: marked.esm.mjs matches its recorded sha256');
 
   // The plugin manifest is the gate's anchor. If it is missing or malformed the
   // gate must SAY so — an uncaught throw still fails CI, but it fails with a
