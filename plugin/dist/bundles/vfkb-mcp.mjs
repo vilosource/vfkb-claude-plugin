@@ -31934,7 +31934,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.1.0" : "0.0.0-dev";
+var ENGINE_VERSION = true ? "0.2.1" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;
@@ -31970,8 +31970,24 @@ function renderNoMatch(d, q) {
     }
   }
 }
-function tags(csv) {
-  return csv ? csv.split(",").map((t) => t.trim()).filter(Boolean) : void 0;
+function tags(csv, label = "tags") {
+  if (csv === void 0) return void 0;
+  const s = csv.trim();
+  if (!s) return void 0;
+  if (s.startsWith("[")) {
+    let parsed;
+    try {
+      parsed = JSON.parse(s);
+    } catch {
+      throw new Error(`${label} received JSON-array-shaped input that does not parse: ${s} \u2014 pass a comma-separated string like "a,b"`);
+    }
+    if (!Array.isArray(parsed)) throw new Error(`${label} received JSON that is not an array: ${s}`);
+    if (!parsed.every((t) => typeof t === "string")) {
+      throw new Error(`${label} JSON array must contain only strings: ${s}`);
+    }
+    return parsed.map((t) => t.trim()).filter(Boolean);
+  }
+  return s.split(",").map((t) => t.trim()).filter(Boolean);
 }
 function envRole() {
   const p = ROLE2.safeParse(process.env.VFKB_ROLE);
@@ -32062,7 +32078,10 @@ server.registerTool(
       type: ENTRY_TYPE,
       text: external_exports.string(),
       why: external_exports.string().optional().describe('rationale; stored structurally AND folded into the text as a "Why: \u2026" line (esp. for decisions)'),
-      tags: external_exports.string().optional().describe("comma-separated"),
+      tags: external_exports.string().optional().describe('comma-separated (a tag itself cannot start with "[")'),
+      path: external_exports.string().optional().describe(
+        'link target (path or URL) for type=link \u2014 folded into the text as "<text> \u2192 <path>" (link entries have no structural target field); rejected for other types'
+      ),
       contradicts: external_exports.string().optional().describe("comma-separated ids of entries this one contradicts (structural reference, ADR-0042)"),
       role: ROLE2.optional().describe("author role; defaults to executor (agent)"),
       status: STATUS.optional().describe("decision family only"),
@@ -32070,11 +32089,18 @@ server.registerTool(
     }
   },
   async (a) => {
-    const e = addEntry(a.type, a.text, {
+    if (a.path !== void 0 && a.type !== "link") {
+      throw new Error(`kb_add: 'path' is only valid with type=link (got type=${a.type})`);
+    }
+    if (a.path !== void 0 && !a.path.trim()) {
+      throw new Error("kb_add: 'path' must be a non-empty path or URL");
+    }
+    const body = a.path !== void 0 ? `${a.text.trim()} \u2192 ${a.path.trim()}` : a.text;
+    const e = addEntry(a.type, body, {
       role: envRole() ?? a.role ?? "executor",
       why: a.why,
       tags: tags(a.tags),
-      contradicts: tags(a.contradicts),
+      contradicts: tags(a.contradicts, "contradicts"),
       status: a.status,
       constitutional: a.constitutional
     });
@@ -32089,11 +32115,14 @@ server.registerTool(
       old_id: external_exports.string(),
       text: external_exports.string(),
       why: external_exports.string().optional().describe('rationale for the new decision; stored structurally AND folded into its text as a "Why: \u2026" line'),
+      // Issue #127: without this in the schema the SDK strips a model-supplied
+      // `tags` silently and every successor lands untagged.
+      tags: external_exports.string().optional().describe('comma-separated; tags for the NEW decision (a tag itself cannot start with "[")'),
       role: ROLE2.optional()
     }
   },
   async (a) => {
-    const e = supersede(a.old_id, a.text, { role: envRole() ?? a.role ?? "architect", why: a.why });
+    const e = supersede(a.old_id, a.text, { role: envRole() ?? a.role ?? "architect", why: a.why, tags: tags(a.tags) });
     return text(`superseded ${a.old_id} -> ${line(e)}`);
   }
 );
