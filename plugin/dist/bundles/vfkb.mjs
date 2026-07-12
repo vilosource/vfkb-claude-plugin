@@ -16345,8 +16345,8 @@ import { dirname as dirname3, join as join9 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.1.0" : "0.0.0-dev";
-var ENGINE_COMMIT = true ? "7c20d4d" : "dev";
+var ENGINE_VERSION = true ? "0.2.1" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "c73cf8e" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16599,8 +16599,9 @@ function approvalNotice(project) {
 }
 
 // src/doctor.ts
-import { existsSync as existsSync7, readFileSync as readFileSync9 } from "node:fs";
-import { join as join11 } from "node:path";
+import { execFileSync as execFileSync4 } from "node:child_process";
+import { existsSync as existsSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync5, mkdirSync as mkdirSync7 } from "node:fs";
+import { join as join11, dirname as dirname4 } from "node:path";
 function readJson2(path) {
   if (!existsSync7(path)) return void 0;
   try {
@@ -16635,13 +16636,174 @@ function detectPluginWiring(settings, root, pluginsFile) {
   }
   return void 0;
 }
+function claudeConfigDir(env) {
+  if (env.CLAUDE_CONFIG_DIR) return env.CLAUDE_CONFIG_DIR;
+  return env.HOME ? join11(env.HOME, ".claude") : void 0;
+}
+function localHeadSha(cloneDir) {
+  const head = readFileMaybe(join11(cloneDir, ".git", "HEAD"));
+  if (!head) return void 0;
+  const ref = head.trim().match(/^ref:\s*(\S+)$/)?.[1];
+  if (!ref) return /^[0-9a-f]{40}$/.test(head.trim()) ? head.trim() : void 0;
+  const loose = readFileMaybe(join11(cloneDir, ".git", ...ref.split("/")));
+  if (loose) return loose.trim();
+  const packed = readFileMaybe(join11(cloneDir, ".git", "packed-refs"));
+  for (const line of packed?.split("\n") ?? []) {
+    const [sha, name] = line.trim().split(/\s+/);
+    if (name === ref) return sha;
+  }
+  return void 0;
+}
+function readFileMaybe(path) {
+  try {
+    return readFileSync9(path, "utf8");
+  } catch {
+    return void 0;
+  }
+}
+var realGit2 = (args, cwd) => execFileSync4("git", args, {
+  cwd,
+  encoding: "utf8",
+  timeout: 5e3,
+  stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: "ssh -oBatchMode=yes" }
+});
+function checkCurrency(plugin, opts, configDir) {
+  const marketplace = plugin.key.split("@")[1];
+  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join11(configDir, "plugins", "known_marketplaces.json") : void 0);
+  const entry = kmFile ? readJson2(kmFile)?.[marketplace] : void 0;
+  const skip = (detail) => ({ status: "skip", detail });
+  if (!entry) return skip(`no marketplace "${marketplace}" in ${kmFile ?? "the plugin registry"} \u2014 cannot check currency`);
+  if (entry.source?.source !== "github") {
+    return skip(`marketplace "${marketplace}" is a ${entry.source?.source ?? "unknown"}-source \u2014 no clone to compare`);
+  }
+  if (!entry.installLocation || !existsSync7(join11(entry.installLocation, ".git"))) {
+    return skip(`marketplace clone not found at ${entry.installLocation ?? "(unset installLocation)"}`);
+  }
+  const clone2 = entry.installLocation;
+  const local = localHeadSha(clone2);
+  let remote;
+  try {
+    remote = (opts.git ?? realGit2)(["ls-remote", "origin", "HEAD"], clone2).trim().split(/\s+/)[0];
+  } catch {
+    remote = void 0;
+  }
+  if (!local) return skip(`cannot read the checked-out revision of ${clone2}`);
+  if (!remote || !/^[0-9a-f]{7,40}$/.test(remote)) {
+    return skip(`remote unreachable (offline?) \u2014 cannot tell whether ${marketplace} is current`);
+  }
+  if (remote === local) {
+    return {
+      status: "ok",
+      detail: `${marketplace} marketplace clone is CURRENT \u2014 level with its remote (${local.slice(0, 7)}), so \`claude plugin update\` will find nothing newer to install from it. Note: this compares the clone to its remote; it does not compare your INSTALLED version (${plugin.installed?.version ?? "unknown"}) against what the clone offers.`
+    };
+  }
+  return {
+    status: "warn",
+    detail: `${marketplace} marketplace clone is STALE \u2014 it sits at ${local.slice(0, 7)} but the remote is at ${remote.slice(0, 7)}. You are running an old copy of the plugin, and \`claude plugin update\` will find nothing newer until the clone advances. Remedy: \`claude plugin marketplace update ${marketplace}\` then \`claude plugin update ${plugin.key}\`, then restart Claude Code.`
+  };
+}
+var NPM_PACKAGE_NAME = "@viloforge/vfkb";
+var NPM_REGISTRY_URL = "https://registry.npmjs.org/@viloforge%2Fvfkb/latest";
+var NPM_CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+var NPM_CACHE_FILE = "npm-currency-cache.json";
+function npmCacheFilePath(opts) {
+  return opts.cacheFile ?? join11(opts.brainDir, ".signals", NPM_CACHE_FILE);
+}
+function readNpmCache(path) {
+  const raw = readJson2(path);
+  if (!raw || typeof raw.version !== "string" || typeof raw.fetchedAt !== "string") return void 0;
+  if (!Number.isFinite(Date.parse(raw.fetchedAt))) return void 0;
+  return { version: raw.version, fetchedAt: raw.fetchedAt };
+}
+function writeNpmCache(path, entry) {
+  try {
+    mkdirSync7(dirname4(path), { recursive: true });
+    writeFileSync5(path, JSON.stringify(entry));
+  } catch {
+  }
+}
+function parseSemverish(v) {
+  const [core, ...preParts] = v.replace(/^v/, "").split("-");
+  const nums = core.split(".").map((n) => parseInt(n, 10));
+  while (nums.length < 3) nums.push(0);
+  return { core: nums.map((n) => Number.isFinite(n) ? n : 0), pre: preParts.join("-") };
+}
+function compareVersions(a, b) {
+  const pa = parseSemverish(a);
+  const pb = parseSemverish(b);
+  for (let i = 0; i < 3; i++) {
+    if (pa.core[i] !== pb.core[i]) return pa.core[i] - pb.core[i];
+  }
+  if (pa.pre === pb.pre) return 0;
+  if (!pa.pre) return 1;
+  if (!pb.pre) return -1;
+  return pa.pre < pb.pre ? -1 : 1;
+}
+function renderCurrencyVerdict(installed, latest, sourceSuffix) {
+  const cmp = compareVersions(installed, latest);
+  if (cmp === 0) {
+    return {
+      status: "ok",
+      detail: `installed ${installed} matches the npmjs latest dist-tag (${latest}) ${sourceSuffix}`
+    };
+  }
+  if (cmp < 0) {
+    return {
+      status: "warn",
+      detail: `installed ${installed}; npmjs latest dist-tag is ${latest} \u2014 a newer version is published. Remedy: npm i -g ${NPM_PACKAGE_NAME}@latest ${sourceSuffix}`
+    };
+  }
+  return {
+    status: "ok",
+    detail: `installed ${installed} is newer than the npmjs latest dist-tag (${latest}) \u2014 normal right after a release ${sourceSuffix}`
+  };
+}
+async function checkNpmCurrency(opts) {
+  const cachePath = npmCacheFilePath(opts);
+  const now2 = opts.now ?? Date.now;
+  const nowMs = now2();
+  const cached2 = readNpmCache(cachePath);
+  if (cached2) {
+    const ageMs = nowMs - Date.parse(cached2.fetchedAt);
+    if (ageMs >= 0 && ageMs < NPM_CACHE_TTL_MS) {
+      const ageH = Math.max(0, Math.floor(ageMs / 36e5));
+      return renderCurrencyVerdict(opts.installedVersion, cached2.version, `(cached ${ageH}h)`);
+    }
+  }
+  const fetchImpl = opts.fetch ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 4e3;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(NPM_REGISTRY_URL, { signal: controller.signal });
+    if (res.status === 404) {
+      return { status: "skip", detail: "skipped (package not on npmjs)" };
+    }
+    if (!res.ok) {
+      return { status: "skip", detail: "skipped (registry unreachable)" };
+    }
+    const body = await res.json();
+    const latest = typeof body?.version === "string" ? body.version : void 0;
+    if (!latest) {
+      return { status: "skip", detail: "skipped (registry unreachable)" };
+    }
+    writeNpmCache(cachePath, { version: latest, fetchedAt: new Date(nowMs).toISOString() });
+    return renderCurrencyVerdict(opts.installedVersion, latest, "(live)");
+  } catch {
+    return { status: "skip", detail: "skipped (registry unreachable)" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function runDoctor(opts) {
   const { root, brainDir: brainDir2, env } = opts;
   const checks = [];
   const add = (name, status, detail) => checks.push({ name, status, detail });
   add("engine", "ok", `version ${ENGINE_VERSION} \xB7 commit ${ENGINE_COMMIT} \xB7 schema v${SCHEMA_VERSION}`);
   const settings = readJson2(join11(root, ".claude", "settings.json"));
-  const pluginsFile = opts.pluginsFile ?? (env.HOME ? join11(env.HOME, ".claude", "plugins", "installed_plugins.json") : void 0);
+  const configDir = claudeConfigDir(env);
+  const pluginsFile = opts.pluginsFile ?? (configDir ? join11(configDir, "plugins", "installed_plugins.json") : void 0);
   const plugin = detectPluginWiring(settings, root, pluginsFile);
   const mf = readManifest(brainDir2);
   if (!mf) {
@@ -16715,9 +16877,15 @@ function runDoctor(opts) {
   } else if (!plugin && (mcpPresent || have.length > 0)) {
     add("bootstrap", "warn", "wiring present but .vfkb/bin/bootstrap.mjs is missing \u2014 run `vfkb init`");
   }
+  const currency = plugin ? checkCurrency(plugin, opts, configDir) : void 0;
   if (plugin && pluginsFile) {
     if (plugin.installed?.version) {
-      add("plugin", "ok", `${plugin.key} installed, version ${plugin.installed.version} (informational \u2014 currency not compared)`);
+      const compared = currency && currency.status !== "skip";
+      add(
+        "plugin",
+        "ok",
+        compared ? `${plugin.key} installed, version ${plugin.installed.version} \u2014 see \`plugin currency\` below` : `${plugin.key} installed, version ${plugin.installed.version} (currency not compared)`
+      );
     } else if (plugin.installed) {
       add("plugin", "ok", `${plugin.key} installed (version unknown)`);
     } else if (plugin.registryReadable) {
@@ -16726,6 +16894,7 @@ function runDoctor(opts) {
       add("plugin", "warn", `${plugin.key} enabled but the plugin registry at ${pluginsFile} is missing or unreadable \u2014 install state unverified`);
     }
   }
+  if (currency) add("plugin currency", currency.status, currency.detail);
   const settingsProject = projectFromSettings(settings);
   if (mcpProject && settingsProject && mcpProject !== settingsProject) {
     add("VFKB_PROJECT", "fail", `mismatch: .mcp.json says "${mcpProject}", settings says "${settingsProject}"`);
@@ -16734,7 +16903,7 @@ function runDoctor(opts) {
   }
   return { checks, ok: !checks.some((c) => c.status === "fail") };
 }
-var ICON = { ok: "OK  ", warn: "WARN", fail: "FAIL" };
+var ICON = { ok: "OK  ", warn: "WARN", fail: "FAIL", skip: "SKIP" };
 function renderDoctor(report) {
   const lines = report.checks.map((c) => `${ICON[c.status]}  ${c.name} \u2014 ${c.detail}`);
   lines.push("");
@@ -16819,7 +16988,93 @@ function fromMarkdown(file2) {
   return [stamp("link", `${mdTitle(file2)} \u2192 ${file2}`, ["doc"], false)];
 }
 
+// src/args.ts
+var UsageError = class extends Error {
+};
+function parseArgs(verb, args, spec) {
+  const positionals = [];
+  const flags = /* @__PURE__ */ new Map();
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (!a.startsWith("--")) {
+      positionals.push(a);
+      continue;
+    }
+    const name = a.slice(2);
+    const kind = spec[name];
+    if (!kind) {
+      throw new UsageError(`unknown flag --${name} for '${verb}'${didYouMean(name, spec)}${knownFlags(spec)}`);
+    }
+    if (flags.has(name)) {
+      throw new UsageError(
+        `repeated flag --${name} for '${verb}' \u2014 give it once` + (kind === "value" ? ` (use a comma-separated value for multiples, e.g. --${name} a,b)` : "")
+      );
+    }
+    if (kind === "boolean") {
+      flags.set(name, true);
+      continue;
+    }
+    const next = args[i + 1];
+    if (next === void 0 || next.startsWith("--")) {
+      if (kind === "optional-value") {
+        flags.set(name, true);
+        continue;
+      }
+      throw new UsageError(`flag --${name} for '${verb}' requires a value`);
+    }
+    flags.set(name, next);
+    i++;
+  }
+  return { verb, positionals, flags };
+}
+function flagValue(p, name) {
+  const v = p.flags.get(name);
+  return typeof v === "string" ? v : void 0;
+}
+function flagList(p, name) {
+  const v = flagValue(p, name);
+  if (v === void 0) return void 0;
+  const items = v.split(",").map((t) => t.trim()).filter(Boolean);
+  if (items.length === 0) {
+    throw new UsageError(`flag --${name} for '${p.verb}' must be a non-empty comma-separated list (got '${v}')`);
+  }
+  return items;
+}
+function flagInt(p, name) {
+  const v = flagValue(p, name);
+  if (v === void 0) return void 0;
+  if (!/^\d+$/.test(v) || Number(v) < 1) {
+    throw new UsageError(`flag --${name} for '${p.verb}' must be a positive integer (got '${v}')`);
+  }
+  return Number(v);
+}
+function didYouMean(name, spec) {
+  const singular = name.replace(/s$/, "");
+  if (singular !== name && spec[singular]) return ` \u2014 did you mean --${singular} a,b (comma-separated)?`;
+  return "";
+}
+function knownFlags(spec) {
+  const names = Object.keys(spec);
+  return names.length ? ` (known: ${names.map((n) => `--${n}`).join(", ")})` : " (it takes no flags)";
+}
+
+// src/types.ts
+var ENTRY_TYPES = ["fact", "decision", "gotcha", "pattern", "link"];
+var DECISION_STATUSES = ["proposed", "accepted", "deprecated", "superseded"];
+
 // src/cli.ts
+import { readFileSync as readFileSync11 } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname as dirname5, join as join13 } from "node:path";
+function packageVersion() {
+  try {
+    const here = dirname5(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync11(join13(here, "..", "package.json"), "utf8"));
+    return pkg.version || ENGINE_VERSION;
+  } catch {
+    return ENGINE_VERSION;
+  }
+}
 function readStdin() {
   return new Promise((resolve3) => {
     let data = "";
@@ -16834,23 +17089,66 @@ function flag(args, name) {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : void 0;
 }
+function argsOf(sub, rest) {
+  return [sub, ...rest].filter((a) => a !== void 0);
+}
+function entryType(verb, raw) {
+  if (!raw || !ENTRY_TYPES.includes(raw)) {
+    throw new UsageError(`${verb}: unknown entry type '${raw ?? ""}' \u2014 expected ${ENTRY_TYPES.join("|")}`);
+  }
+  return raw;
+}
 async function main() {
+  try {
+    await dispatch();
+  } catch (err) {
+    if (err instanceof UsageError) {
+      process.stderr.write(`error: ${err.message}
+${USAGE}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+var USAGE = "usage: vfkb <add|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n";
+async function dispatch() {
   const [cmd, sub, ...rest] = process.argv.slice(2);
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") {
+    process.stdout.write(USAGE);
+    return;
+  }
+  if (cmd === "--version" || cmd === "-v" || cmd === "version") {
+    process.stdout.write(`${packageVersion()}
+`);
+    return;
+  }
   if (cmd === "add") {
-    const type = sub;
-    const role = flag(rest, "role") || "executor";
-    const tags = flag(rest, "tag")?.split(",").map((t) => t.trim()).filter(Boolean) ?? [];
+    const p = parseArgs("add", argsOf(sub, rest), {
+      role: "value",
+      tag: "value",
+      why: "value",
+      contradicts: "value",
+      status: "value",
+      "prov-status": "value",
+      "valid-until": "value",
+      zone: "value",
+      constitutional: "boolean"
+    });
+    const type = entryType("add", p.positionals[0]);
+    const textArg = p.positionals.slice(1).join(" ").trim();
+    if (!textArg) throw new UsageError("add: missing entry text");
+    const role = flagValue(p, "role") || "executor";
     try {
-      const e = addEntry(type, cleanText(rest), {
+      const e = addEntry(type, textArg, {
         role,
-        why: flag(rest, "why"),
-        tags,
-        contradicts: flag(rest, "contradicts")?.split(",").map((t) => t.trim()).filter(Boolean),
-        status: flag(rest, "status"),
-        provStatus: flag(rest, "prov-status"),
-        validUntil: flag(rest, "valid-until"),
-        zone: flag(rest, "zone"),
-        constitutional: rest.includes("--constitutional")
+        why: flagValue(p, "why"),
+        tags: flagList(p, "tag") ?? [],
+        contradicts: flagList(p, "contradicts"),
+        status: flagValue(p, "status"),
+        provStatus: flagValue(p, "prov-status"),
+        validUntil: flagValue(p, "valid-until"),
+        zone: flagValue(p, "zone"),
+        constitutional: p.flags.get("constitutional") === true
       });
       process.stdout.write(`${e.id}	[${e.type} ${deriveTrust(e.author.role)}]	${e.text}
 `);
@@ -16862,8 +17160,12 @@ async function main() {
     return;
   }
   if (cmd === "export") {
+    const p = parseArgs("export", rest, { out: "value" });
+    if (p.positionals.length > 0) {
+      throw new UsageError(`export: unexpected argument '${p.positionals[0]}'`);
+    }
     try {
-      process.stdout.write(runExport(sub, { out: flag(rest, "out") }) + "\n");
+      process.stdout.write(runExport(sub, { out: flagValue(p, "out") }) + "\n");
     } catch (err) {
       process.stderr.write(`error: ${err.message}
 `);
@@ -16872,8 +17174,10 @@ async function main() {
     return;
   }
   if (cmd === "init") {
+    const p = parseArgs("init", argsOf(sub, rest), {});
+    if (p.positionals.length > 1) throw new UsageError("init: at most one [project] argument");
     const root = process.cwd();
-    const project = (sub && !sub.startsWith("--") ? sub : void 0) || process.env.VFKB_PROJECT;
+    const project = p.positionals[0] || process.env.VFKB_PROJECT;
     const changes = initProject(root, { project });
     const resolved = project || root.split(/[/\\]/).filter(Boolean).pop() || "project";
     for (const c of changes) process.stdout.write(`${c.action}	${c.path}
@@ -16882,13 +17186,20 @@ async function main() {
     return;
   }
   if (cmd === "import") {
-    const args = [sub, ...rest].filter((a) => a !== void 0);
+    const p = parseArgs("import", argsOf(sub, rest), {
+      "from-adr": "optional-value",
+      "from-markdown": "value",
+      "from-mykb": "value"
+    });
+    if (p.positionals.length > 0) {
+      throw new UsageError(`import: unexpected argument '${p.positionals[0]}'`);
+    }
     const results = [];
     try {
-      if (args.includes("--from-adr")) results.push(...fromAdr(flag(args, "from-adr") || "docs/adr"));
-      const md = flag(args, "from-markdown");
+      if (p.flags.has("from-adr")) results.push(...fromAdr(flagValue(p, "from-adr") || "docs/adr"));
+      const md = flagValue(p, "from-markdown");
       if (md) results.push(...fromMarkdown(md));
-      const mykb = flag(args, "from-mykb");
+      const mykb = flagValue(p, "from-mykb");
       if (mykb) results.push(...fromMykb(resolveMykbArea(mykb)));
     } catch (err) {
       process.stderr.write(`error: ${err.message}
@@ -16907,17 +17218,45 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "doctor") {
-    const report = runDoctor({
-      root: process.cwd(),
-      brainDir: process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || ".vfkb",
-      env: process.env
-    });
+    const pd = parseArgs("doctor", argsOf(sub, rest), { "check-remote": "boolean" });
+    if (pd.positionals.length > 0) {
+      throw new UsageError(`doctor: unexpected argument '${pd.positionals[0]}'`);
+    }
+    const brainDir2 = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || ".vfkb";
+    const report = runDoctor({ root: process.cwd(), brainDir: brainDir2, env: process.env });
+    if (pd.flags.get("check-remote") === true) {
+      const npm = await checkNpmCurrency({ brainDir: brainDir2, installedVersion: ENGINE_VERSION });
+      report.checks.push({ name: "npm currency", status: npm.status, detail: npm.detail });
+      report.ok = !report.checks.some((c) => c.status === "fail");
+    }
     process.stdout.write(renderDoctor(report) + "\n");
     if (!report.ok) process.exit(1);
     return;
   }
   if (cmd === "list") {
-    for (const e of readAll()) {
+    const p = parseArgs("list", argsOf(sub, rest), {
+      type: "value",
+      tag: "value",
+      status: "value",
+      limit: "value"
+    });
+    if (p.positionals.length > 0) {
+      throw new UsageError(`list: unexpected argument '${p.positionals[0]}' (list takes only flags)`);
+    }
+    const type = flagValue(p, "type");
+    if (type) entryType("list --type", type);
+    const tags = flagList(p, "tag");
+    const status = flagValue(p, "status");
+    if (status && !DECISION_STATUSES.includes(status)) {
+      throw new UsageError(`list: unknown --status '${status}' \u2014 expected ${DECISION_STATUSES.join("|")}`);
+    }
+    const limit = flagInt(p, "limit");
+    let entries = readAll();
+    if (type) entries = entries.filter((e) => e.type === type);
+    if (tags) entries = entries.filter((e) => tags.every((t) => e.tags.includes(t)));
+    if (status) entries = entries.filter((e) => e.status === status);
+    if (limit !== void 0) entries = entries.slice(-limit);
+    for (const e of entries) {
       process.stdout.write(
         `${e.id}	${e.type}	${deriveTrust(e.author.role)}	${e.provenance.status}	${e.text}
 `
@@ -16926,63 +17265,79 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "context-block") {
-    process.stdout.write(renderContextBundle(sub || defaultProject()));
+    const p = parseArgs("context-block", argsOf(sub, rest), {});
+    if (p.positionals.length > 1) throw new UsageError("context-block: at most one [project] argument");
+    process.stdout.write(renderContextBundle(p.positionals[0] || defaultProject()));
     return;
   }
   if (cmd === "map") {
+    const p = parseArgs("map", argsOf(sub, rest), {});
+    if (p.positionals.length > 0) throw new UsageError(`map: unexpected argument '${p.positionals[0]}'`);
     process.stdout.write(renderContextMap() + "\n");
     return;
   }
   if (cmd === "context") {
-    if (sub === "init") {
+    const p = parseArgs("context", argsOf(sub, rest), {});
+    if (p.positionals.length > 1) throw new UsageError("context: at most one [init|project] argument");
+    if (p.positionals[0] === "init") {
       const { created, path } = initContextSpine();
       process.stdout.write(`${created ? "created" : "exists"}	${path}
 `);
       return;
     }
-    const project = (sub && !sub.startsWith("--") ? sub : void 0) || defaultProject();
-    process.stdout.write(renderContext(project));
+    process.stdout.write(renderContext(p.positionals[0] || defaultProject()));
     return;
   }
   if (cmd === "resume") {
-    const project = (sub && !sub.startsWith("--") ? sub : void 0) || defaultProject();
-    process.stdout.write(renderResume(project, SessionState.load()) + "\n");
+    const p = parseArgs("resume", argsOf(sub, rest), {});
+    if (p.positionals.length > 1) throw new UsageError("resume: at most one [project] argument");
+    process.stdout.write(renderResume(p.positionals[0] || defaultProject(), SessionState.load()) + "\n");
     return;
   }
   if (cmd === "curate") {
+    const p = parseArgs("curate", argsOf(sub, rest), {});
+    const [action, id1, id2] = p.positionals;
+    const need = (n, usage) => {
+      if (p.positionals.length - 1 !== n) throw new UsageError(`usage: vfkb curate ${usage}`);
+    };
     try {
-      if (sub === "dups") {
+      if (action === "dups") {
+        need(0, "dups");
         const dups = findLexicalDuplicates();
         for (const d of dups) process.stdout.write(`DUP	loser=${d.loser}	winner=${d.winner}
 `);
         if (dups.length === 0) process.stdout.write("no exact lexical duplicates\n");
-      } else if (sub === "signal") {
-        const kind = rest[1];
-        if (kind !== "helpful" && kind !== "harmful") {
+      } else if (action === "signal") {
+        need(2, "signal <id> <helpful|harmful>");
+        if (id2 !== "helpful" && id2 !== "harmful") {
           process.stderr.write("usage: vfkb curate signal <id> <helpful|harmful>\n");
           process.exit(1);
         }
-        recordSignal(rest[0], kind, "operator");
-        const t = tally(rest[0]);
+        recordSignal(id1, id2, "operator");
+        const t = tally(id1);
         process.stdout.write(
-          `signal ${kind} -> ${rest[0]} (helpful ${t.helpful} / harmful ${t.harmful} / net ${t.net}${eligibleForPromotion(rest[0]) ? ", promotable" : ""})
+          `signal ${id2} -> ${id1} (helpful ${t.helpful} / harmful ${t.harmful} / net ${t.net}${eligibleForPromotion(id1) ? ", promotable" : ""})
 `
         );
-      } else if (sub === "promote-auto") {
-        const e = promoteIfCorroborated(rest[0]);
+      } else if (action === "promote-auto") {
+        need(1, "promote-auto <id>");
+        const e = promoteIfCorroborated(id1);
         process.stdout.write(`promoted (corroborated) ${e.id} -> ${e.zone}
 `);
-      } else if (sub === "promote") {
-        const e = promote(rest[0]);
+      } else if (action === "promote") {
+        need(1, "promote <id>");
+        const e = promote(id1);
         process.stdout.write(`promoted ${e.id} -> ${e.zone}
 `);
-      } else if (sub === "archive") {
-        const e = archive(rest[0]);
+      } else if (action === "archive") {
+        need(1, "archive <id>");
+        const e = archive(id1);
         process.stdout.write(`archived ${e.id}
 `);
-      } else if (sub === "merge") {
-        mergeDuplicate(rest[0], rest[1]);
-        process.stdout.write(`merged ${rest[0]} -> ${rest[1]} (loser archived)
+      } else if (action === "merge") {
+        need(2, "merge <loser> <winner>");
+        mergeDuplicate(id1, id2);
+        process.stdout.write(`merged ${id1} -> ${id2} (loser archived)
 `);
       } else {
         process.stderr.write(
@@ -16998,6 +17353,10 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "distill") {
+    const pd = parseArgs("distill", argsOf(sub, rest), {});
+    if (pd.positionals.length > 0) {
+      throw new UsageError(`distill: unexpected argument '${pd.positionals[0]}'`);
+    }
     const session = SessionState.load();
     const ids = session.capturedIds;
     const { created, corroborated } = distill(ids.length ? ids : void 0);
@@ -17012,8 +17371,9 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "resume-note") {
+    const p = parseArgs("resume-note", argsOf(sub, rest), {});
     const session = SessionState.load();
-    const note = cleanText([sub, ...rest].filter((a) => a !== void 0));
+    const note = p.positionals.join(" ").trim();
     if (!note) {
       process.stderr.write("usage: vfkb resume-note <text>\n");
       process.exit(1);
@@ -17028,15 +17388,23 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "context-block-naive") {
-    const lim = flag([sub, ...rest], "limit");
-    process.stdout.write(renderNaiveDump(sub && !sub.startsWith("--") ? sub : defaultProject(), void 0, lim ? Number(lim) : void 0));
+    const p = parseArgs("context-block-naive", argsOf(sub, rest), { limit: "value" });
+    if (p.positionals.length > 1) throw new UsageError("context-block-naive: at most one [project] argument");
+    const lim = flagInt(p, "limit");
+    process.stdout.write(renderNaiveDump(p.positionals[0] || defaultProject(), void 0, lim));
     return;
   }
   if (cmd === "supersede") {
+    if (!sub || sub.startsWith("--")) {
+      throw new UsageError("usage: vfkb supersede <oldId> <text\u2026> [--role r] [--why w]");
+    }
+    const p = parseArgs("supersede", rest, { role: "value", why: "value" });
+    const newText = p.positionals.join(" ").trim();
+    if (!newText) throw new UsageError("supersede: missing new text");
     try {
-      const e = supersede(sub, cleanText(rest), {
-        role: flag(rest, "role") || "human",
-        why: flag(rest, "why")
+      const e = supersede(sub, newText, {
+        role: flagValue(p, "role") || "human",
+        why: flagValue(p, "why")
       });
       process.stdout.write(`${e.id}	supersedes ${sub}	${e.text}
 `);
@@ -17048,20 +17416,29 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "search" || cmd === "query") {
-    const args = [sub, ...rest].filter((a) => a !== void 0);
-    const text = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--"))).join(" ");
-    const limit = flag(args, "limit");
+    const p = parseArgs(cmd, argsOf(sub, rest), {
+      type: "value",
+      tag: "value",
+      zone: "value",
+      status: "value",
+      role: "value",
+      limit: "value",
+      verified: "boolean",
+      stale: "boolean",
+      superseded: "boolean"
+    });
+    const text = p.positionals.join(" ");
     const { results, diagnosis } = queryExplained({
       text: text || void 0,
-      type: flag(args, "type"),
-      zone: flag(args, "zone"),
-      status: flag(args, "status"),
-      tags: flag(args, "tag")?.split(",").map((t) => t.trim()).filter(Boolean),
-      authorRole: flag(args, "role"),
-      verifiedOnly: args.includes("--verified"),
-      limit: limit ? Number(limit) : void 0,
-      includeStale: args.includes("--stale"),
-      includeSuperseded: args.includes("--superseded")
+      type: flagValue(p, "type"),
+      zone: flagValue(p, "zone"),
+      status: flagValue(p, "status"),
+      tags: flagList(p, "tag"),
+      authorRole: flagValue(p, "role"),
+      verifiedOnly: p.flags.get("verified") === true,
+      limit: flagInt(p, "limit"),
+      includeStale: p.flags.get("stale") === true,
+      includeSuperseded: p.flags.get("superseded") === true
     });
     for (const e of results) {
       const contra = e.refs?.contradicts?.length ? `	\u2694 contradicts ${e.refs.contradicts.join(",")}` : "";
@@ -17199,24 +17576,12 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     }
   }
   if (cmd === "save") {
-    const r = save([sub, ...rest].filter((a) => a && !a.startsWith("--")).join(" ") || void 0);
+    const p = parseArgs("save", argsOf(sub, rest), {});
+    const r = save(p.positionals.join(" ").trim() || void 0);
     process.stdout.write((r.committed ? "committed: " : "no-op: ") + r.message + "\n");
     return;
   }
-  process.stderr.write(
-    "usage: vfkb <add|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|context-block|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n"
-  );
+  process.stderr.write(USAGE);
   process.exit(1);
-}
-function cleanText(args) {
-  const out = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith("--")) {
-      i++;
-      continue;
-    }
-    out.push(args[i]);
-  }
-  return out.join(" ").trim();
 }
 main();
