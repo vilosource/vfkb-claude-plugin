@@ -1,16 +1,14 @@
 <!-- vfkb:how-we-track-work -->
 ## How we track work HERE — vfkb
 
-This repo uses **vfkb** as its knowledge substrate (project `vfkb-claude-plugin`). Knowledge is recorded
-**deliberately, through the engine** — never by hand-editing `.vfkb/` (a PreToolUse hook gates that).
+This repo uses **vfkb** (ViloForge KnowledgeBase) via the **vfkb Claude Code plugin**
+([vilosource/vfkb-claude-plugin](https://github.com/vilosource/vfkb-claude-plugin)), installed at
+project scope through `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`). The
+plugin bundles the engine, the `kb_*` MCP tools, and the hooks (session-start resume injection,
+brain-write gating, end-of-turn decision reminder, session-end brain auto-commit) — no env vars,
+no `.mcp.json` entry, no bootstrap script.
 
-- **Session start** injects the resume digest + knowledge bundle automatically (SessionStart hook).
-- **Record knowledge** with the `mcp__vfkb__kb_add` tool (or `node .vfkb/bin/bootstrap.mjs cli add …`):
-  `decision`, `fact`, `gotcha`, `pattern`, `link` — put a decision's rationale in its text.
-  **Capture load-bearing decisions immediately — don't defer.**
-- Only `.vfkb/entries.jsonl`, `.vfkb/manifest.json`, and `.vfkb/bin/` are committed;
-  `.vfkb/index-meta.json`, `.sessions/`, `.signals/` are derived/gitignored.
-
-Two env vars: **`VFKB_DATA_DIR`** = this repo's brain (`.vfkb`, set by the wiring) · **`VFKB_BUNDLE_DIR`**
-= the shared vfkb engine bundles — set it once per machine, e.g. `export VFKB_BUNDLE_DIR=/path/to/vfkb/dist/bundles`.
-If it is unset, a session-start banner tells you; run `vfkb doctor` to check.
+- Record knowledge deliberately with the `kb_add` MCP tool (`decision`/`fact`/`gotcha`/`pattern`/`link`);
+  put a decision's rationale in `why`. **Capture load-bearing decisions immediately — don't defer.**
+- Only `.vfkb/entries.jsonl` (+ `manifest.json`) is committed — the brain ships with the repo;
+  `.vfkb/.sessions/`, `.signals/`, `index-meta.json` are derived/gitignored.
