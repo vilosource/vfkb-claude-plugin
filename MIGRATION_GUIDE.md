@@ -31,6 +31,19 @@ list is disposable scaffolding that either the old `vfkb init` or the new plugin
    ```
    Approve the MCP server + hooks when prompted.
 
+   > ⚠️ **This step is interactive, and it is the one that actually installs the plugin.**
+   > Writing `enabledPlugins["vfkb@vfkb"]` into `.claude/settings.json` only *declares* the
+   > plugin — it does not install it. The install is recorded in Claude Code's
+   > `~/.claude/plugins/installed_plugins.json`, created by `/plugin install` (or
+   > `claude plugin install vfkb@vfkb --scope project`) — **not** by editing settings.
+   >
+   > So a migration performed by an **automated PR or an agent** can land the settings edit
+   > yet leave the plugin *declared but not installed*: the session then runs with **no MCP
+   > tools, no hooks, no resume digest, and no capture — silently**. If you migrate this way,
+   > a human must still run `claude plugin install vfkb@vfkb --scope project` in the repo (or
+   > `/plugin install vfkb@vfkb` interactively) before the migration is real. Verify it landed
+   > in Step 4 below.
+
 2. **Verify the plugin sees the existing brain** before removing the old wiring — ask "what does
    vfkb know about this project?" and confirm it reflects your actual, existing
    `.vfkb/entries.jsonl` content (not an empty brain — if it looks empty, stop and check
@@ -48,17 +61,28 @@ list is disposable scaffolding that either the old `vfkb init` or the new plugin
      that this project uses the vfkb Claude Code plugin — no env vars or bootstrap script to
      document anymore.
 
-4. **Verify again** — start a fresh session, confirm the resume digest / a test query still
-   reflects your real knowledge, with no wiring files left behind.
+4. **Verify the plugin actually loaded** — do not assume the settings edit is enough (see the
+   Step 1 warning). Start a fresh session and confirm **both**:
+   - the vfkb **resume digest** appears at session start (proves the `SessionStart` hook ran), and
+   - a `kb_*` MCP tool is available / a test query reflects your real `.vfkb/entries.jsonl` knowledge.
+
+   If you have the `vfkb` CLI, `vfkb doctor` is the authoritative check: its `plugin` line must read
+   `vfkb@vfkb installed, version …` — **not** the WARN
+   `enabled in settings but not found in the local plugin registry`. That WARN (or an absent resume
+   digest) is the *declared-but-not-installed* state from Step 1 — fix it with
+   `claude plugin install vfkb@vfkb --scope project`, then re-verify. Only then remove no more wiring
+   and continue.
 
 5. **Commit** the removals plus the `.gitignore`/doc updates, same branch → PR discipline as any
    other change to the project.
 
-## Recommended: add the INACTIVE guard (ADR-0059)
+## Strongly recommended: add the INACTIVE guard (ADR-0059)
 
-The plugin cannot warn you when it is *not* running — an uninstalled or unapproved plugin means a
-session silently runs without vfkb (no resume digest, no brain-write gate, no capture, no banner).
-The guard restores that signal:
+This is the **automated backstop** for the Step 1 / Step 4 failure mode above: the plugin cannot warn
+you when it is *not* running — an uninstalled or unapproved plugin means a session silently runs
+without vfkb (no resume digest, no brain-write gate, no capture, no banner). The manual `vfkb doctor`
+check only catches it if someone runs it; this guard catches it on **every** session start. Add it as
+part of the migration, not as an afterthought:
 
 1. Copy [`templates/vfkb-guard.mjs`](templates/vfkb-guard.mjs) (from this plugin repo) into your
    project at `.claude/vfkb-guard.mjs` and commit it. It is Node-stdlib-only and **fails open** —
