@@ -55,6 +55,7 @@ function fixture() {
   write(root, 'plugin/dist/bundles/vfkb-mcp.mjs', '// bundle\n');
   write(root, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', V));
   write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V));
+  write(root, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', V));
   write(root, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: DISCLOSURE });
   write(root, 'README.md', `# plugin\n\n> ${DISCLOSURE}\n`);
   return root;
@@ -117,6 +118,20 @@ const CASES = [
       const rec = goodRecord('hooks-smoke', '0.4.0');
       rec.arms.wired.trials = [trial(true), trial(false), trial(false)];
       write(r, 'scenarios/records/hooks-smoke.json', rec);
+    },
+  },
+  {
+    name: 'inactive-signal record dropped (issue #4 / ADR-0059 gate)',
+    expect: /\[evidence\].*missing record.*inactive-signal/s,
+    break: (r) => rmSync(join(r, 'scenarios/records/inactive-signal.json')),
+  },
+  {
+    name: 'inactive-signal contrast leaks (guard banners even with plugin present)',
+    expect: /\[evidence\].*contrast arm "contrast" leaked 3\/3/s,
+    break: (r) => {
+      const rec = goodRecord('inactive-signal', '0.4.0');
+      rec.arms.contrast.trials = [trial(true), trial(true), trial(true)];
+      write(r, 'scenarios/records/inactive-signal.json', rec);
     },
   },
   // ---- DoD 5: packaging ----

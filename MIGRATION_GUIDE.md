@@ -54,6 +54,29 @@ list is disposable scaffolding that either the old `vfkb init` or the new plugin
 5. **Commit** the removals plus the `.gitignore`/doc updates, same branch → PR discipline as any
    other change to the project.
 
+## Recommended: add the INACTIVE guard (ADR-0059)
+
+The plugin cannot warn you when it is *not* running — an uninstalled or unapproved plugin means a
+session silently runs without vfkb (no resume digest, no brain-write gate, no capture, no banner).
+The guard restores that signal:
+
+1. Copy [`templates/vfkb-guard.mjs`](templates/vfkb-guard.mjs) (from this plugin repo) into your
+   project at `.claude/vfkb-guard.mjs` and commit it. It is Node-stdlib-only and **fails open** —
+   any error exits silently, it can never block a session.
+2. Add a `SessionStart` hook to the same `.claude/settings.json` that declares the plugin:
+   ```json
+   "hooks": {
+     "SessionStart": [
+       { "hooks": [ { "type": "command", "command": "node ${CLAUDE_PROJECT_DIR:-.}/.claude/vfkb-guard.mjs" } ] }
+     ]
+   }
+   ```
+   This hook lives in the **project** settings, not the plugin's `hooks.json`, precisely so it runs
+   even when the plugin doesn't. It compares your `enabledPlugins` declaration against Claude Code's
+   `installed_plugins.json` and prints `vfkb INACTIVE` with the fix when the plugin is declared but
+   not installed for this session. (Known limitation: it can't yet see the installed-but-*unapproved*
+   state — it covers uninstalled / never-fulfilled / wrong-project.)
+
 ## If something looks wrong
 
 Don't delete `.vfkb/entries.jsonl` while debugging. Re-run `vfkb init` (the old mechanism still

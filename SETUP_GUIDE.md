@@ -63,3 +63,22 @@ shared across clones.
 | Best for | Interactive Claude Code CLI use | CI, scripted/non-interactive environments, or any harness with no plugin concept |
 
 Both write to the same `.vfkb/entries.jsonl` format — there's no lock-in either way.
+
+## Recommended: the INACTIVE guard (ADR-0059)
+
+Because the plugin can't warn you when it isn't running, an uninstalled or unapproved plugin means
+a session silently runs without vfkb. To get a `vfkb INACTIVE` banner in that case, copy
+[`templates/vfkb-guard.mjs`](templates/vfkb-guard.mjs) into your repo at `.claude/vfkb-guard.mjs`
+and wire it as a `SessionStart` hook in the same `.claude/settings.json` that enables the plugin:
+
+```json
+"hooks": {
+  "SessionStart": [
+    { "hooks": [ { "type": "command", "command": "node ${CLAUDE_PROJECT_DIR:-.}/.claude/vfkb-guard.mjs" } ] }
+  ]
+}
+```
+
+It's Node-stdlib-only and fails open (any error exits silently, never blocks a session). See the
+[Migration Guide](MIGRATION_GUIDE.md#recommended-add-the-inactive-guard-adr-0059) for the full
+rationale and its known limitation.
