@@ -19,6 +19,10 @@ every PR whose committed records don't match the tree it ships.
      `claude plugin install` in a sandboxed HOME and observes all four hooks + the MCP server
      working (resume injection, brain-write gate, Stop termination, session-end auto-commit,
      kb_add round-trip, tools/list = 9). Contrast arm runs the same sandbox without the plugin.
+   - `node scenarios/inactive-signal.mjs` — the INACTIVE-guard proof (issue #4 / ADR-0059):
+     a sandbox that declares the plugin + wires `templates/vfkb-guard.mjs` surfaces a
+     `vfkb INACTIVE` banner when the plugin is NOT installed (absent arm) and stays silent when
+     it IS (present/contrast arm — which also certifies the install path).
 4. **Deterministic gates green locally**: `node scenarios/release-gate.selftest.mjs && node
    scenarios/release-gate.mjs`.
 5. Commit the records with the bump; open the PR. CI re-runs the deterministic gates; the live

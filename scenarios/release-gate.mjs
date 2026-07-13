@@ -54,7 +54,7 @@ import { marked } from './vendor/marked.esm.mjs';
 const MARKED_SHA256 = '35398f546525d5e79a8f2f8738635d3ecbd277618cba2ada874e9d27dc9e88f0';
 
 // Scenario records the gate requires, and the arm roles it recomputes against.
-const REQUIRED = ['brief-skill', 'hooks-smoke'];
+const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal'];
 
 // ADR-0022 §5 — "Each scenario runs N=3 trials".
 const MIN_TRIALS = 3;

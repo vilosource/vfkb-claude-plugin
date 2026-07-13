@@ -19,3 +19,9 @@ jobs:
 
       - name: Verify evidence, packaging and delivery honesty (vfkb ADR-0050/0051)
         run: node scenarios/release-gate.mjs
+
+      # Deterministic inner gate for the INACTIVE guard (ADR-0059): the L4 proves
+      # the agent-observable banner; this proves the guard's structural branches
+      # (scope match, wrong-path, fail-open, symlink) without an LLM.
+      - name: Guard branch invariants (ADR-0059)
+        run: node scenarios/guard-branches.test.mjs
