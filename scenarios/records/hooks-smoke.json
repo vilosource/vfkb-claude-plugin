@@ -1,0 +1,100 @@
+{
+  "scenario": "hooks-smoke",
+  "recordVersion": 2,
+  "pluginVersion": "0.5.0",
+  "outerModel": "claude-haiku-4-5-20251001",
+  "trials": 3,
+  "generated": "2026-07-13T08:27:35.408Z",
+  "arms": {
+    "wired": {
+      "role": "positive",
+      "predicate": [
+        "resumeInjected",
+        "writeBlocked",
+        "stopFired",
+        "sessionEndClean",
+        "kbRoundTrip",
+        "mcpNine"
+      ],
+      "trials": [
+        {
+          "resumeInjected": true,
+          "writeBlocked": true,
+          "stopFired": true,
+          "sessionEndClean": true,
+          "kbRoundTrip": true,
+          "mcpNine": true,
+          "t1": "quartzfinch-omega-58",
+          "t3": "DONE",
+          "err": ""
+        },
+        {
+          "resumeInjected": true,
+          "writeBlocked": true,
+          "stopFired": true,
+          "sessionEndClean": true,
+          "kbRoundTrip": true,
+          "mcpNine": true,
+          "t1": "quartzfinch-omega-58",
+          "t3": "DONE",
+          "err": ""
+        },
+        {
+          "resumeInjected": true,
+          "writeBlocked": true,
+          "stopFired": true,
+          "sessionEndClean": true,
+          "kbRoundTrip": true,
+          "mcpNine": true,
+          "t1": "quartzfinch-omega-58",
+          "t3": "DONE",
+          "err": ""
+        }
+      ]
+    },
+    "unwired": {
+      "role": "contrast",
+      "predicate": [
+        "resumeInjected",
+        "writeBlocked",
+        "stopFired",
+        "sessionEndClean"
+      ],
+      "trials": [
+        {
+          "resumeInjected": false,
+          "writeBlocked": false,
+          "stopFired": false,
+          "sessionEndClean": false,
+          "kbRoundTrip": false,
+          "mcpNine": true,
+          "t1": "NONE",
+          "t3": "I'm attempting to add the fact 'SMOKE TRIAL NOTE 1-unwired' to the vfkb knowledge base. Wa",
+          "err": ""
+        },
+        {
+          "resumeInjected": false,
+          "writeBlocked": false,
+          "stopFired": false,
+          "sessionEndClean": false,
+          "kbRoundTrip": false,
+          "mcpNine": true,
+          "t1": "NONE",
+          "t3": "Awaiting permission to write to `.vfkb/entries.jsonl`.",
+          "err": ""
+        },
+        {
+          "resumeInjected": false,
+          "writeBlocked": false,
+          "stopFired": false,
+          "sessionEndClean": false,
+          "kbRoundTrip": false,
+          "mcpNine": true,
+          "t1": "NONE",
+          "t3": "I found the vfkb knowledge base file at `.vfkb/entries.jsonl`. It contains JSONL entries w",
+          "err": ""
+        }
+      ]
+    }
+  }
+}

@@ -54,6 +54,7 @@ function fixture() {
   write(root, 'plugin/dist/bundles/vfkb.mjs', '// bundle\n');
   write(root, 'plugin/dist/bundles/vfkb-mcp.mjs', '// bundle\n');
   write(root, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', V));
+  write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V));
   write(root, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: DISCLOSURE });
   write(root, 'README.md', `# plugin\n\n> ${DISCLOSURE}\n`);
   return root;
@@ -103,6 +104,20 @@ const CASES = [
     name: 'record dropped entirely',
     expect: /\[evidence\].*missing record/s,
     break: (r) => rmSync(join(r, 'scenarios/records/brief-skill.json')),
+  },
+  {
+    name: 'hooks-smoke record dropped (issue #6 gate)',
+    expect: /\[evidence\].*missing record.*hooks-smoke/s,
+    break: (r) => rmSync(join(r, 'scenarios/records/hooks-smoke.json')),
+  },
+  {
+    name: 'hooks-smoke positive arm below threshold (wiring regressed)',
+    expect: /\[evidence\].*positive arm "wired" hit 1\/3/s,
+    break: (r) => {
+      const rec = goodRecord('hooks-smoke', '0.4.0');
+      rec.arms.wired.trials = [trial(true), trial(false), trial(false)];
+      write(r, 'scenarios/records/hooks-smoke.json', rec);
+    },
   },
   // ---- DoD 5: packaging ----
   {
