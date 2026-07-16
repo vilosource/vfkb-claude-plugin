@@ -115,7 +115,31 @@ export function checkVersionBump(repo, surface = SURFACE) {
   // No tag => this version has never shipped, so there is nothing it could
   // contradict. This is the green path for a correctly-bumped release PR.
   if (!tagExists(repo, tag)) {
-    notes.push(`version ok: ${version} is unreleased (no ${tag} tag) — nothing shipped under it yet`);
+    // ...but "no tag" and "no tags at all" are not the same thing, and this
+    // Brake reads the SAME on both while failing OPEN. A checkout without tags
+    // (the Actions default is shallow and tagless — this workflow opts in with
+    // `fetch-tags: true`) would make every version look unreleased and the check
+    // pass vacuously forever, silently, in the exact configuration it exists to
+    // police. This repo has shipped six tagged versions; zero of them present
+    // means the tag data is missing, not that nothing was ever released.
+    const released = git(repo, 'tag', '--list', `${name}--v*`);
+    if (!released) {
+      return {
+        ok: false,
+        reasons: [
+          `no ${name}--v* tags exist in this checkout, so there is nothing to compare ${version} ` +
+            `against and this check would pass without checking anything. Fetch the tags ` +
+            `(CI: actions/checkout with fetch-depth: 0 + fetch-tags: true; locally: ` +
+            `\`git fetch --tags\`). If this plugin genuinely has no releases yet, this Brake has ` +
+            `nothing to enforce and should be removed deliberately, not satisfied by an empty ref db.`,
+        ],
+        notes,
+      };
+    }
+    notes.push(
+      `version ok: ${version} is unreleased (no ${tag} tag; ${released.split('\n').length} other ` +
+        `release tag(s) present, so the tag data is really here) — nothing shipped under it yet`,
+    );
     return { ok: true, reasons, notes };
   }
 

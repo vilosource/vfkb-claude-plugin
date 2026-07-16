@@ -156,6 +156,20 @@ check(
   { expect: 'red', mentions: 'exists neither at HEAD nor in', surface: ['plugin', 'templates', 'ghost'] },
 );
 
+// The fails-open hole: a tagless checkout (the Actions default) makes every
+// version look unreleased, so the Brake would pass vacuously — forever, in the
+// one configuration it exists to police. It must fail CLOSED and say why.
+check(
+  'a TAGLESS checkout fails closed instead of passing vacuously',
+  (root) => {
+    git(root, 'tag', '-d', tagFor('vfkb', '0.5.0'));
+    // The drifting change is present: a Brake that missed this would be silent.
+    write(root, 'templates/vfkb-guard.mjs', '// guard v2 — drift\n');
+    commit(root, 'feat: guard');
+  },
+  { expect: 'red', mentions: 'fetch-tags' },
+);
+
 // Real, and easy to get backwards: dropping a released dir must read as drift
 // ("bump"), not as a stale-list problem ("edit SURFACE").
 check(
