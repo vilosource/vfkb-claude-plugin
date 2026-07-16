@@ -84,6 +84,7 @@ const DELIVERY_PROOF = 'install-path';
 // records with the SAME function, so runner and Brake can never disagree.
 // ---------------------------------------------------------------------------
 export function hashTree(dir) {
+  const root = resolve(dir); // tolerate a trailing slash (installPath is used verbatim)
   const files = [];
   const walk = (d) => {
     for (const name of readdirSync(d).sort()) {
@@ -92,13 +93,16 @@ export function hashTree(dir) {
       else files.push(p);
     }
   };
-  walk(dir);
+  walk(root);
   const h = createHash('sha256');
   for (const f of files.sort()) {
-    h.update(f.slice(dir.length + 1));
+    // Length-safe framing (review of #27): raw byte concatenation let a file
+    // whose CONTENT embeds "\0<path>\0" collide with the multi-file tree it
+    // mimics. A NUL-terminated path (paths cannot contain NUL) followed by the
+    // fixed-width DIGEST of the content is unambiguous.
+    h.update(f.slice(root.length + 1));
     h.update('\0');
-    h.update(readFileSync(f));
-    h.update('\0');
+    h.update(createHash('sha256').update(readFileSync(f)).digest());
   }
   return h.digest('hex');
 }
@@ -488,8 +492,16 @@ function checkDelivery(repo, version) {
           `— re-run scenarios/${DELIVERY_PROOF}.mjs (records are tree-bound since issue #22)`,
       );
     } else {
-      const got = hashTree(join(repo, 'plugin'));
-      if (got !== want) {
+      // A finding, not a stack trace (review of #27) — a dangling symlink or
+      // unreadable file in plugin/ must be reported like every other failure.
+      let got = '';
+      try {
+        got = hashTree(join(repo, 'plugin'));
+      } catch (e) {
+        proof.ok = false;
+        proof.reasons.push(`could not hash the shipping plugin/ tree: ${e.message}`);
+      }
+      if (proof.ok && got !== want) {
         proof.ok = false;
         proof.reasons.push(
           `record proves plugin/ tree ${want.slice(0, 12)}…, but the tree shipping now hashes ` +

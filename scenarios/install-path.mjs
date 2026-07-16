@@ -297,10 +297,29 @@ const HEAD_SHA = sh('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim();
   if (dirty) {
     throw new Error(`plugin/ has uncommitted changes — the pushed ref cannot equal this tree:\n${dirty}`);
   }
-  const remote = sh('git', ['ls-remote', 'origin', REF], { cwd: REPO }).split('\t')[0].trim();
-  if (remote !== HEAD_SHA) {
+  // Gitignored files evade the dirty check but poison LOCAL_TREE: the clone
+  // will not have them, so every trial would miss on treeVerified — a burned
+  // metered run (review of #27). Catch it here instead.
+  const ignored = sh('git', ['ls-files', '-o', '-i', '--exclude-standard', '--', 'plugin'], { cwd: REPO }).trim();
+  if (ignored) {
+    throw new Error(`plugin/ contains gitignored files the marketplace clone cannot have — remove them first:\n${ignored}`);
+  }
+  // Qualified refs (review of #27): a bare name tail-globs (a sibling branch
+  // `x/<REF>` sorts first), and this repo's release tags are annotated (the tag
+  // OBJECT sha never equals a commit sha) — so ask for the branch head and the
+  // peeled tag explicitly, and demand exactly one answer.
+  const out = sh('git', ['ls-remote', 'origin', `refs/heads/${REF}`, `refs/tags/${REF}^{}`], { cwd: REPO }).trim();
+  const shas = [...new Set(out.split('\n').filter(Boolean).map((l) => l.split('\t')[0]))];
+  if (shas.length !== 1) {
     throw new Error(
-      `origin/${REF} is ${remote.slice(0, 12) || '(missing)'} but local HEAD is ${HEAD_SHA.slice(0, 12)} — push first; ` +
+      shas.length === 0
+        ? `origin has no branch or tag named "${REF}" — push it first (the marketplace installs the REMOTE ref)`
+        : `origin resolves "${REF}" to ${shas.length} different shas — disambiguate before testing`,
+    );
+  }
+  if (shas[0] !== HEAD_SHA) {
+    throw new Error(
+      `origin/${REF} is ${shas[0].slice(0, 12)} but local HEAD is ${HEAD_SHA.slice(0, 12)} — push first; ` +
         `the marketplace installs the REMOTE ref, and testing a tree you have not pushed proves nothing about it`,
     );
   }
@@ -338,7 +357,10 @@ const record = {
   trials: TRIALS, generated: new Date().toISOString(), upgradeFrom: PREV,
   // Tree-binding (issue #22): the exact ref/tree this run installed. The gate
   // recomputes hashTree(plugin/) and rejects the record when they diverge, so a
-  // record can never claim a tree it did not test.
+  // record can never claim a tree it did not test. NOTE: ref/headSha are
+  // provenance (asserted at run start); pluginTreeHash is the OBSERVED binding
+  // — the in-predicate treeVerified* checks are what tie the installed bytes to
+  // it, so a mid-run push lands on a miss, never on a mislabeled record.
   ref: REF, headSha: HEAD_SHA, pluginTreeHash: LOCAL_TREE, arms,
 };
 

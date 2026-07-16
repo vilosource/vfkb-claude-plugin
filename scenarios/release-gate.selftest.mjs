@@ -593,6 +593,24 @@ let total = CASES.length;
   rmSync(dir, { recursive: true, force: true });
 }
 
+// hashTree framing (review of #27): a file whose CONTENT embeds "\0<path>\0"
+// must not collide with the multi-file tree it mimics — raw byte concatenation
+// did exactly that ({a:"x", b:""} vs {a:"x\0b\0"}).
+{
+  total += 1;
+  const a = mkdtempSync(join(tmpdir(), 'gate-hash-a-'));
+  const b = mkdtempSync(join(tmpdir(), 'gate-hash-b-'));
+  write(a, 'a', 'x');
+  write(a, 'b', '');
+  write(b, 'a', 'x\0b\0');
+  if (hashTree(a) === hashTree(b)) {
+    console.error('  FAIL   hashTree framing — crafted NUL-embedding content collides with a multi-file tree');
+    bad++;
+  } else console.log('  ok     hashTree framing — crafted NUL-embedding content does not collide');
+  rmSync(a, { recursive: true, force: true });
+  rmSync(b, { recursive: true, force: true });
+}
+
 for (const c of CASES) {
   const root = fixture();
   let failures;

@@ -40,11 +40,13 @@ so they need no bump. (ADR-0060 lists the `hooks-smoke` L4 #15 as drift; observe
      `vfkb INACTIVE` banner when the plugin is NOT installed (absent arm) and stays silent when
      it IS (present/contrast arm — which also certifies the install path).
    - `node scenarios/install-path.mjs` — the **delivery** proof (ADR-0051 / RFC-024 §4): a real
-     agent installs the current release AND upgrades from the newest pre-`/vfkb:brief` release
-     through the github marketplace path, and gets a working `/vfkb:brief` (can-fail contrast:
-     capability stripped → `Unknown command`). ~12 metered sessions; needs the real `~/.ssh` github
-     key. **Re-pin every release** to keep `DELIVERY-STATUS.json` `proven` — skipping it reverts the
-     gate to `unproven` and re-requires the README disclosure (cost is not a reason to skip it).
+     agent installs the **ref under test** (run it from the PUSHED release branch — every arm
+     resolves `owner/repo@<branch>`, and the record is **tree-bound** to the exact `plugin/` tree,
+     issue #22) AND upgrades from the newest pre-`/vfkb:brief` release through the github
+     marketplace path, getting a working `/vfkb:brief` (can-fail contrast: capability stripped →
+     `Unknown command`). ~12 metered sessions; needs the real `~/.ssh` github key. **Re-pin every
+     release** to keep `DELIVERY-STATUS.json` `proven` — skipping it (or changing any `plugin/`
+     byte after pinning) reverts the gate to `unproven` (cost is not a reason to skip it).
 4. **Deterministic gates green locally** — the same four CI runs, so a red is a local red first:
    ```sh
    node scenarios/release-gate.selftest.mjs && node scenarios/version-bump.selftest.mjs \
