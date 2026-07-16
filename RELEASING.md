@@ -1,19 +1,28 @@
 # Releasing
 
-Releases are cut by hand: bump `plugin/.claude-plugin/plugin.json`'s `version`, commit
-(convention: `re-vendor engine bundles from vfkb <ref> — vX.Y.Z` when the bump is a re-vendor),
-**tag the release** (`claude plugin tag`, ADR-0060), and let consumers pick it up via
-`claude plugin update`. Before any release commit lands, the evidence has to exist — the CI Brake
-(`release-gate.yml` → `scenarios/release-gate.mjs`) fails every PR whose committed records don't
-match the tree it ships.
+Releases are cut by hand — **except the two steps that were being skipped** (ADR-0061). You bump
+`plugin/.claude-plugin/plugin.json`'s `version`, re-pin the evidence, and open a PR; CI refuses the
+PR if the bump is missing, and **creates the `vfkb--v{version}` tag for you on merge**. You never run
+`claude plugin tag` by hand, and you cannot forget it.
 
-**Bump-and-tag is one atomic step (ADR-0060).** A version bump that ships without its
-`vfkb--v{version}` tag is a release-process defect: it leaves "the previous release" unresolvable and
-lets features drift onto a shipped version with no way to tell them apart (as happened to `0.5.0`,
-which carried the INACTIVE guard #16 + `hooks-smoke` #15 with no bump). All versions `v0.1.0`–`v0.5.0`
-are retro-tagged.
+**Bump-and-tag is one atomic step (ADR-0060), now enforced (ADR-0061).** Two Brakes make it so:
 
-## Pre-tag checklist
+| Brake | When | Rule |
+| --- | --- | --- |
+| `scenarios/version-bump.mjs` | every PR | A shipped version is **immutable**: if `plugin/` or `templates/` differs from what `vfkb--v{version}` already shipped, the version is stale → **bump it**. |
+| `.github/workflows/release-tag.yml` | merge to `main` | If the version on `main` has no tag, CI creates and pushes `vfkb--v{version}` at that commit. |
+
+Together: a surface change forces a bump, and a bump always gets its tag. That closes the `0.5.0`
+defect — `templates/vfkb-guard.mjs` (#16) shipped into an already-released `0.5.0` because both
+halves were skippable. (Versions `v0.1.0`–`v0.5.0` were retro-tagged in Phase 0; the invariant holds
+**forward** from `0.5.0`, whose retro-tag deliberately blesses that existing drift.)
+
+**What counts as the release surface:** `plugin/` and `templates/` — the bytes a consumer installs or
+commits. `scenarios/`, `.github/`, docs and `.vfkb/` are **not** surface: they change no shipped byte,
+so they need no bump. (ADR-0060 lists the `hooks-smoke` L4 #15 as drift; observed, it touched only
+`scenarios/` + `RELEASING.md`, so it isn't.)
+
+## Release checklist
 
 1. **Re-vendor** (if the engine changed): rebuild bundles in vfkb, copy into
    `plugin/dist/bundles/`, note the vfkb sha in the commit message.
@@ -30,18 +39,34 @@ are retro-tagged.
      a sandbox that declares the plugin + wires `templates/vfkb-guard.mjs` surfaces a
      `vfkb INACTIVE` banner when the plugin is NOT installed (absent arm) and stays silent when
      it IS (present/contrast arm — which also certifies the install path).
-4. **Deterministic gates green locally**: `node scenarios/release-gate.selftest.mjs && node
-   scenarios/release-gate.mjs`.
+4. **Deterministic gates green locally** — the same four CI runs, so a red is a local red first:
+   ```sh
+   node scenarios/release-gate.selftest.mjs && node scenarios/version-bump.selftest.mjs \
+     && node scenarios/release-gate.mjs && node scenarios/version-bump.mjs
+   ```
+   `version-bump.mjs` compares your **working tree** against the release tag, so it answers "does
+   this still need a bump?" before you commit.
 5. Commit the records with the bump; open the PR. CI re-runs the deterministic gates; the live
    scenarios are **not** run in CI (they need the operator's Claude Code OAuth) — their committed,
    version-bound records are what CI verifies.
-6. **Tag the release (ADR-0060).** After the release PR merges, from the release commit:
-   ```sh
-   claude plugin tag plugin --push        # creates & pushes vfkb--v{version}, validating
-                                          # plugin.json <-> marketplace.json agree
-   ```
+6. **Merge. The tag creates itself (ADR-0061).** `release-tag.yml` re-runs the deterministic gates
+   on `main` and pushes the annotated `vfkb--v{version}` at the release commit — the same ref
+   `claude plugin tag` would have produced. Nothing to run by hand.
+
+   Verify (observed, not assumed): `git ls-remote --tags origin | grep vfkb--v`.
+
    The tag name is the CC-native `vfkb--v{version}` (not a bare `v{version}`); ref-pinning and the
-   `install-path` upgrade arm use that exact name. Verify: `git ls-remote --tags origin | grep vfkb--v`.
+   `install-path` upgrade arm read that exact name, and `release-tag.yml` asserts the format before
+   pushing.
+
+## If the version Brake goes red
+
+It is telling you the truth: **this version already shipped with different contents.** The fix is
+always to bump `plugin/.claude-plugin/plugin.json` and re-pin the L4 records (steps 2–3) — not to
+move the tag. A published tag is a consumer's pin; moving it silently changes what an install
+resolves to. There is no skip label, by design (ADR-0050: a Brake that can be waved through is
+prose). If the Brake is ever *wrong*, fix the Brake and add the case to
+`scenarios/version-bump.selftest.mjs`.
 
 ## Delivery honesty (ADR-0051)
 

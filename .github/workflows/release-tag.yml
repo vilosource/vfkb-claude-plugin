@@ -1,0 +1,89 @@
+name: release-tag
+# ============================================================================
+# The second half of ADR-0060's "bump-and-tag is one atomic step", automated.
+#
+# ADR-0060 made bump-and-tag a rule and left both halves to the operator's
+# hands. Both were skipped (the 0.5.0 drift). The version Brake in
+# release-gate.yml now makes the BUMP unskippable; this makes the TAG
+# unskippable, by removing it from the operator's hands entirely: when a version
+# lands on main without its tag, CI creates it at that commit.
+#
+# This is why the pair is safe to automate. The tag is not a decision — it is a
+# mechanical consequence of a version reaching main, and the decision (which
+# version, with what evidence) was already reviewed in the PR.
+#
+# Non-goals, deliberately: this does NOT publish, cut a GitHub Release, or write
+# a CHANGELOG. It creates the one ref ADR-0060 specifies and stops.
+# ============================================================================
+on:
+  push:
+    branches: [main]
+
+# A tag is a shared, published ref. Two runs racing to create the same one is a
+# lost update at best; serialize them.
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+permissions:
+  contents: write # required to push the tag; nothing else
+
+jobs:
+  release-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Never tag a tree that would not have shipped. These are the same
+      # deterministic gates the PR ran; re-running them here costs seconds and
+      # means the tag job cannot be the thing that blesses a red main.
+      - name: Re-verify the deterministic gates before tagging
+        run: |
+          node scenarios/release-gate.selftest.mjs
+          node scenarios/version-bump.selftest.mjs
+          node scenarios/release-gate.mjs
+          node scenarios/version-bump.mjs
+
+      - name: Tag the release if this version has not shipped
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./plugin/.claude-plugin/plugin.json').name")
+          version=$(node -p "require('./plugin/.claude-plugin/plugin.json').version")
+          tag="${name}--v${version}"
+
+          # Ask the REMOTE, not the local ref db: the local copy is whatever this
+          # checkout happened to fetch, while the remote is what consumers can
+          # actually resolve. Those differ exactly when it matters.
+          if [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
+            echo "${tag} already exists on origin — nothing to do."
+            echo "(A surface change under an already-tagged version is caught by"
+            echo " the version Brake at PR time, not silently retagged here.)"
+            exit 0
+          fi
+
+          # Byte-identical to what `claude plugin tag` produces (ADR-0060,
+          # observed): an annotated tag named {name}--v{version}, subject
+          # "{name} {version}". The CLI is not invoked because installing it in
+          # CI to run `git tag` is a dependency with no payoff — but the format
+          # is the contract (ref-pinning + the install-path L4 upgrade arm read
+          # this exact name), so it is asserted below, not assumed.
+          case "$tag" in
+            *--v*) ;;
+            *) echo "::error::refusing to push ${tag}: not the ADR-0060 {name}--v{version} format"; exit 1 ;;
+          esac
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "${name} ${version}"
+          git push origin "refs/tags/${tag}"
+          echo "::notice::tagged ${tag} at $(git rev-parse --short HEAD)"
+
+          # Observed, not asserted: prove the ref is really on the remote.
+          test -n "$(git ls-remote --tags origin "refs/tags/${tag}")" \
+            || { echo "::error::push reported success but ${tag} is not on origin"; exit 1; }
