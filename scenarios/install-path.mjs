@@ -12,11 +12,21 @@
 // upgrades between versions. Its committed record is the ONLY thing that flips
 // DELIVERY-STATUS.json from `unproven` to `proven` (release-gate.mjs).
 //
+// HONESTY (issue #22): every arm installs from the marketplace PINNED TO THE
+// REF UNDER TEST (default: the current pushed branch), never bare `main` — on a
+// release branch those are different trees, and a record must not claim a
+// version whose tree it did not test. This is OBSERVED, not assumed: each
+// positive arm content-asserts that the tree the sandbox installed hashes
+// identically to the local plugin/ tree, and the record carries that hash
+// (`pluginTreeHash`), which the release gate re-derives against the shipping
+// tree — so a stale record goes red even under an unchanged version string.
+//
 // The capability under test is `/vfkb:brief` (the Haiku-pinned briefing skill,
 // present since v0.4.0). CAUSAL DESIGN — three arms:
-//   - fresh    (positive): install the CURRENT release from the marketplace →
+//   - fresh    (positive): install the ref under test from the marketplace →
 //                          /vfkb:brief works (sentinel from the seeded handoff
-//                          AND a haiku model in modelUsage = the briefer fork).
+//                          AND a haiku model in modelUsage = the briefer fork),
+//                          AND the installed tree == the local tree.
 //   - upgrade  (positive): install the newest release that LACKS /vfkb:brief
 //                          (resolved dynamically as a tag, not a rotting SHA) →
 //                          capability ABSENT → advance the marketplace clone +
@@ -66,7 +76,7 @@ import {
 } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { verdict } from './release-gate.mjs';
+import { verdict, hashTree } from './release-gate.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -131,6 +141,21 @@ function buildSandbox() {
   return { root, home, proj };
 }
 
+// The sha256 of the plugin/ tree the sandbox actually INSTALLED (resolved from
+// installed_plugins.json's installPath — the loaded copy, never the pre-cache).
+// Compared against the local tree so "tested what ships" is observed, not
+// assumed (issue #22). Empty string on any failure — which can never satisfy
+// the equality, so a broken read fails the arm rather than passing it.
+function installedTreeHash(home) {
+  try {
+    const j = JSON.parse(readFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), 'utf8'));
+    const e = ((j.plugins && j.plugins['vfkb@vfkb']) || []).find((r) => r && r.scope === 'user');
+    return e && e.installPath ? hashTree(e.installPath) : '';
+  } catch {
+    return '';
+  }
+}
+
 const cloneDir = (home) => join(home, '.claude', 'plugins', 'marketplaces', 'vfkb');
 const marketplaceAdd = (home, ref) =>
   sh('claude', ['plugin', 'marketplace', 'add', ref ? `${MARKETPLACE}@${ref}` : MARKETPLACE],
@@ -190,12 +215,13 @@ const setupErr = (e) => `SETUP: ${String((e && e.message) || e).replace(/\s+/g, 
 function runFresh() {
   const sb = buildSandbox();
   try {
-    marketplaceAdd(sb.home);        // unpinned github source = the current release
+    marketplaceAdd(sb.home, REF);   // github source pinned to the ref under test
     pluginInstall(sb.home);
+    const treeVerified = installedTreeHash(sb.home) === LOCAL_TREE; // installed bytes == this tree
     const r = brief(sb);
-    return { present: r.present, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
+    return { present: r.present, treeVerified, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
   } catch (e) {
-    return { present: false, sentinel: false, haiku: false, out: '', err: setupErr(e) };
+    return { present: false, treeVerified: false, sentinel: false, haiku: false, out: '', err: setupErr(e) };
   } finally {
     rmSync(sb.root, { recursive: true, force: true });
   }
@@ -204,24 +230,25 @@ function runFresh() {
 function runUpgrade(prevTag) {
   const sb = buildSandbox();
   try {
-    marketplaceAdd(sb.home);        // shallow clone at the current release
+    marketplaceAdd(sb.home, REF);   // shallow clone at the ref under test
     const clone = cloneDir(sb.home);
-    const latestRef = sh('git', ['rev-parse', 'HEAD'], { cwd: clone }).trim();
+    const latestRef = sh('git', ['rev-parse', 'HEAD'], { cwd: clone }).trim(); // == pushed tip of REF
     try { sh('git', ['fetch', '--unshallow'], { cwd: clone, stdio: 'ignore' }); } catch { /* already full */ }
     sh('git', ['checkout', '-q', prevTag], { cwd: clone });   // rewind to the pre-brief release
     pluginInstall(sb.home);
     const before = brief(sb);       // pre-turn: capability must be ABSENT
-    sh('git', ['checkout', '-q', latestRef], { cwd: clone });  // advance the clone back to latest
+    sh('git', ['checkout', '-q', latestRef], { cwd: clone });  // advance back to the ref under test
     marketplaceUpdate(sb.home);
     pluginUpdate(sb.home);
+    const treeVerifiedAfter = installedTreeHash(sb.home) === LOCAL_TREE; // upgrade DELIVERED this tree
     const after = brief(sb);        // post-turn: capability must be PRESENT
     return {
-      absentBefore: !before.present, presentAfter: after.present,
+      absentBefore: !before.present, presentAfter: after.present, treeVerifiedAfter,
       beforeOut: before.out, afterOut: after.out,
       err: [before.err, after.err].filter(Boolean).join(' | ').slice(0, 160),
     };
   } catch (e) {
-    return { absentBefore: false, presentAfter: false, beforeOut: '', afterOut: '', err: setupErr(e) };
+    return { absentBefore: false, presentAfter: false, treeVerifiedAfter: false, beforeOut: '', afterOut: '', err: setupErr(e) };
   } finally {
     rmSync(sb.root, { recursive: true, force: true });
   }
@@ -230,7 +257,7 @@ function runUpgrade(prevTag) {
 function runContrast() {
   const sb = buildSandbox();
   try {
-    marketplaceAdd(sb.home);        // current release
+    marketplaceAdd(sb.home, REF);   // the ref under test
     const clone = cloneDir(sb.home);
     // Remove the capability from the resolved tree — BOTH the skill and the haiku
     // briefer agent (else the agent forges a haiku modelUsage entry) — and nuke
@@ -253,22 +280,50 @@ function runContrast() {
 
 // --- drive -------------------------------------------------------------------
 const PREV = prevReleaseWithoutBrief();
+
+// The ref under test (issue #22). A re-pin must prove THE TREE IT SHIPS, so the
+// marketplace resolves this exact ref — never bare `main`, which on a release
+// branch is a DIFFERENT tree and yields a record claiming a version it did not
+// test. Default: the current branch. Every arm then content-asserts that the
+// tree the sandbox INSTALLED equals the local tree (observed, not assumed).
+const REF = process.env.VFKB_IP_REF || sh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: REPO }).trim();
+if (!REF || REF === 'HEAD') {
+  throw new Error('detached HEAD and no VFKB_IP_REF — name the branch under test (it must be pushed)');
+}
+const HEAD_SHA = sh('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim();
+{
+  // Pre-flight, before any metered turn: the pushed ref must BE this tree.
+  const dirty = sh('git', ['status', '--porcelain', '--', 'plugin'], { cwd: REPO }).trim();
+  if (dirty) {
+    throw new Error(`plugin/ has uncommitted changes — the pushed ref cannot equal this tree:\n${dirty}`);
+  }
+  const remote = sh('git', ['ls-remote', 'origin', REF], { cwd: REPO }).split('\t')[0].trim();
+  if (remote !== HEAD_SHA) {
+    throw new Error(
+      `origin/${REF} is ${remote.slice(0, 12) || '(missing)'} but local HEAD is ${HEAD_SHA.slice(0, 12)} — push first; ` +
+        `the marketplace installs the REMOTE ref, and testing a tree you have not pushed proves nothing about it`,
+    );
+  }
+}
+const LOCAL_TREE = hashTree(join(REPO, 'plugin'));
+
 console.log(`vfkb-claude-plugin install-path L4  (outer=${OUTER_MODEL}, trials=${TRIALS})`);
+console.log(`ref under test = ${REF} @ ${HEAD_SHA.slice(0, 12)} (plugin/ tree ${LOCAL_TREE.slice(0, 12)}…)`);
 console.log(`upgrade "before" = ${PREV} (newest release without /vfkb:brief); present = sentinel AND haiku fork\n`);
 
 const arms = {
-  fresh: { role: 'positive', predicate: ['present'], trials: [] },
-  upgrade: { role: 'positive', predicate: ['absentBefore', 'presentAfter'], trials: [] },
+  fresh: { role: 'positive', predicate: ['present', 'treeVerified'], trials: [] },
+  upgrade: { role: 'positive', predicate: ['absentBefore', 'presentAfter', 'treeVerifiedAfter'], trials: [] },
   contrast: { role: 'contrast', predicate: ['present'], trials: [] },
 };
 for (let t = 1; t <= TRIALS; t++) {
   process.stdout.write(`  trial ${t}  fresh    … `);
   const f = runFresh(); arms.fresh.trials.push(f);
-  console.log(`${f.present ? 'HIT ' : `miss (sentinel=${f.sentinel} haiku=${f.haiku})`}  — "${f.out}"${f.err ? '  ERR:' + f.err : ''}`);
+  console.log(`${f.present && f.treeVerified ? 'HIT ' : `miss (sentinel=${f.sentinel} haiku=${f.haiku} tree=${f.treeVerified})`}  — "${f.out}"${f.err ? '  ERR:' + f.err : ''}`);
 
   process.stdout.write(`  trial ${t}  upgrade  … `);
   const u = runUpgrade(PREV); arms.upgrade.trials.push(u);
-  console.log(`${u.absentBefore && u.presentAfter ? 'HIT ' : `miss (absentBefore=${u.absentBefore} presentAfter=${u.presentAfter})`}${u.err ? '  ERR:' + u.err : ''}`);
+  console.log(`${u.absentBefore && u.presentAfter && u.treeVerifiedAfter ? 'HIT ' : `miss (absentBefore=${u.absentBefore} presentAfter=${u.presentAfter} tree=${u.treeVerifiedAfter})`}${u.err ? '  ERR:' + u.err : ''}`);
 
   process.stdout.write(`  trial ${t}  contrast … `);
   const c = runContrast(); arms.contrast.trials.push(c);
@@ -280,7 +335,11 @@ const pluginVersion = JSON.parse(
 ).version;
 const record = {
   scenario: 'install-path', recordVersion: 2, pluginVersion, outerModel: OUTER_MODEL,
-  trials: TRIALS, generated: new Date().toISOString(), upgradeFrom: PREV, arms,
+  trials: TRIALS, generated: new Date().toISOString(), upgradeFrom: PREV,
+  // Tree-binding (issue #22): the exact ref/tree this run installed. The gate
+  // recomputes hashTree(plugin/) and rejects the record when they diverge, so a
+  // record can never claim a tree it did not test.
+  ref: REF, headSha: HEAD_SHA, pluginTreeHash: LOCAL_TREE, arms,
 };
 
 const { ok: demonstrated, reasons } = verdict(record);

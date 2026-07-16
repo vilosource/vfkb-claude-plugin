@@ -72,6 +72,38 @@ const DECLARED = { skills: ['vfkb', 'brief'], agents: ['briefer'] };
 const DELIVERY_PROOF = 'install-path';
 
 // ---------------------------------------------------------------------------
+// Deterministic content hash of a shipped tree (issue #22 — tree-binding).
+//
+// Version-binding alone leaves a gap: a SECOND plugin/ change landing under a
+// still-unreleased (already-bumped) version keeps every version check green
+// while the delivery record silently proves the EARLIER tree. So the delivery
+// record also carries the sha256 of the exact plugin/ tree its run installed,
+// and checkDelivery recomputes it against the tree being shipped. Pure
+// filesystem (sorted relative paths + bytes) — no git, preserving the gate's
+// "no LLM, no auth, no network" property. Exported: install-path.mjs stamps
+// records with the SAME function, so runner and Brake can never disagree.
+// ---------------------------------------------------------------------------
+export function hashTree(dir) {
+  const files = [];
+  const walk = (d) => {
+    for (const name of readdirSync(d).sort()) {
+      const p = join(d, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else files.push(p);
+    }
+  };
+  walk(dir);
+  const h = createHash('sha256');
+  for (const f of files.sort()) {
+    h.update(f.slice(dir.length + 1));
+    h.update('\0');
+    h.update(readFileSync(f));
+    h.update('\0');
+  }
+  return h.digest('hex');
+}
+
+// ---------------------------------------------------------------------------
 // ADR-0022:72, recomputed. `positive` arms must hit; `contrast` arms must not.
 // For trials=3 this is the familiar ">=2/3, contrast <=1/3".
 // ---------------------------------------------------------------------------
@@ -442,6 +474,31 @@ function checkDelivery(repo, version) {
   // DERIVED from committed evidence — the field is a claim, this is the check.
   // It flips to `proven` only, and automatically, when the record lands.
   const proof = checkRecord(repo, DELIVERY_PROOF, version);
+
+  // Tree-binding (issue #22): the delivery record must prove THIS plugin/ tree,
+  // not merely this version string. A record without a pluginTreeHash predates
+  // the honesty fix and cannot support `proven`; a mismatched one proves a tree
+  // that is not the one shipping.
+  if (proof.ok) {
+    const want = proof.rec.pluginTreeHash;
+    if (typeof want !== 'string' || !want) {
+      proof.ok = false;
+      proof.reasons.push(
+        `record carries no pluginTreeHash, so it cannot prove which plugin/ tree its run installed ` +
+          `— re-run scenarios/${DELIVERY_PROOF}.mjs (records are tree-bound since issue #22)`,
+      );
+    } else {
+      const got = hashTree(join(repo, 'plugin'));
+      if (got !== want) {
+        proof.ok = false;
+        proof.reasons.push(
+          `record proves plugin/ tree ${want.slice(0, 12)}…, but the tree shipping now hashes ` +
+            `${got.slice(0, 12)}… — plugin/ changed after the record was pinned; re-run ` +
+            `scenarios/${DELIVERY_PROOF}.mjs against this tree`,
+        );
+      }
+    }
+  }
   const derived = proof.ok ? 'proven' : 'unproven';
 
   if (st.delivery !== derived) {

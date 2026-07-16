@@ -13,7 +13,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runGate, checkVendor } from './release-gate.mjs';
+import { runGate, checkVendor, hashTree } from './release-gate.mjs';
 
 const DISCLOSURE =
   "Delivery is unproven: this plugin's install and upgrade path has never been verified " +
@@ -508,7 +508,11 @@ const CASES = [
   {
     name: 'the install-path proof landed but the status was never flipped',
     expect: /\[delivery\].*still says "unproven" — flip it/s,
-    break: (r) => write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.4.0')),
+    break: (r) =>
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      }),
   },
   {
     name: 'DELIVERY-STATUS.json missing entirely',
@@ -519,9 +523,41 @@ const CASES = [
     name: 'GREEN — install-path proven, status flipped, disclosure dropped',
     expect: null,
     break: (r) => {
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      });
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
+      write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+    },
+  },
+  // ---- tree-binding (issue #22): a record must prove the tree that ships ----
+  {
+    // The pre-#22 record shape: version-bound but tree-blind. It must not be
+    // able to support `proven` — that is the dishonesty class being closed.
+    name: 'delivery claims PROVEN on a record with no pluginTreeHash (pre-#22 shape)',
+    expect: /\[delivery\].*claims delivery is PROVEN.*carries no pluginTreeHash/s,
+    break: (r) => {
       write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.4.0'));
       write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
       write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+    },
+  },
+  {
+    // The gap version-binding cannot see: plugin/ changes under an unchanged
+    // version string after the record was pinned. DEMONSTRATED, version-bound —
+    // and proving a tree that is not the one shipping.
+    name: 'delivery claims PROVEN but plugin/ changed after the record was pinned (same version)',
+    expect: /\[delivery\].*claims delivery is PROVEN.*plugin\/ changed after the record was pinned/s,
+    break: (r) => {
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      });
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
+      write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+      // ...and then a byte a consumer receives changes, version untouched.
+      write(r, 'plugin/skills/vfkb/SKILL.md', '---\nname: vfkb\n---\n\n# vfkb (drifted)\n');
     },
   },
 ];
