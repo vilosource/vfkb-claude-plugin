@@ -72,6 +72,47 @@ const DECLARED = { skills: ['vfkb', 'brief'], agents: ['briefer'] };
 const DELIVERY_PROOF = 'install-path';
 
 // ---------------------------------------------------------------------------
+// Deterministic content hash of a shipped tree (issue #22 — tree-binding).
+//
+// Version-binding alone leaves a gap: a SECOND plugin/ change landing under a
+// still-unreleased (already-bumped) version keeps every version check green
+// while the delivery record silently proves the EARLIER tree. So the delivery
+// record also carries the sha256 of the exact plugin/ tree its run installed,
+// and checkDelivery recomputes it against the tree being shipped. Pure
+// filesystem (sorted relative paths + bytes) — no git, preserving the gate's
+// "no LLM, no auth, no network" property. Exported: install-path.mjs stamps
+// records with the SAME function, so runner and Brake can never disagree.
+// ---------------------------------------------------------------------------
+export function hashTree(dir, skipRootEntries = []) {
+  const root = resolve(dir); // tolerate a trailing slash (installPath is used verbatim)
+  const files = [];
+  const walk = (d) => {
+    for (const name of readdirSync(d).sort()) {
+      // skipRootEntries: named, root-level-only exclusions for a caller hashing
+      // an INSTALLED copy that carries host bookkeeping (Claude Code's `.in_use`
+      // marker) alongside the shipped bytes. The gate and the local-tree side
+      // never pass any — a source tree has nothing to skip.
+      if (d === root && skipRootEntries.includes(name)) continue;
+      const p = join(d, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else files.push(p);
+    }
+  };
+  walk(root);
+  const h = createHash('sha256');
+  for (const f of files.sort()) {
+    // Length-safe framing (review of #27): raw byte concatenation let a file
+    // whose CONTENT embeds "\0<path>\0" collide with the multi-file tree it
+    // mimics. A NUL-terminated path (paths cannot contain NUL) followed by the
+    // fixed-width DIGEST of the content is unambiguous.
+    h.update(f.slice(root.length + 1));
+    h.update('\0');
+    h.update(createHash('sha256').update(readFileSync(f)).digest());
+  }
+  return h.digest('hex');
+}
+
+// ---------------------------------------------------------------------------
 // ADR-0022:72, recomputed. `positive` arms must hit; `contrast` arms must not.
 // For trials=3 this is the familiar ">=2/3, contrast <=1/3".
 // ---------------------------------------------------------------------------
@@ -442,6 +483,39 @@ function checkDelivery(repo, version) {
   // DERIVED from committed evidence — the field is a claim, this is the check.
   // It flips to `proven` only, and automatically, when the record lands.
   const proof = checkRecord(repo, DELIVERY_PROOF, version);
+
+  // Tree-binding (issue #22): the delivery record must prove THIS plugin/ tree,
+  // not merely this version string. A record without a pluginTreeHash predates
+  // the honesty fix and cannot support `proven`; a mismatched one proves a tree
+  // that is not the one shipping.
+  if (proof.ok) {
+    const want = proof.rec.pluginTreeHash;
+    if (typeof want !== 'string' || !want) {
+      proof.ok = false;
+      proof.reasons.push(
+        `record carries no pluginTreeHash, so it cannot prove which plugin/ tree its run installed ` +
+          `— re-run scenarios/${DELIVERY_PROOF}.mjs (records are tree-bound since issue #22)`,
+      );
+    } else {
+      // A finding, not a stack trace (review of #27) — a dangling symlink or
+      // unreadable file in plugin/ must be reported like every other failure.
+      let got = '';
+      try {
+        got = hashTree(join(repo, 'plugin'));
+      } catch (e) {
+        proof.ok = false;
+        proof.reasons.push(`could not hash the shipping plugin/ tree: ${e.message}`);
+      }
+      if (proof.ok && got !== want) {
+        proof.ok = false;
+        proof.reasons.push(
+          `record proves plugin/ tree ${want.slice(0, 12)}…, but the tree shipping now hashes ` +
+            `${got.slice(0, 12)}… — plugin/ changed after the record was pinned; re-run ` +
+            `scenarios/${DELIVERY_PROOF}.mjs against this tree`,
+        );
+      }
+    }
+  }
   const derived = proof.ok ? 'proven' : 'unproven';
 
   if (st.delivery !== derived) {

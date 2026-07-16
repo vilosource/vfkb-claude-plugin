@@ -13,7 +13,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runGate, checkVendor } from './release-gate.mjs';
+import { runGate, checkVendor, hashTree } from './release-gate.mjs';
 
 const DISCLOSURE =
   "Delivery is unproven: this plugin's install and upgrade path has never been verified " +
@@ -508,7 +508,11 @@ const CASES = [
   {
     name: 'the install-path proof landed but the status was never flipped',
     expect: /\[delivery\].*still says "unproven" — flip it/s,
-    break: (r) => write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.4.0')),
+    break: (r) =>
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      }),
   },
   {
     name: 'DELIVERY-STATUS.json missing entirely',
@@ -519,9 +523,41 @@ const CASES = [
     name: 'GREEN — install-path proven, status flipped, disclosure dropped',
     expect: null,
     break: (r) => {
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      });
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
+      write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+    },
+  },
+  // ---- tree-binding (issue #22): a record must prove the tree that ships ----
+  {
+    // The pre-#22 record shape: version-bound but tree-blind. It must not be
+    // able to support `proven` — that is the dishonesty class being closed.
+    name: 'delivery claims PROVEN on a record with no pluginTreeHash (pre-#22 shape)',
+    expect: /\[delivery\].*claims delivery is PROVEN.*carries no pluginTreeHash/s,
+    break: (r) => {
       write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.4.0'));
       write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
       write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+    },
+  },
+  {
+    // The gap version-binding cannot see: plugin/ changes under an unchanged
+    // version string after the record was pinned. DEMONSTRATED, version-bound —
+    // and proving a tree that is not the one shipping.
+    name: 'delivery claims PROVEN but plugin/ changed after the record was pinned (same version)',
+    expect: /\[delivery\].*claims delivery is PROVEN.*plugin\/ changed after the record was pinned/s,
+    break: (r) => {
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      });
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
+      write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+      // ...and then a byte a consumer receives changes, version untouched.
+      write(r, 'plugin/skills/vfkb/SKILL.md', '---\nname: vfkb\n---\n\n# vfkb (drifted)\n');
     },
   },
 ];
@@ -555,6 +591,45 @@ let total = CASES.length;
     } else console.log(`  ok     vendor integrity: ${label} — ${got ? 'red' : 'green'}, as required`);
   }
   rmSync(dir, { recursive: true, force: true });
+}
+
+// hashTree framing (review of #27): a file whose CONTENT embeds "\0<path>\0"
+// must not collide with the multi-file tree it mimics — raw byte concatenation
+// did exactly that ({a:"x", b:""} vs {a:"x\0b\0"}).
+{
+  total += 1;
+  const a = mkdtempSync(join(tmpdir(), 'gate-hash-a-'));
+  const b = mkdtempSync(join(tmpdir(), 'gate-hash-b-'));
+  write(a, 'a', 'x');
+  write(a, 'b', '');
+  write(b, 'a', 'x\0b\0');
+  if (hashTree(a) === hashTree(b)) {
+    console.error('  FAIL   hashTree framing — crafted NUL-embedding content collides with a multi-file tree');
+    bad++;
+  } else console.log('  ok     hashTree framing — crafted NUL-embedding content does not collide');
+  rmSync(a, { recursive: true, force: true });
+  rmSync(b, { recursive: true, force: true });
+}
+
+// hashTree skipRootEntries: a named ROOT-level exclusion (Claude Code's
+// `.in_use` cache marker) is skipped, but the SAME name nested deeper still
+// counts — and an unlisted root entry still changes the hash.
+{
+  total += 1;
+  const a = mkdtempSync(join(tmpdir(), 'gate-skip-a-'));
+  const b = mkdtempSync(join(tmpdir(), 'gate-skip-b-'));
+  write(a, 'x', 'same');
+  write(b, 'x', 'same');
+  write(b, '.in_use/lock', 'transient');
+  const skippedEqual = hashTree(a, ['.in_use']) === hashTree(b, ['.in_use']);
+  write(b, 'skills/.in_use', 'nested — must still count');
+  const nestedCounts = hashTree(a, ['.in_use']) !== hashTree(b, ['.in_use']);
+  if (!skippedEqual || !nestedCounts) {
+    console.error(`  FAIL   hashTree skipRootEntries — root-skip=${skippedEqual} nested-counts=${nestedCounts}`);
+    bad++;
+  } else console.log('  ok     hashTree skipRootEntries — root marker skipped, nested same-name still counts');
+  rmSync(a, { recursive: true, force: true });
+  rmSync(b, { recursive: true, force: true });
 }
 
 for (const c of CASES) {
