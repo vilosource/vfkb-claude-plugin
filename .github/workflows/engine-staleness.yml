@@ -1,0 +1,70 @@
+# Engine-staleness fallback detector (vfkb ADR-0062, plugin#23).
+#
+# The PRIMARY path is producer-side: vfkb's engine-delivery.yml fires on every
+# engine-affecting push, compares stamp-normalized bundle bytes, and opens the
+# re-vendor PR here itself. This cron is the credential-free BACKSTOP for the
+# ways that path can die silently from this repo's perspective (the vfkb
+# workflow broken/disabled, the PLUGIN_DISPATCH_TOKEN expired — 2026-10-14, a
+# firing missed):
+#
+#   CLEAN                          -> green (the common case)
+#   DRIFT + open re-vendor PR      -> green (the system is working)
+#   DRIFT + NO open re-vendor PR   -> RED, loudly, with the likely causes named
+#
+# No secrets: vfkb is public (checkout read), and `gh pr list` on this repo
+# uses the workflow's own GITHUB_TOKEN.
+name: engine-staleness
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: vilosource/vfkb
+          path: vfkb-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vfkb-src/package-lock.json
+      - name: Build vfkb main's bundles
+        run: |
+          set -euo pipefail
+          cd vfkb-src
+          npm ci
+          npm run build:bundles
+      - name: Compare against the vendored bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          set +e
+          node vfkb-src/scripts/bundle-drift.mjs vfkb-src/dist/bundles plugin/dist/bundles
+          rc=$?
+          set -e
+          case "$rc" in
+            0) echo "engine current — vendored bundles match vfkb main (stamps normalized)" ;;
+            1)
+              # Owner-filtered (review of vfkb#182): --head matches branch NAME only, so a
+              # fork PR named re-vendor/engine could otherwise mask real staleness forever.
+              OPEN=$(gh pr list --head re-vendor/engine --state open --json number,headRepositoryOwner -q '.[] | select(.headRepositoryOwner.login=="vilosource") | .number')
+              if [ -n "$OPEN" ]; then
+                echo "engine drift exists AND re-vendor PR #$OPEN is open — the delivery pipeline is working"
+              else
+                echo "::error::ENGINE STALE with NO open re-vendor PR. vfkb main builds different engine bytes than this repo vendors, and nothing is proposing the release. Likely causes: vfkb's engine-delivery.yml is broken/disabled, or PLUGIN_DISPATCH_TOKEN expired (2026-10-14 — see vfkb brain fact e8b0b341e2b0). Manual fallback: run the vfkb workflow via workflow_dispatch, or re-vendor by hand per RELEASING.md."
+                exit 1
+              fi
+              ;;
+            *) echo "::error::bundle-drift comparison itself failed (rc=$rc) — neither clean nor drift can be claimed"; exit "$rc" ;;
+          esac
