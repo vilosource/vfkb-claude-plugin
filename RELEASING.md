@@ -39,6 +39,12 @@ so they need no bump. (ADR-0060 lists the `hooks-smoke` L4 #15 as drift; observe
      a sandbox that declares the plugin + wires `templates/vfkb-guard.mjs` surfaces a
      `vfkb INACTIVE` banner when the plugin is NOT installed (absent arm) and stays silent when
      it IS (present/contrast arm — which also certifies the install path).
+   - `node scenarios/install-path.mjs` — the **delivery** proof (ADR-0051 / RFC-024 §4): a real
+     agent installs the current release AND upgrades from the newest pre-`/vfkb:brief` release
+     through the github marketplace path, and gets a working `/vfkb:brief` (can-fail contrast:
+     capability stripped → `Unknown command`). ~12 metered sessions; needs the real `~/.ssh` github
+     key. **Re-pin every release** to keep `DELIVERY-STATUS.json` `proven` — skipping it reverts the
+     gate to `unproven` and re-requires the README disclosure (cost is not a reason to skip it).
 4. **Deterministic gates green locally** — the same four CI runs, so a red is a local red first:
    ```sh
    node scenarios/release-gate.selftest.mjs && node scenarios/version-bump.selftest.mjs \
@@ -70,13 +76,15 @@ prose). If the Brake is ever *wrong*, fix the Brake and add the case to
 
 ## Delivery honesty (ADR-0051)
 
-`DELIVERY-STATUS.json` stays `unproven` — and every release note keeps saying **"delivery is
-unproven"** — until `scenarios/records/install-path.json` lands. The hooks-smoke check does NOT
-prove delivery: it proves the wiring works when installed from **this checkout** (a directory-source
-marketplace), not that a consumer's github-sourced, versioned install/upgrade path delivers it.
+**Delivery is PROVEN (2026-07-16, v0.5.0).** `scenarios/install-path.mjs` DEMONSTRATED it 3/3 — a real
+agent installs the current release AND upgrades from `vfkb--v0.3.0` through the github marketplace path
+and gets a working `/vfkb:brief`; the committed `scenarios/records/install-path.json` flips
+`DELIVERY-STATUS.json` to `proven` (the gate DERIVES it, never a hand-edit). This is what earlier
+releases lacked: the `hooks-smoke` check proves the wiring works when installed from **this checkout**
+(a directory-source marketplace), not that a consumer's github-sourced, versioned install/upgrade
+delivers it — that is the gap `install-path` closes.
 
-**The `claude plugin tag` prerequisite is now met (ADR-0060)** — every release is tagged and a tag
-resolves as a github marketplace ref (`marketplace add …@vfkb--v0.4.0` → `plugin.json 0.4.0`,
-verified 2026-07-16). So the `install-path` L4 is now **buildable**; see vfkb
-`docs/install-path-L4-PLAN.md` (Phase 1 = write `scenarios/install-path.mjs` RED-verified; Phase 2 =
-the metered run that lands the record and flips delivery to `proven`).
+**Staying proven is per-release work.** The record is version-bound, so a release that ships without
+re-running `install-path.mjs` (step 3 above) reverts the gate to `unproven` and re-requires the README
+disclosure — by design (ADR-0051). The `claude plugin tag` prerequisite (ADR-0060) that unblocked this
+remains in force: every release is tagged and a tag resolves as a github marketplace ref.
