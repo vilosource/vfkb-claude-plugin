@@ -1,0 +1,99 @@
+{
+  "scenario": "install-path",
+  "recordVersion": 2,
+  "pluginVersion": "0.5.0",
+  "outerModel": "claude-sonnet-5",
+  "trials": 3,
+  "generated": "2026-07-16T10:02:46.966Z",
+  "upgradeFrom": "vfkb--v0.3.0",
+  "arms": {
+    "fresh": {
+      "role": "positive",
+      "predicate": [
+        "present"
+      ],
+      "trials": [
+        {
+          "present": true,
+          "sentinel": true,
+          "haiku": true,
+          "out": "Now I'll compile the session-start brief based on my findings. --- ## Session-start Brief **Last don",
+          "err": ""
+        },
+        {
+          "present": true,
+          "sentinel": true,
+          "haiku": true,
+          "out": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end, as rec",
+          "err": ""
+        },
+        {
+          "present": true,
+          "sentinel": true,
+          "haiku": true,
+          "out": "## Session-start brief **Last done:** Per the handoff (2026-07-16 10:01Z), the delivery refactor shi",
+          "err": ""
+        }
+      ]
+    },
+    "upgrade": {
+      "role": "positive",
+      "predicate": [
+        "absentBefore",
+        "presentAfter"
+      ],
+      "trials": [
+        {
+          "absentBefore": true,
+          "presentAfter": true,
+          "beforeOut": "Unknown command: /vfkb:brief",
+          "afterOut": "## Session-start brief **Last done** — Delivery refactor shipped and verified end-to-end (handoff 20",
+          "err": ""
+        },
+        {
+          "absentBefore": true,
+          "presentAfter": true,
+          "beforeOut": "Unknown command: /vfkb:brief",
+          "afterOut": "--- ## Session-start brief **Last done** — The handoff (2026-07-16 10:00Z) reports the delivery refa",
+          "err": ""
+        },
+        {
+          "absentBefore": true,
+          "presentAfter": true,
+          "beforeOut": "Unknown command: /vfkb:brief",
+          "afterOut": "--- **Last done** — The delivery refactor shipped and verified end-to-end, recorded in the handoff o",
+          "err": ""
+        }
+      ]
+    },
+    "contrast": {
+      "role": "contrast",
+      "predicate": [
+        "present"
+      ],
+      "trials": [
+        {
+          "present": false,
+          "sentinel": false,
+          "haiku": false,
+          "out": "Unknown command: /vfkb:brief",
+          "err": ""
+        },
+        {
+          "present": false,
+          "sentinel": false,
+          "haiku": false,
+          "out": "Unknown command: /vfkb:brief",
+          "err": ""
+        },
+        {
+          "present": false,
+          "sentinel": false,
+          "haiku": false,
+          "out": "Unknown command: /vfkb:brief",
+          "err": ""
+        }
+      ]
+    }
+  }
+}

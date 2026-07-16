@@ -21,16 +21,17 @@ See [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for a new project, or
 [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md) if the project already uses the old `vfkb init`
 mechanism.
 
-> [!IMPORTANT]
-> **Delivery is unproven: this plugin's install and upgrade path has never been verified
-> end-to-end by a sandboxed proof. Per-capability L4s load the plugin from a source tree and
-> therefore prove the capability, not its delivery.**
+> [!NOTE]
+> **Delivery is proven.** A sandboxed, agent-driven L4 ([`scenarios/install-path.mjs`](scenarios/install-path.mjs),
+> DEMONSTRATED 2026-07-16 — fresh 3/3, upgrade 3/3, contrast 0/3) installs the current release **and
+> upgrades from an older release** through the real github marketplace path (`marketplace add` /
+> `install` / `update` — **not** `--plugin-dir`) and observes a working `/vfkb:brief`; its can-fail
+> contrast arm, with the capability stripped, sees `Unknown command: /vfkb:brief`.
 >
-> Delivery and upgrade are capabilities in their own right, distinct from the capabilities they
-> carry. Releases may ship with this gap open ([ADR-0051](https://github.com/vilosource/vfkb/blob/main/docs/adr/ADR-0051-delivery-honesty.md),
-> the operator's Reading B ruling) — but the gap must be named, and this disclosure is enforced by
-> [`scenarios/release-gate.mjs`](scenarios/release-gate.mjs) in CI rather than left to prose. It is
-> removed automatically, and only, when `scenarios/records/install-path.json` lands DEMONSTRATED.
+> This closes the gap [ADR-0051](https://github.com/vilosource/vfkb/blob/main/docs/adr/ADR-0051-delivery-honesty.md)
+> named. The status is not prose: [`scenarios/release-gate.mjs`](scenarios/release-gate.mjs) DERIVES it
+> from [`scenarios/records/install-path.json`](scenarios/records/install-path.json) and reverts it to
+> "unproven" automatically if a release ships without re-pinning that record to the new version.
 >
 > Machine-readable status: [`DELIVERY-STATUS.json`](DELIVERY-STATUS.json).
 
