@@ -57,6 +57,11 @@ import { fileURLToPath } from 'node:url';
 // three metered L4 re-runs) to land a test would make the Brake something people
 // route around. ADR-0060 lists the `hooks-smoke` L4 (#15) as drift; observed, it
 // touched only `scenarios/` + `RELEASING.md` and changed nothing a consumer gets.
+//
+// The root `.claude-plugin/marketplace.json` is consumer-READ but deliberately
+// out of scope too: it is resolved LIVE from the marketplace's default branch and
+// never pinned to `vfkb--v{version}`, so it is not a versioned immutable artifact
+// the way `plugin/` and `templates/` are — a shipped tag says nothing about it.
 export const SURFACE = ['plugin', 'templates'];
 
 const git = (repo, ...args) =>
@@ -167,8 +172,12 @@ export function checkVersionBump(repo, surface = SURFACE) {
   // crashed on the input it most needed to handle.
   //
   // Diffing against the tag (not HEAD) compares the WORKING TREE, so an
-  // uncommitted edit is caught too. That matters for the local pre-flight: a
-  // check that goes green locally and red in CI is one people stop running.
+  // uncommitted EDIT to a tracked file is caught. `git diff` does not list
+  // brand-new UNTRACKED files, though — and in the local pre-flight a new surface
+  // file is exactly the pre-commit state an operator runs this in. So fold in
+  // untracked-not-ignored paths too; without it the check greens locally and reds
+  // in CI (where the file is committed and the diff already sees it), the
+  // "local == CI" break that makes people stop running it.
   let raw;
   try {
     raw = git(repo, 'diff', '--name-only', tag);
@@ -179,18 +188,20 @@ export function checkVersionBump(repo, surface = SURFACE) {
       notes,
     };
   }
-  const changed = raw
-    .split('\n')
-    .filter(Boolean)
-    .filter((f) => surface.some((s) => f === s || f.startsWith(`${s}/`)))
-    .join('\n');
+  let untracked = '';
+  try {
+    untracked = git(repo, 'ls-files', '--others', '--exclude-standard');
+  } catch {
+    /* no untracked files */
+  }
+  const files = [...new Set([...raw.split('\n'), ...untracked.split('\n')].filter(Boolean))].filter((f) =>
+    surface.some((s) => f === s || f.startsWith(`${s}/`)),
+  );
 
-  if (!changed) {
+  if (!files.length) {
     notes.push(`version ok: the surface (${surface.map((s) => `${s}/`).join(', ')}) is byte-identical to ${tag}`);
     return { ok: true, reasons, notes };
   }
-
-  const files = changed.split('\n').filter(Boolean);
   reasons.push(
     `version ${version} was already released as ${tag}, but the consumer-facing surface has ` +
       `changed since — ${files.length} file(s) differ:\n` +

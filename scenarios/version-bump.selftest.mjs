@@ -113,6 +113,16 @@ check(
   { expect: 'red', mentions: 'plugin/skills/vfkb/SKILL.md' },
 );
 
+// ...and the other half of the pre-commit state: a brand-new UNTRACKED surface
+// file, never git-added, which `git diff <tag>` alone silently misses (review of
+// #21). Without folding in untracked-not-ignored paths this greens locally and
+// only reds in CI once committed — the exact "local != CI" gap above warns of.
+check(
+  'a brand-new UNTRACKED surface file is caught in the local pre-flight',
+  (root) => write(root, 'plugin/skills/vfkb/NEW.md', '# brand new, never git-added\n'),
+  { expect: 'red', mentions: 'plugin/skills/vfkb/NEW.md' },
+);
+
 // --- the green paths, which must stay green ---------------------------------
 check(
   'the fix: surface changed AND the version was bumped',
