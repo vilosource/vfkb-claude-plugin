@@ -8,6 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The version Brake diffs the shipped surface against the release tag,
+          # so the tags must actually be here. The default shallow, tagless
+          # checkout would make it error rather than silently pass — but erroring
+          # on every PR is not a Brake either.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -16,6 +23,19 @@ jobs:
       # one goes red (vfkb ADR-0029, ADR-0051 DoD 4/5/6).
       - name: The gate is connected — negative checks go red
         run: node scenarios/release-gate.selftest.mjs
+
+      # Same discipline for the version Brake: real git repos in a tmpdir, each
+      # broken one way, each observed going red — including a replay of the
+      # actual v0.5.0 drift (vfkb ADR-0061).
+      - name: The version Brake is connected — negative checks go red
+        run: node scenarios/version-bump.selftest.mjs
+
+      # ADR-0061: a shipped version is immutable. If the consumer-facing surface
+      # differs from what vfkb--v{version} already shipped, the version is stale
+      # and must be bumped. This is the half of "bump-and-tag" that prose could
+      # not enforce; the other half is automated in release-tag.yml.
+      - name: Shipped versions are immutable (ADR-0060/0061)
+        run: node scenarios/version-bump.mjs
 
       - name: Verify evidence, packaging and delivery honesty (vfkb ADR-0050/0051)
         run: node scenarios/release-gate.mjs
