@@ -1,10 +1,10 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.5.0",
+  "pluginVersion": "0.6.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-13T08:27:35.408Z",
+  "generated": "2026-07-16T13:31:37.650Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -69,7 +69,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I'm attempting to add the fact 'SMOKE TRIAL NOTE 1-unwired' to the vfkb knowledge base. Wa",
+          "t3": "FAILED The kb_add tool is not available in the current environment. I searched through: 1.",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "Awaiting permission to write to `.vfkb/entries.jsonl`.",
+          "t3": "FAILED — Permission denied to write to the vfkb entries file. You'll need to grant write a",
           "err": ""
         },
         {
@@ -91,7 +91,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I found the vfkb knowledge base file at `.vfkb/entries.jsonl`. It contains JSONL entries w",
+          "t3": "FAILED The kb_add MCP tool is not available in the current environment. I located the vfkb",
           "err": ""
         }
       ]
