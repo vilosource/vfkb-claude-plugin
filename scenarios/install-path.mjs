@@ -46,6 +46,15 @@
 //   - `plugin update` prints "Restart to apply"; on-disk installPath flips
 //     immediately, and a fresh `claude -p` (our post-turn) is a new process.
 //
+// PRECONDITION (not fully hermetic on the git dimension): `marketplace add
+// owner/repo` clones over SSH (`git@github.com:…`), and OpenSSH resolves `~`
+// via getpwuid(), IGNORING the sandbox's `$HOME` — so the clone uses the
+// INVOKING user's REAL `~/.ssh`. This run therefore requires the real user to
+// have a github SSH key with read access to vilosource/vfkb-claude-plugin AND
+// `github.com` in `~/.ssh/known_hosts`. It is reproducible on the operator's
+// machine; a keyless CI runner would need HTTPS or a pre-seeded key. A failed
+// clone yields a SETUP miss (never a false proof).
+//
 // VERDICT: DEMONSTRATED iff BOTH positive arms hit >=2/3 AND the contrast arm
 // leaks <=1/3 (vfkb ADR-0022), recomputed by the release gate's own verdict().
 // LIVE + metered (~12 sessions/run: fresh 1 + upgrade 2 + contrast 1, x3). One
@@ -161,54 +170,85 @@ function brief(sb) {
   } catch { text = raw; }
   const sentinel = text.toLowerCase().includes(SENTINEL);
   const haiku = models.some((m) => m.toLowerCase().includes('haiku'));
+  // `present` REQUIRES BOTH. The haiku conjunct is load-bearing: SessionStart
+  // resume-injection puts the sentinel into context whether or not the brief
+  // skill exists, so `sentinel` alone is NON-discriminating — a contrast/
+  // upgrade-before turn shows sentinel=true routinely. Only the Haiku briefer
+  // fork produces a haiku model under a non-haiku outer session, so `haiku`
+  // separates present from absent. Do NOT simplify to sentinel-only.
   return { present: sentinel && haiku, sentinel, haiku, models, out: text.replace(/\s+/g, ' ').slice(0, 100), err };
 }
 
 // --- arm runners -------------------------------------------------------------
+// Each arm's SETUP (marketplace add / install / git rewind / update) is wrapped:
+// a transient hiccup (network, rate-limit, a slow clone) marks that arm a miss
+// with the captured error and lets the run continue, rather than crashing a
+// ~12-session metered run after burning turns and producing no record. A miss is
+// the fail-safe direction — a positive arm that couldn't set up cannot pass.
+const setupErr = (e) => `SETUP: ${String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 160)}`;
+
 function runFresh() {
   const sb = buildSandbox();
-  marketplaceAdd(sb.home);          // unpinned github source = the current release
-  pluginInstall(sb.home);
-  const r = brief(sb);
-  rmSync(sb.root, { recursive: true, force: true });
-  return { present: r.present, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
+  try {
+    marketplaceAdd(sb.home);        // unpinned github source = the current release
+    pluginInstall(sb.home);
+    const r = brief(sb);
+    return { present: r.present, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
+  } catch (e) {
+    return { present: false, sentinel: false, haiku: false, out: '', err: setupErr(e) };
+  } finally {
+    rmSync(sb.root, { recursive: true, force: true });
+  }
 }
 
 function runUpgrade(prevTag) {
   const sb = buildSandbox();
-  marketplaceAdd(sb.home);          // shallow clone at the current release
-  const clone = cloneDir(sb.home);
-  const latestRef = sh('git', ['rev-parse', 'HEAD'], { cwd: clone }).trim();
-  try { sh('git', ['fetch', '--unshallow'], { cwd: clone, stdio: 'ignore' }); } catch { /* already full */ }
-  sh('git', ['checkout', '-q', prevTag], { cwd: clone });   // rewind to the pre-brief release
-  pluginInstall(sb.home);
-  const before = brief(sb);         // pre-turn: capability must be ABSENT
-  sh('git', ['checkout', '-q', latestRef], { cwd: clone });  // advance the clone back to latest
-  marketplaceUpdate(sb.home);
-  pluginUpdate(sb.home);
-  const after = brief(sb);          // post-turn: capability must be PRESENT
-  rmSync(sb.root, { recursive: true, force: true });
-  return {
-    absentBefore: !before.present, presentAfter: after.present,
-    beforeOut: before.out, afterOut: after.out,
-    err: [before.err, after.err].filter(Boolean).join(' | ').slice(0, 160),
-  };
+  try {
+    marketplaceAdd(sb.home);        // shallow clone at the current release
+    const clone = cloneDir(sb.home);
+    const latestRef = sh('git', ['rev-parse', 'HEAD'], { cwd: clone }).trim();
+    try { sh('git', ['fetch', '--unshallow'], { cwd: clone, stdio: 'ignore' }); } catch { /* already full */ }
+    sh('git', ['checkout', '-q', prevTag], { cwd: clone });   // rewind to the pre-brief release
+    pluginInstall(sb.home);
+    const before = brief(sb);       // pre-turn: capability must be ABSENT
+    sh('git', ['checkout', '-q', latestRef], { cwd: clone });  // advance the clone back to latest
+    marketplaceUpdate(sb.home);
+    pluginUpdate(sb.home);
+    const after = brief(sb);        // post-turn: capability must be PRESENT
+    return {
+      absentBefore: !before.present, presentAfter: after.present,
+      beforeOut: before.out, afterOut: after.out,
+      err: [before.err, after.err].filter(Boolean).join(' | ').slice(0, 160),
+    };
+  } catch (e) {
+    return { absentBefore: false, presentAfter: false, beforeOut: '', afterOut: '', err: setupErr(e) };
+  } finally {
+    rmSync(sb.root, { recursive: true, force: true });
+  }
 }
 
 function runContrast() {
   const sb = buildSandbox();
-  marketplaceAdd(sb.home);          // current release
-  const clone = cloneDir(sb.home);
-  // Remove the capability from the resolved tree — BOTH the skill and the haiku
-  // briefer agent (else the agent forges a haiku modelUsage entry) — and nuke
-  // the pre-cache so install re-copies the stripped tree, not the cached one.
-  rmSync(join(clone, 'plugin', 'skills', 'brief'), { recursive: true, force: true });
-  rmSync(join(clone, 'plugin', 'agents', 'briefer.md'), { force: true });
-  rmSync(join(sb.home, '.claude', 'plugins', 'cache', 'vfkb'), { recursive: true, force: true });
-  pluginInstall(sb.home);
-  const r = brief(sb);
-  rmSync(sb.root, { recursive: true, force: true });
-  return { present: r.present, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
+  try {
+    marketplaceAdd(sb.home);        // current release
+    const clone = cloneDir(sb.home);
+    // Remove the capability from the resolved tree — BOTH the skill and the haiku
+    // briefer agent (else the agent forges a haiku modelUsage entry) — and nuke
+    // the pre-cache so install re-copies the stripped tree, not the cached one.
+    rmSync(join(clone, 'plugin', 'skills', 'brief'), { recursive: true, force: true });
+    rmSync(join(clone, 'plugin', 'agents', 'briefer.md'), { force: true });
+    rmSync(join(sb.home, '.claude', 'plugins', 'cache', 'vfkb'), { recursive: true, force: true });
+    pluginInstall(sb.home);
+    const r = brief(sb);
+    return { present: r.present, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
+  } catch (e) {
+    // A contrast SETUP failure is recorded as an error and non-leaking (present
+    // false) — but a SYSTEMIC failure also sinks the positive arms, so the
+    // overall verdict is NOT-DEMONSTRATED, never a vacuous green.
+    return { present: false, sentinel: false, haiku: false, out: '', err: setupErr(e) };
+  } finally {
+    rmSync(sb.root, { recursive: true, force: true });
+  }
 }
 
 // --- drive -------------------------------------------------------------------
