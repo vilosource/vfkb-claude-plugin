@@ -786,7 +786,7 @@ function $constructor(name, initializer3, params) {
   Object.defineProperty(_, "name", { value: name });
   return _;
 }
-var $brand = Symbol("zod_brand");
+var $brand = /* @__PURE__ */ Symbol("zod_brand");
 var $ZodAsyncError = class extends Error {
   constructor() {
     super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
@@ -5215,6 +5215,7 @@ var error5 = () => {
         return `Clau inv\xE0lida a ${issue2.origin}`;
       case "invalid_union":
         return "Entrada inv\xE0lida";
+      // Could also be "Tipus d'unió invàlid" but "Entrada invàlida" is more general
       case "invalid_element":
         return `Element inv\xE0lid a ${issue2.origin}`;
       default:
@@ -10528,8 +10529,8 @@ function yo_default() {
 
 // node_modules/zod/v4/core/registries.js
 var _a2;
-var $output = Symbol("ZodOutput");
-var $input = Symbol("ZodInput");
+var $output = /* @__PURE__ */ Symbol("ZodOutput");
+var $input = /* @__PURE__ */ Symbol("ZodInput");
 var $ZodRegistry = class {
   constructor() {
     this._map = /* @__PURE__ */ new WeakMap();
@@ -11566,7 +11567,7 @@ function _stringbool(Classes, _params) {
     type: "pipe",
     in: stringSchema,
     out: booleanSchema,
-    transform: (input, payload) => {
+    transform: ((input, payload) => {
       let data = input;
       if (params.case !== "sensitive")
         data = data.toLowerCase();
@@ -11585,14 +11586,14 @@ function _stringbool(Classes, _params) {
         });
         return {};
       }
-    },
-    reverseTransform: (input, _payload) => {
+    }),
+    reverseTransform: ((input, _payload) => {
       if (input === true) {
         return truthyArray[0] || "true";
       } else {
         return falsyArray[0] || "false";
       }
-    },
+    }),
     error: params.error
   });
   return codec2;
@@ -16345,8 +16346,8 @@ import { dirname as dirname3, join as join9 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.2.1" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "c73cf8e" : "dev";
+var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "cb27745" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
