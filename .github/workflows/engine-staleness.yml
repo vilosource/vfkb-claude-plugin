@@ -56,7 +56,9 @@ jobs:
           case "$rc" in
             0) echo "engine current — vendored bundles match vfkb main (stamps normalized)" ;;
             1)
-              OPEN=$(gh pr list --head re-vendor/engine --state open --json number -q '.[].number')
+              # Owner-filtered (review of vfkb#182): --head matches branch NAME only, so a
+              # fork PR named re-vendor/engine could otherwise mask real staleness forever.
+              OPEN=$(gh pr list --head re-vendor/engine --state open --json number,headRepositoryOwner -q '.[] | select(.headRepositoryOwner.login=="vilosource") | .number')
               if [ -n "$OPEN" ]; then
                 echo "engine drift exists AND re-vendor PR #$OPEN is open — the delivery pipeline is working"
               else
