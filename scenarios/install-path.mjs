@@ -150,10 +150,23 @@ function installedTreeHash(home) {
   try {
     const j = JSON.parse(readFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), 'utf8'));
     const e = ((j.plugins && j.plugins['vfkb@vfkb']) || []).find((r) => r && r.scope === 'user');
-    return e && e.installPath ? hashTree(e.installPath) : '';
+    // `.in_use` is Claude Code's own cache-root bookkeeping marker (observed:
+    // an empty dir normally, but transient entries flaked a trial's tree
+    // assertion — run 2026-07-16, trial 1 tree=false with sentinel+haiku true).
+    // It is host state, not shipped bytes; everything else still counts.
+    return e && e.installPath ? hashTree(e.installPath, ['.in_use']) : '';
   } catch {
     return '';
   }
+}
+
+// One settle-and-retry on mismatch: a just-finished install can still be
+// flushing bookkeeping. A REAL tree difference is stable and mismatches again
+// 2s later — fail-closed is preserved; only the transient class is absorbed.
+function installedTreeVerified(home) {
+  if (installedTreeHash(home) === LOCAL_TREE) return true;
+  sh('sleep', ['2']);
+  return installedTreeHash(home) === LOCAL_TREE;
 }
 
 const cloneDir = (home) => join(home, '.claude', 'plugins', 'marketplaces', 'vfkb');
@@ -217,7 +230,7 @@ function runFresh() {
   try {
     marketplaceAdd(sb.home, REF);   // github source pinned to the ref under test
     pluginInstall(sb.home);
-    const treeVerified = installedTreeHash(sb.home) === LOCAL_TREE; // installed bytes == this tree
+    const treeVerified = installedTreeVerified(sb.home); // installed bytes == this tree
     const r = brief(sb);
     return { present: r.present, treeVerified, sentinel: r.sentinel, haiku: r.haiku, out: r.out, err: r.err };
   } catch (e) {
@@ -240,7 +253,7 @@ function runUpgrade(prevTag) {
     sh('git', ['checkout', '-q', latestRef], { cwd: clone });  // advance back to the ref under test
     marketplaceUpdate(sb.home);
     pluginUpdate(sb.home);
-    const treeVerifiedAfter = installedTreeHash(sb.home) === LOCAL_TREE; // upgrade DELIVERED this tree
+    const treeVerifiedAfter = installedTreeVerified(sb.home); // upgrade DELIVERED this tree
     const after = brief(sb);        // post-turn: capability must be PRESENT
     return {
       absentBefore: !before.present, presentAfter: after.present, treeVerifiedAfter,

@@ -83,11 +83,16 @@ const DELIVERY_PROOF = 'install-path';
 // "no LLM, no auth, no network" property. Exported: install-path.mjs stamps
 // records with the SAME function, so runner and Brake can never disagree.
 // ---------------------------------------------------------------------------
-export function hashTree(dir) {
+export function hashTree(dir, skipRootEntries = []) {
   const root = resolve(dir); // tolerate a trailing slash (installPath is used verbatim)
   const files = [];
   const walk = (d) => {
     for (const name of readdirSync(d).sort()) {
+      // skipRootEntries: named, root-level-only exclusions for a caller hashing
+      // an INSTALLED copy that carries host bookkeeping (Claude Code's `.in_use`
+      // marker) alongside the shipped bytes. The gate and the local-tree side
+      // never pass any — a source tree has nothing to skip.
+      if (d === root && skipRootEntries.includes(name)) continue;
       const p = join(d, name);
       if (statSync(p).isDirectory()) walk(p);
       else files.push(p);

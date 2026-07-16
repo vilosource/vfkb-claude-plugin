@@ -611,6 +611,27 @@ let total = CASES.length;
   rmSync(b, { recursive: true, force: true });
 }
 
+// hashTree skipRootEntries: a named ROOT-level exclusion (Claude Code's
+// `.in_use` cache marker) is skipped, but the SAME name nested deeper still
+// counts — and an unlisted root entry still changes the hash.
+{
+  total += 1;
+  const a = mkdtempSync(join(tmpdir(), 'gate-skip-a-'));
+  const b = mkdtempSync(join(tmpdir(), 'gate-skip-b-'));
+  write(a, 'x', 'same');
+  write(b, 'x', 'same');
+  write(b, '.in_use/lock', 'transient');
+  const skippedEqual = hashTree(a, ['.in_use']) === hashTree(b, ['.in_use']);
+  write(b, 'skills/.in_use', 'nested — must still count');
+  const nestedCounts = hashTree(a, ['.in_use']) !== hashTree(b, ['.in_use']);
+  if (!skippedEqual || !nestedCounts) {
+    console.error(`  FAIL   hashTree skipRootEntries — root-skip=${skippedEqual} nested-counts=${nestedCounts}`);
+    bad++;
+  } else console.log('  ok     hashTree skipRootEntries — root marker skipped, nested same-name still counts');
+  rmSync(a, { recursive: true, force: true });
+  rmSync(b, { recursive: true, force: true });
+}
+
 for (const c of CASES) {
   const root = fixture();
   let failures;
