@@ -15350,6 +15350,22 @@ function latestHandoff(all = readAll(), today = nowIso().slice(0, 10), supersede
   }
   return latest;
 }
+var CROSS_REPO_PIN_CAP_CHARS = 2e3;
+function latestCrossRepo(all = readAll(), today = nowIso().slice(0, 10), superseded = supersededIds(all)) {
+  let latest = null;
+  for (const e of all) {
+    if (!e.tags.includes("cross-repo")) continue;
+    if (e.tags.includes("handoff") || e.tags.includes("next")) continue;
+    if (!isInjectable(e, today, superseded)) continue;
+    if (!latest) {
+      latest = e;
+      continue;
+    }
+    const cmp = e.updated.localeCompare(latest.updated) || e.created.localeCompare(latest.created);
+    if (cmp >= 0) latest = e;
+  }
+  return latest;
+}
 function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
@@ -15379,11 +15395,20 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 
 `;
   }
+  const crossRepo = latestCrossRepo(all, today, superseded);
+  if (crossRepo && !constitutionalIds.has(crossRepo.id)) {
+    const text = crossRepo.text.length > CROSS_REPO_PIN_CAP_CHARS ? `${crossRepo.text.slice(0, CROSS_REPO_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${crossRepo.id} for the rest)` : crossRepo.text;
+    body += `## Cross-repo operations
+- [${crossRepo.type} ${trustGlyph(crossRepo)}] ${text}
+
+`;
+  }
   body += renderContextMap() + "\n\n";
   let dropped = 0;
   for (const e of injectable) {
     if (constitutionalIds.has(e.id)) continue;
     if (handoff && e.id === handoff.id) continue;
+    if (crossRepo && e.id === crossRepo.id) continue;
     const line = `- [${e.type} ${trustGlyph(e)}] ${e.text}
 `;
     if (header.length + body.length + line.length + footer.length > budget) {
@@ -15888,6 +15913,93 @@ function runExport(target, opts = {}) {
   throw new Error("usage: vfkb export <agents-md|okf> [--out <path>]");
 }
 
+// src/broadcast.ts
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync4, readFileSync as readFileSync5 } from "node:fs";
+import { basename as basename2, join as join6, resolve as resolve2 } from "node:path";
+
+// src/version.ts
+var SCHEMA_VERSION = 1;
+var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "9aa13dc" : "dev";
+
+// src/broadcast.ts
+var FORBIDDEN_TAGS = /* @__PURE__ */ new Set(["handoff", "next"]);
+function targetBrainDir(target) {
+  const abs = resolve2(target);
+  return basename2(abs) === ".vfkb" ? abs : join6(abs, ".vfkb");
+}
+function gitPosture(repoDir) {
+  const git2 = (...a) => execFileSync("git", ["-C", repoDir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  try {
+    const branch = git2("rev-parse", "--abbrev-ref", "HEAD");
+    const parked = branch === "main" || branch === "master";
+    return `uncommitted; target on ${branch}${parked ? " (parked \u2014 rides until a topic-branch brain commit)" : ""}`;
+  } catch {
+    try {
+      if (git2("rev-parse", "--is-inside-work-tree") === "true") {
+        return "uncommitted; target git repository on an unborn branch (no commits yet)";
+      }
+    } catch {
+    }
+    return "uncommitted; target not a git repository";
+  }
+}
+function broadcast(text, targets, opts = {}) {
+  const origin = defaultProject();
+  const date5 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const extraTags = opts.tags ?? [];
+  for (const t of extraTags) {
+    if (FORBIDDEN_TAGS.has(t)) {
+      throw new Error(
+        `broadcast: tag '${t}' is forbidden on cross-repo records \u2014 it claims the resident's ADR-0049 continuity pin (ADR-0063 \xA71)`
+      );
+    }
+  }
+  const op = (opts.op || "OPERATION").toUpperCase();
+  const MARKER = /^CROSS-REPO \S+ \(\d{4}-\d{2}-\d{2}, from [^)]+\):/;
+  const stamped = MARKER.test(text) ? text : `CROSS-REPO ${op} (${date5}, from ${origin}): ${text}`;
+  const results = [];
+  const written = /* @__PURE__ */ new Set();
+  for (const target of targets) {
+    const brain = targetBrainDir(target);
+    if (written.has(brain)) {
+      results.push({ target, ok: false, reason: "duplicate target (already written in this broadcast)" });
+      continue;
+    }
+    const repoDir = resolve2(brain, "..");
+    const manifestPath2 = join6(brain, "manifest.json");
+    if (!existsSync4(manifestPath2)) {
+      results.push({ target, ok: false, reason: `no brain (missing ${manifestPath2}) \u2014 never bootstrap a wire-less brain (ADR-0063 \xA73)` });
+      continue;
+    }
+    let schema;
+    try {
+      schema = JSON.parse(readFileSync5(manifestPath2, "utf8")).schema_version;
+    } catch {
+      results.push({ target, ok: false, reason: "unreadable manifest.json" });
+      continue;
+    }
+    if (schema !== SCHEMA_VERSION) {
+      results.push({ target, ok: false, reason: `brain schema ${JSON.stringify(schema)} unsupported by engine schema v${SCHEMA_VERSION}` });
+      continue;
+    }
+    const prev = process.env.VFKB_DATA_DIR;
+    try {
+      process.env.VFKB_DATA_DIR = brain;
+      const e = addEntry("fact", stamped, { role: "executor", tags: ["cross-repo", ...extraTags] });
+      written.add(brain);
+      results.push({ target, ok: true, id: e.id, posture: gitPosture(repoDir) });
+    } catch (err) {
+      results.push({ target, ok: false, reason: err.message });
+    } finally {
+      if (prev === void 0) delete process.env.VFKB_DATA_DIR;
+      else process.env.VFKB_DATA_DIR = prev;
+    }
+  }
+  return results;
+}
+
 // src/curator.ts
 function get(id) {
   const e = readAll().find((x) => x.id === id);
@@ -16086,7 +16198,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/gating.ts
-import { resolve as resolve2 } from "node:path";
+import { resolve as resolve3 } from "node:path";
 var WRITE_TOOLS = /* @__PURE__ */ new Set([
   "write",
   "edit",
@@ -16104,16 +16216,16 @@ function isBrainWrite(toolName, input, brain = brainDir()) {
   if (!toolName || !WRITE_TOOLS.has(toolName.toLowerCase())) return false;
   const p = extractPath(input);
   if (!p) return false;
-  const abs = resolve2(p);
-  const root = resolve2(brain);
+  const abs = resolve3(p);
+  const root = resolve3(brain);
   return abs === root || abs.startsWith(root + "/");
 }
 var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing files directly (keeps the index, freshness, and no-secrets invariants).";
 
 // src/stop-reminder.ts
-import { execFileSync } from "node:child_process";
-import { readFileSync as readFileSync5 } from "node:fs";
-import { join as join6, relative } from "node:path";
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { readFileSync as readFileSync6 } from "node:fs";
+import { join as join7, relative } from "node:path";
 var STOP_REMINDER = 'vfkb decision-capture check: this turn changed code/docs but no `decision` was recorded to the brain. If a load-bearing decision was made, capture it now via `mcp__vfkb__kb_add` (type=decision, why=<rationale>, role=human) \u2014 or `vfkb add decision "\u2026" --why "\u2026" --role human` \u2014 and add an ADR under docs/adr/ for anything architectural. If NO decision was made this turn, just finish normally.';
 var HANDOFF_MIN_ENTRIES = 3;
 var HANDOFF_REMINDER = 'vfkb handoff check: this session has recorded knowledge but no `handoff`/`next` entry. If you are WRAPPING UP, record a durable handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human) naming what the NEXT session should pick up (a real "next:", not just a summary). If you are still mid-session, ignore this and finish normally \u2014 the SessionEnd floor will leave a fallback if you never do.';
@@ -16129,7 +16241,7 @@ function decideStop(input, ctx) {
 function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
   let out;
   try {
-    out = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    out = execFileSync2("git", ["status", "--porcelain"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   } catch {
     return false;
   }
@@ -16142,17 +16254,17 @@ function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
   });
 }
 function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd()) {
-  const file2 = join6(brain, "entries.jsonl");
+  const file2 = join7(brain, "entries.jsonl");
   let current2;
   try {
-    current2 = readFileSync5(file2, "utf8").split("\n").filter(Boolean);
+    current2 = readFileSync6(file2, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
   const rel = relative(cwd, file2).replace(/\\/g, "/");
   let headCount = 0;
   try {
-    const head = execFileSync("git", ["show", `HEAD:${rel}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const head = execFileSync2("git", ["show", `HEAD:${rel}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     headCount = head.split("\n").filter(Boolean).length;
   } catch {
     headCount = 0;
@@ -16177,14 +16289,14 @@ function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
 }
 
 // src/git.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync4 } from "node:fs";
-import { join as join7 } from "node:path";
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { existsSync as existsSync5 } from "node:fs";
+import { join as join8 } from "node:path";
 function git(args, cwd) {
-  return execFileSync2("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync3("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 function ensureRepo(brain) {
-  if (!existsSync4(join7(brain, ".git"))) {
+  if (!existsSync5(join8(brain, ".git"))) {
     git(["init", "-q"], brain);
   }
 }
@@ -16210,12 +16322,12 @@ function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
 }
 
 // src/session-end.ts
-import { execFileSync as execFileSync3 } from "node:child_process";
-import { readFileSync as readFileSync6 } from "node:fs";
-import { join as join8, isAbsolute } from "node:path";
-var realGit = (args, cwd) => execFileSync3("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+import { execFileSync as execFileSync4 } from "node:child_process";
+import { readFileSync as readFileSync7 } from "node:fs";
+import { join as join9, isAbsolute } from "node:path";
+var realGit = (args, cwd) => execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 function brainEntriesRelPath(dataDir2) {
-  return join8(dataDir2, "entries.jsonl").replace(/\\/g, "/");
+  return join9(dataDir2, "entries.jsonl").replace(/\\/g, "/");
 }
 function tryGit(git2, args, cwd) {
   try {
@@ -16239,7 +16351,7 @@ function countAdded(git2, cwd, path) {
 function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
   let lines;
   try {
-    lines = readFileSync6(absEntries, "utf8").split("\n").filter(Boolean);
+    lines = readFileSync7(absEntries, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
@@ -16316,8 +16428,8 @@ function runSessionEnd(opts = {}) {
         systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} on \`${branch}\` left uncommitted \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
       };
     }
-    const absBrain = isAbsolute(dataDir2) ? dataDir2 : join8(cwd, dataDir2);
-    const fresh = newEntriesSinceHead(git2, cwd, entries, join8(absBrain, "entries.jsonl"));
+    const absBrain = isAbsolute(dataDir2) ? dataDir2 : join9(cwd, dataDir2);
+    const fresh = newEntriesSinceHead(git2, cwd, entries, join9(absBrain, "entries.jsonl"));
     let autoHandoff = false;
     if (fresh.length > 0 && !fresh.some(isHandoff2)) {
       try {
@@ -16337,37 +16449,30 @@ function runSessionEnd(opts = {}) {
 }
 
 // src/init.ts
-import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync4 } from "node:fs";
-import { basename as basename2, join as join10 } from "node:path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync4 } from "node:fs";
+import { basename as basename3, join as join11 } from "node:path";
 
 // src/manifest.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname3, join as join9 } from "node:path";
-
-// src/version.ts
-var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "cb27745" : "dev";
-
-// src/manifest.ts
+import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync8, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname3, join as join10 } from "node:path";
 function manifestPath(brainDir2) {
-  return join9(brainDir2, "manifest.json");
+  return join10(brainDir2, "manifest.json");
 }
 function currentManifest() {
   return { schema_version: SCHEMA_VERSION, engine_version: ENGINE_VERSION, engine_commit: ENGINE_COMMIT };
 }
 function readManifest(brainDir2) {
   const p = manifestPath(brainDir2);
-  if (!existsSync5(p)) return void 0;
+  if (!existsSync6(p)) return void 0;
   try {
-    return JSON.parse(readFileSync7(p, "utf8"));
+    return JSON.parse(readFileSync8(p, "utf8"));
   } catch {
     return void 0;
   }
 }
 function writeManifest(brainDir2) {
   const p = manifestPath(brainDir2);
-  const existed = existsSync5(p);
+  const existed = existsSync6(p);
   const cur = readManifest(brainDir2);
   const next = currentManifest();
   if (cur && JSON.stringify(cur) === JSON.stringify(next)) return "skipped";
@@ -16461,9 +16566,9 @@ If it is unset, a session-start banner tells you; run \`vfkb doctor\` to check.
 `;
 }
 function readJson(path) {
-  if (!existsSync6(path)) return void 0;
+  if (!existsSync7(path)) return void 0;
   try {
-    return JSON.parse(readFileSync8(path, "utf8"));
+    return JSON.parse(readFileSync9(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -16475,11 +16580,11 @@ function eventHasVfkb(arr2) {
   return JSON.stringify(arr2 ?? "").includes(BOOTSTRAP_REL);
 }
 function initProject(root, opts = {}) {
-  const project = opts.project || basename2(root) || "project";
+  const project = opts.project || basename3(root) || "project";
   const changes = [];
-  const brainDir2 = join10(root, ".vfkb");
-  const entries = join10(brainDir2, "entries.jsonl");
-  if (!existsSync6(entries)) {
+  const brainDir2 = join11(root, ".vfkb");
+  const entries = join11(brainDir2, "entries.jsonl");
+  if (!existsSync7(entries)) {
     mkdirSync6(brainDir2, { recursive: true });
     writeFileSync4(entries, "");
     changes.push({ path: ".vfkb/entries.jsonl", action: "created" });
@@ -16488,10 +16593,10 @@ function initProject(root, opts = {}) {
   }
   changes.push({ path: ".vfkb/manifest.json", action: writeManifest(brainDir2) });
   {
-    const binDir = join10(brainDir2, "bin");
-    const path = join10(binDir, "bootstrap.mjs");
-    const existed = existsSync6(path);
-    const same = existed && readFileSync8(path, "utf8") === BOOTSTRAP_SRC;
+    const binDir = join11(brainDir2, "bin");
+    const path = join11(binDir, "bootstrap.mjs");
+    const existed = existsSync7(path);
+    const same = existed && readFileSync9(path, "utf8") === BOOTSTRAP_SRC;
     if (same) {
       changes.push({ path: BOOTSTRAP_REL, action: "skipped" });
     } else {
@@ -16501,8 +16606,8 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const path = join10(root, ".mcp.json");
-    const existed = existsSync6(path);
+    const path = join11(root, ".mcp.json");
+    const existed = existsSync7(path);
     const cfg = readJson(path) ?? {};
     cfg.mcpServers = cfg.mcpServers ?? {};
     const desired = mcpConfig(project);
@@ -16516,9 +16621,9 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const dir = join10(root, ".claude");
-    const path = join10(dir, "settings.json");
-    const existed = existsSync6(path);
+    const dir = join11(root, ".claude");
+    const path = join11(dir, "settings.json");
+    const existed = existsSync7(path);
     const cfg = readJson(path) ?? {};
     cfg.hooks = cfg.hooks ?? {};
     const want = settingsHooks(project);
@@ -16541,10 +16646,10 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const path = join10(root, ".gitignore");
+    const path = join11(root, ".gitignore");
     const lines = [".vfkb/index-meta.json", ".vfkb/.sessions/", ".vfkb/.signals/"];
-    const existed = existsSync6(path);
-    const cur = existed ? readFileSync8(path, "utf8") : "";
+    const existed = existsSync7(path);
+    const cur = existed ? readFileSync9(path, "utf8") : "";
     const missing = lines.filter((l) => !cur.split(/\r?\n/).includes(l));
     if (missing.length === 0) {
       changes.push({ path: ".gitignore", action: "skipped" });
@@ -16558,10 +16663,10 @@ ${missing.join("\n")}
     }
   }
   {
-    const path = join10(root, ".gitattributes");
+    const path = join11(root, ".gitattributes");
     const line = ".vfkb/entries.jsonl merge=union";
-    const existed = existsSync6(path);
-    const cur = existed ? readFileSync8(path, "utf8") : "";
+    const existed = existsSync7(path);
+    const cur = existed ? readFileSync9(path, "utf8") : "";
     if (cur.split(/\r?\n/).includes(line)) {
       changes.push({ path: ".gitattributes", action: "skipped" });
     } else {
@@ -16574,9 +16679,9 @@ ${line}
     }
   }
   {
-    const path = join10(root, "AGENTS.md");
-    const existed = existsSync6(path);
-    const cur = existed ? readFileSync8(path, "utf8") : "";
+    const path = join11(root, "AGENTS.md");
+    const existed = existsSync7(path);
+    const cur = existed ? readFileSync9(path, "utf8") : "";
     if (cur.includes(AGENTS_MARKER)) {
       changes.push({ path: "AGENTS.md", action: "skipped" });
     } else {
@@ -16600,13 +16705,13 @@ function approvalNotice(project) {
 }
 
 // src/doctor.ts
-import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync5, mkdirSync as mkdirSync7 } from "node:fs";
-import { join as join11, dirname as dirname4 } from "node:path";
+import { execFileSync as execFileSync5 } from "node:child_process";
+import { existsSync as existsSync8, readFileSync as readFileSync10, writeFileSync as writeFileSync5, mkdirSync as mkdirSync7 } from "node:fs";
+import { join as join12, dirname as dirname4 } from "node:path";
 function readJson2(path) {
-  if (!existsSync7(path)) return void 0;
+  if (!existsSync8(path)) return void 0;
   try {
-    return JSON.parse(readFileSync9(path, "utf8"));
+    return JSON.parse(readFileSync10(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -16639,16 +16744,16 @@ function detectPluginWiring(settings, root, pluginsFile) {
 }
 function claudeConfigDir(env) {
   if (env.CLAUDE_CONFIG_DIR) return env.CLAUDE_CONFIG_DIR;
-  return env.HOME ? join11(env.HOME, ".claude") : void 0;
+  return env.HOME ? join12(env.HOME, ".claude") : void 0;
 }
 function localHeadSha(cloneDir) {
-  const head = readFileMaybe(join11(cloneDir, ".git", "HEAD"));
+  const head = readFileMaybe(join12(cloneDir, ".git", "HEAD"));
   if (!head) return void 0;
   const ref = head.trim().match(/^ref:\s*(\S+)$/)?.[1];
   if (!ref) return /^[0-9a-f]{40}$/.test(head.trim()) ? head.trim() : void 0;
-  const loose = readFileMaybe(join11(cloneDir, ".git", ...ref.split("/")));
+  const loose = readFileMaybe(join12(cloneDir, ".git", ...ref.split("/")));
   if (loose) return loose.trim();
-  const packed = readFileMaybe(join11(cloneDir, ".git", "packed-refs"));
+  const packed = readFileMaybe(join12(cloneDir, ".git", "packed-refs"));
   for (const line of packed?.split("\n") ?? []) {
     const [sha, name] = line.trim().split(/\s+/);
     if (name === ref) return sha;
@@ -16657,12 +16762,12 @@ function localHeadSha(cloneDir) {
 }
 function readFileMaybe(path) {
   try {
-    return readFileSync9(path, "utf8");
+    return readFileSync10(path, "utf8");
   } catch {
     return void 0;
   }
 }
-var realGit2 = (args, cwd) => execFileSync4("git", args, {
+var realGit2 = (args, cwd) => execFileSync5("git", args, {
   cwd,
   encoding: "utf8",
   timeout: 5e3,
@@ -16671,14 +16776,14 @@ var realGit2 = (args, cwd) => execFileSync4("git", args, {
 });
 function checkCurrency(plugin, opts, configDir) {
   const marketplace = plugin.key.split("@")[1];
-  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join11(configDir, "plugins", "known_marketplaces.json") : void 0);
+  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join12(configDir, "plugins", "known_marketplaces.json") : void 0);
   const entry = kmFile ? readJson2(kmFile)?.[marketplace] : void 0;
   const skip = (detail) => ({ status: "skip", detail });
   if (!entry) return skip(`no marketplace "${marketplace}" in ${kmFile ?? "the plugin registry"} \u2014 cannot check currency`);
   if (entry.source?.source !== "github") {
     return skip(`marketplace "${marketplace}" is a ${entry.source?.source ?? "unknown"}-source \u2014 no clone to compare`);
   }
-  if (!entry.installLocation || !existsSync7(join11(entry.installLocation, ".git"))) {
+  if (!entry.installLocation || !existsSync8(join12(entry.installLocation, ".git"))) {
     return skip(`marketplace clone not found at ${entry.installLocation ?? "(unset installLocation)"}`);
   }
   const clone2 = entry.installLocation;
@@ -16709,7 +16814,7 @@ var NPM_REGISTRY_URL = "https://registry.npmjs.org/@viloforge%2Fvfkb/latest";
 var NPM_CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var NPM_CACHE_FILE = "npm-currency-cache.json";
 function npmCacheFilePath(opts) {
-  return opts.cacheFile ?? join11(opts.brainDir, ".signals", NPM_CACHE_FILE);
+  return opts.cacheFile ?? join12(opts.brainDir, ".signals", NPM_CACHE_FILE);
 }
 function readNpmCache(path) {
   const raw = readJson2(path);
@@ -16802,9 +16907,9 @@ function runDoctor(opts) {
   const checks = [];
   const add = (name, status, detail) => checks.push({ name, status, detail });
   add("engine", "ok", `version ${ENGINE_VERSION} \xB7 commit ${ENGINE_COMMIT} \xB7 schema v${SCHEMA_VERSION}`);
-  const settings = readJson2(join11(root, ".claude", "settings.json"));
+  const settings = readJson2(join12(root, ".claude", "settings.json"));
   const configDir = claudeConfigDir(env);
-  const pluginsFile = opts.pluginsFile ?? (configDir ? join11(configDir, "plugins", "installed_plugins.json") : void 0);
+  const pluginsFile = opts.pluginsFile ?? (configDir ? join12(configDir, "plugins", "installed_plugins.json") : void 0);
   const plugin = detectPluginWiring(settings, root, pluginsFile);
   const mf = readManifest(brainDir2);
   if (!mf) {
@@ -16832,7 +16937,7 @@ function runDoctor(opts) {
     } else {
       add("$VFKB_BUNDLE_DIR", "warn", "unset \u2014 set it once per machine to the vfkb bundles dir (so the wiring resolves the engine)");
     }
-  } else if (!existsSync7(join11(home, "vfkb.mjs")) || !existsSync7(join11(home, "vfkb-mcp.mjs"))) {
+  } else if (!existsSync8(join12(home, "vfkb.mjs")) || !existsSync8(join12(home, "vfkb-mcp.mjs"))) {
     add("$VFKB_BUNDLE_DIR", "warn", `set to ${home} but vfkb.mjs / vfkb-mcp.mjs not found there (run \`npm run build:bundles\`)`);
   } else {
     add("$VFKB_BUNDLE_DIR", "ok", home);
@@ -16843,7 +16948,7 @@ function runDoctor(opts) {
   if (env.VFKB_HOME && !env.VFKB_BUNDLE_DIR) {
     add("env (deprecated)", "warn", "VFKB_HOME is a deprecated alias \u2014 rename it to VFKB_BUNDLE_DIR");
   }
-  const mcp = readJson2(join11(root, ".mcp.json"));
+  const mcp = readJson2(join12(root, ".mcp.json"));
   const mcpProject = mcp?.mcpServers?.vfkb?.env?.VFKB_PROJECT;
   const mcpPresent = Boolean(mcp?.mcpServers?.vfkb);
   if (plugin && mcpPresent) {
@@ -16873,7 +16978,7 @@ function runDoctor(opts) {
   if (!plugin && have.length > 0 && hooksBlob.includes("bootstrap.mjs") && !hooksBlob.includes("CLAUDE_PROJECT_DIR")) {
     add("hooks anchor", "warn", "vfkb hooks use a CWD-relative bootstrap path \u2014 they break when the session cd's out of the repo root; re-run `vfkb init` to anchor them to $CLAUDE_PROJECT_DIR (issue #22)");
   }
-  if (existsSync7(join11(root, ".vfkb", "bin", "bootstrap.mjs"))) {
+  if (existsSync8(join12(root, ".vfkb", "bin", "bootstrap.mjs"))) {
     add("bootstrap", "ok", ".vfkb/bin/bootstrap.mjs present");
   } else if (!plugin && (mcpPresent || have.length > 0)) {
     add("bootstrap", "warn", "wiring present but .vfkb/bin/bootstrap.mjs is missing \u2014 run `vfkb init`");
@@ -16913,9 +17018,9 @@ function renderDoctor(report) {
 }
 
 // src/import.ts
-import { existsSync as existsSync8, readdirSync as readdirSync3, readFileSync as readFileSync10, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync9, readdirSync as readdirSync3, readFileSync as readFileSync11, statSync as statSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename3, extname, join as join12 } from "node:path";
+import { basename as basename4, extname, join as join13 } from "node:path";
 var MYKB_FILES = {
   "decisions.jsonl": "decision",
   "facts.jsonl": "fact",
@@ -16940,16 +17045,16 @@ function mykbText(type, e) {
   return parts.filter(Boolean).join("\n\n");
 }
 function resolveMykbArea(nameOrDir) {
-  if (existsSync8(nameOrDir) && statSync3(nameOrDir).isDirectory()) return nameOrDir;
-  return join12(homedir2(), ".mykb", "areas", nameOrDir);
+  if (existsSync9(nameOrDir) && statSync3(nameOrDir).isDirectory()) return nameOrDir;
+  return join13(homedir2(), ".mykb", "areas", nameOrDir);
 }
 function fromMykb(areaDir) {
-  if (!existsSync8(areaDir)) throw new Error(`mykb area not found: ${areaDir}`);
+  if (!existsSync9(areaDir)) throw new Error(`mykb area not found: ${areaDir}`);
   const out = [];
   for (const [file2, type] of Object.entries(MYKB_FILES)) {
-    const path = join12(areaDir, file2);
-    if (!existsSync8(path)) continue;
-    for (const line of readFileSync10(path, "utf8").split(/\r?\n/)) {
+    const path = join13(areaDir, file2);
+    if (!existsSync9(path)) continue;
+    for (const line of readFileSync11(path, "utf8").split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       let e;
@@ -16968,24 +17073,24 @@ function fromMykb(areaDir) {
 }
 function mdTitle(path) {
   try {
-    const heading = readFileSync10(path, "utf8").split(/\r?\n/).find((l) => l.startsWith("# "));
+    const heading = readFileSync11(path, "utf8").split(/\r?\n/).find((l) => l.startsWith("# "));
     if (heading) return heading.replace(/^#\s+/, "").trim();
   } catch {
   }
-  return basename3(path, extname(path));
+  return basename4(path, extname(path));
 }
 function fromAdr(dir = "docs/adr") {
-  if (!existsSync8(dir)) throw new Error(`ADR dir not found: ${dir}`);
+  if (!existsSync9(dir)) throw new Error(`ADR dir not found: ${dir}`);
   const out = [];
   for (const file2 of readdirSync3(dir).sort()) {
     if (extname(file2) !== ".md" || /readme/i.test(file2)) continue;
-    const rel = join12(dir, file2);
+    const rel = join13(dir, file2);
     out.push(stamp("link", `${mdTitle(rel)} \u2192 ${rel}`, ["adr"], false));
   }
   return out;
 }
 function fromMarkdown(file2) {
-  if (!existsSync8(file2)) throw new Error(`markdown file not found: ${file2}`);
+  if (!existsSync9(file2)) throw new Error(`markdown file not found: ${file2}`);
   return [stamp("link", `${mdTitle(file2)} \u2192 ${file2}`, ["doc"], false)];
 }
 
@@ -17064,26 +17169,26 @@ var ENTRY_TYPES = ["fact", "decision", "gotcha", "pattern", "link"];
 var DECISION_STATUSES = ["proposed", "accepted", "deprecated", "superseded"];
 
 // src/cli.ts
-import { readFileSync as readFileSync11 } from "node:fs";
+import { readFileSync as readFileSync12 } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname as dirname5, join as join13 } from "node:path";
+import { dirname as dirname5, join as join14 } from "node:path";
 function packageVersion() {
   try {
     const here = dirname5(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync11(join13(here, "..", "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync12(join14(here, "..", "package.json"), "utf8"));
     return pkg.version || ENGINE_VERSION;
   } catch {
     return ENGINE_VERSION;
   }
 }
 function readStdin() {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     let data = "";
-    if (process.stdin.isTTY) return resolve3("");
+    if (process.stdin.isTTY) return resolve4("");
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (c) => data += c);
-    process.stdin.on("end", () => resolve3(data));
-    setTimeout(() => resolve3(data), 2e3).unref?.();
+    process.stdin.on("end", () => resolve4(data));
+    setTimeout(() => resolve4(data), 2e3).unref?.();
   });
 }
 function flag(args, name) {
@@ -17111,7 +17216,7 @@ ${USAGE}`);
     throw err;
   }
 }
-var USAGE = "usage: vfkb <add|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n";
+var USAGE = "usage: vfkb <add|broadcast|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n";
 async function dispatch() {
   const [cmd, sub, ...rest] = process.argv.slice(2);
   if (cmd === "--help" || cmd === "-h" || cmd === "help") {
@@ -17159,6 +17264,43 @@ async function dispatch() {
       process.exit(1);
     }
     return;
+  }
+  if (cmd === "broadcast") {
+    const p = parseArgs("broadcast", argsOf(sub, rest), {
+      to: "value",
+      op: "value",
+      tag: "value"
+    });
+    const text = p.positionals.join(" ").trim();
+    const targets = flagList(p, "to") ?? [];
+    if (!text || targets.length === 0) {
+      throw new UsageError('usage: vfkb broadcast "<text>" --to <dir>[,<dir>\u2026] [--op <name>] [--tag a,b]');
+    }
+    try {
+      const results = broadcast(text, targets, {
+        op: flagValue(p, "op"),
+        tags: flagList(p, "tag")
+      });
+      let failed = 0;
+      for (const r of results) {
+        if (r.ok) {
+          process.stdout.write(`written	${r.target}	${r.id}	${r.posture}
+`);
+        } else {
+          failed++;
+          process.stdout.write(`REFUSED	${r.target}	${r.reason}
+`);
+        }
+      }
+      process.stdout.write(`
+broadcast: ${results.length - failed}/${results.length} written${failed ? ` \u2014 ${failed} refused (partial broadcast, visible by design)` : ""}
+`);
+      process.exit(failed > 0 ? 1 : 0);
+    } catch (err) {
+      process.stderr.write(`error: ${err.message}
+`);
+      process.exit(1);
+    }
   }
   if (cmd === "export") {
     const p = parseArgs("export", rest, { out: "value" });
