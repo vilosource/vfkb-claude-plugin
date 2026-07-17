@@ -1,10 +1,10 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.6.0",
+  "pluginVersion": "0.7.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-16T13:26:00.358Z",
+  "generated": "2026-07-17T17:10:51.001Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -19,7 +19,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "--- ## Session-start brief **Last done:** Ingest refactor shipped and verified end-to-end (handoff recorded 20",
+          "out": "Based on the vfkb records and git history: **Last done:** Ingest refactor shipped and verified end-to-end (han",
           "err": ""
         },
         {
@@ -28,7 +28,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "--- ## Session-Start Brief **Last done** — Ingest refactor shipped and verified end-to-end (handoff recorded 2",
+          "out": "--- ## Session-Start Brief **Last done** (2026-07-17 17:08Z): Ingest refactor shipped and verified end-to-end.",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done**: Ingest refactor shipped and verified end-to-end (2026-07-16 13:25Z). **M",
+          "out": "## Brief **Last done** — Ingest refactor shipped and verified end-to-end, as of 2026-07-17 17:09Z. **Moved sin",
           "err": ""
         }
       ]
@@ -54,7 +54,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Based on the checklist, here's the session-start brief: --- **Last done** — No handoff recorded. The project c",
+          "out": "Based on my review of the project state: **Last done** — No handoff recorded. The brain holds one gotcha entry",
           "err": ""
         },
         {
@@ -63,7 +63,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**The brief:** **Last done** — No handoff recorded. The knowledge base holds a gotcha from 2026-07-16: \"shard ",
+          "out": "## Session-start brief **Last done:** No handoff recorded. The only continuity entry is a gotcha fact dated 20",
           "err": ""
         },
         {
@@ -72,7 +72,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** No recorded handoff found in vfkb. Briefing from git: the only visible commit is \"chore: scaffol",
+          "out": "## Session-start brief **Last done** No handoff recorded in vfkb. Project initialized with scaffold commit on ",
           "err": ""
         }
       ]

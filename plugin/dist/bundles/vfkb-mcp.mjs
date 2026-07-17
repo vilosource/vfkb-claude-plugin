@@ -31740,6 +31740,22 @@ function latestHandoff(all = readAll(), today = nowIso().slice(0, 10), supersede
   }
   return latest;
 }
+var CROSS_REPO_PIN_CAP_CHARS = 2e3;
+function latestCrossRepo(all = readAll(), today = nowIso().slice(0, 10), superseded = supersededIds(all)) {
+  let latest = null;
+  for (const e of all) {
+    if (!e.tags.includes("cross-repo")) continue;
+    if (e.tags.includes("handoff") || e.tags.includes("next")) continue;
+    if (!isInjectable(e, today, superseded)) continue;
+    if (!latest) {
+      latest = e;
+      continue;
+    }
+    const cmp = e.updated.localeCompare(latest.updated) || e.created.localeCompare(latest.created);
+    if (cmp >= 0) latest = e;
+  }
+  return latest;
+}
 function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
@@ -31769,11 +31785,20 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 
 `;
   }
+  const crossRepo = latestCrossRepo(all, today, superseded);
+  if (crossRepo && !constitutionalIds.has(crossRepo.id)) {
+    const text2 = crossRepo.text.length > CROSS_REPO_PIN_CAP_CHARS ? `${crossRepo.text.slice(0, CROSS_REPO_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${crossRepo.id} for the rest)` : crossRepo.text;
+    body += `## Cross-repo operations
+- [${crossRepo.type} ${trustGlyph(crossRepo)}] ${text2}
+
+`;
+  }
   body += renderContextMap() + "\n\n";
   let dropped = 0;
   for (const e of injectable) {
     if (constitutionalIds.has(e.id)) continue;
     if (handoff && e.id === handoff.id) continue;
+    if (crossRepo && e.id === crossRepo.id) continue;
     const line2 = `- [${e.type} ${trustGlyph(e)}] ${e.text}
 `;
     if (header.length + body.length + line2.length + footer.length > budget) {
