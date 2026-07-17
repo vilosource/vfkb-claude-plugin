@@ -15915,19 +15915,50 @@ function runExport(target, opts = {}) {
 
 // src/broadcast.ts
 import { execFileSync } from "node:child_process";
-import { existsSync as existsSync4, readFileSync as readFileSync5 } from "node:fs";
-import { basename as basename2, join as join6, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { basename as basename2, join as join7, resolve as resolve2 } from "node:path";
+
+// src/manifest.ts
+import { existsSync as existsSync4, mkdirSync as mkdirSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname3, join as join6 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "9aa13dc" : "dev";
+var ENGINE_COMMIT = true ? "bd11887" : "dev";
+
+// src/manifest.ts
+function manifestPath(brainDir2) {
+  return join6(brainDir2, "manifest.json");
+}
+function currentManifest() {
+  return { schema_version: SCHEMA_VERSION, engine_version: ENGINE_VERSION, engine_commit: ENGINE_COMMIT };
+}
+function readManifest(brainDir2) {
+  const p = manifestPath(brainDir2);
+  if (!existsSync4(p)) return void 0;
+  try {
+    return JSON.parse(readFileSync5(p, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function writeManifest(brainDir2) {
+  const p = manifestPath(brainDir2);
+  const existed = existsSync4(p);
+  const cur = readManifest(brainDir2);
+  const next = currentManifest();
+  if (cur && JSON.stringify(cur) === JSON.stringify(next)) return "skipped";
+  mkdirSync5(dirname3(p), { recursive: true });
+  writeFileSync3(p, JSON.stringify(next, null, 2) + "\n");
+  return existed ? "updated" : "created";
+}
 
 // src/broadcast.ts
 var FORBIDDEN_TAGS = /* @__PURE__ */ new Set(["handoff", "next"]);
 function targetBrainDir(target) {
   const abs = resolve2(target);
-  return basename2(abs) === ".vfkb" ? abs : join6(abs, ".vfkb");
+  return basename2(abs) === ".vfkb" ? abs : join7(abs, ".vfkb");
 }
 function gitPosture(repoDir) {
   const git2 = (...a) => execFileSync("git", ["-C", repoDir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -15968,14 +15999,24 @@ function broadcast(text, targets, opts = {}) {
       continue;
     }
     const repoDir = resolve2(brain, "..");
-    const manifestPath2 = join6(brain, "manifest.json");
-    if (!existsSync4(manifestPath2)) {
-      results.push({ target, ok: false, reason: `no brain (missing ${manifestPath2}) \u2014 never bootstrap a wire-less brain (ADR-0063 \xA73)` });
-      continue;
+    const manifestPath2 = join7(brain, "manifest.json");
+    let healed = false;
+    if (!existsSync5(manifestPath2)) {
+      if (!existsSync5(join7(brain, "entries.jsonl"))) {
+        results.push({ target, ok: false, reason: `no brain (no entries.jsonl in ${brain}) \u2014 never bootstrap a wire-less brain (ADR-0063 \xA73)` });
+        continue;
+      }
+      try {
+        writeManifest(brain);
+      } catch (err) {
+        results.push({ target, ok: false, reason: `manifest heal failed: ${err.message}` });
+        continue;
+      }
+      healed = true;
     }
     let schema;
     try {
-      schema = JSON.parse(readFileSync5(manifestPath2, "utf8")).schema_version;
+      schema = JSON.parse(readFileSync6(manifestPath2, "utf8")).schema_version;
     } catch {
       results.push({ target, ok: false, reason: "unreadable manifest.json" });
       continue;
@@ -15987,11 +16028,11 @@ function broadcast(text, targets, opts = {}) {
     const prev = process.env.VFKB_DATA_DIR;
     try {
       process.env.VFKB_DATA_DIR = brain;
-      const e = addEntry("fact", stamped, { role: "executor", tags: ["cross-repo", ...extraTags] });
+      const e = addEntry("fact", stamped, { role: "executor", tags: [.../* @__PURE__ */ new Set(["cross-repo", ...extraTags])] });
       written.add(brain);
-      results.push({ target, ok: true, id: e.id, posture: gitPosture(repoDir) });
+      results.push({ target, ok: true, id: e.id, posture: gitPosture(repoDir), ...healed ? { healed } : {} });
     } catch (err) {
-      results.push({ target, ok: false, reason: err.message });
+      results.push({ target, ok: false, reason: err.message, ...healed ? { healed } : {} });
     } finally {
       if (prev === void 0) delete process.env.VFKB_DATA_DIR;
       else process.env.VFKB_DATA_DIR = prev;
@@ -16224,8 +16265,8 @@ var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing
 
 // src/stop-reminder.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { readFileSync as readFileSync6 } from "node:fs";
-import { join as join7, relative } from "node:path";
+import { readFileSync as readFileSync7 } from "node:fs";
+import { join as join8, relative } from "node:path";
 var STOP_REMINDER = 'vfkb decision-capture check: this turn changed code/docs but no `decision` was recorded to the brain. If a load-bearing decision was made, capture it now via `mcp__vfkb__kb_add` (type=decision, why=<rationale>, role=human) \u2014 or `vfkb add decision "\u2026" --why "\u2026" --role human` \u2014 and add an ADR under docs/adr/ for anything architectural. If NO decision was made this turn, just finish normally.';
 var HANDOFF_MIN_ENTRIES = 3;
 var HANDOFF_REMINDER = 'vfkb handoff check: this session has recorded knowledge but no `handoff`/`next` entry. If you are WRAPPING UP, record a durable handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human) naming what the NEXT session should pick up (a real "next:", not just a summary). If you are still mid-session, ignore this and finish normally \u2014 the SessionEnd floor will leave a fallback if you never do.';
@@ -16254,10 +16295,10 @@ function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
   });
 }
 function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd()) {
-  const file2 = join7(brain, "entries.jsonl");
+  const file2 = join8(brain, "entries.jsonl");
   let current2;
   try {
-    current2 = readFileSync6(file2, "utf8").split("\n").filter(Boolean);
+    current2 = readFileSync7(file2, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
@@ -16290,13 +16331,13 @@ function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
 
 // src/git.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync5 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync6 } from "node:fs";
+import { join as join9 } from "node:path";
 function git(args, cwd) {
   return execFileSync3("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 function ensureRepo(brain) {
-  if (!existsSync5(join8(brain, ".git"))) {
+  if (!existsSync6(join9(brain, ".git"))) {
     git(["init", "-q"], brain);
   }
 }
@@ -16323,11 +16364,11 @@ function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
 
 // src/session-end.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { readFileSync as readFileSync7 } from "node:fs";
-import { join as join9, isAbsolute } from "node:path";
+import { readFileSync as readFileSync8 } from "node:fs";
+import { join as join10, isAbsolute } from "node:path";
 var realGit = (args, cwd) => execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 function brainEntriesRelPath(dataDir2) {
-  return join9(dataDir2, "entries.jsonl").replace(/\\/g, "/");
+  return join10(dataDir2, "entries.jsonl").replace(/\\/g, "/");
 }
 function tryGit(git2, args, cwd) {
   try {
@@ -16351,7 +16392,7 @@ function countAdded(git2, cwd, path) {
 function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
   let lines;
   try {
-    lines = readFileSync7(absEntries, "utf8").split("\n").filter(Boolean);
+    lines = readFileSync8(absEntries, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
@@ -16428,8 +16469,8 @@ function runSessionEnd(opts = {}) {
         systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} on \`${branch}\` left uncommitted \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
       };
     }
-    const absBrain = isAbsolute(dataDir2) ? dataDir2 : join9(cwd, dataDir2);
-    const fresh = newEntriesSinceHead(git2, cwd, entries, join9(absBrain, "entries.jsonl"));
+    const absBrain = isAbsolute(dataDir2) ? dataDir2 : join10(cwd, dataDir2);
+    const fresh = newEntriesSinceHead(git2, cwd, entries, join10(absBrain, "entries.jsonl"));
     let autoHandoff = false;
     if (fresh.length > 0 && !fresh.some(isHandoff2)) {
       try {
@@ -16451,37 +16492,6 @@ function runSessionEnd(opts = {}) {
 // src/init.ts
 import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync4 } from "node:fs";
 import { basename as basename3, join as join11 } from "node:path";
-
-// src/manifest.ts
-import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync8, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname3, join as join10 } from "node:path";
-function manifestPath(brainDir2) {
-  return join10(brainDir2, "manifest.json");
-}
-function currentManifest() {
-  return { schema_version: SCHEMA_VERSION, engine_version: ENGINE_VERSION, engine_commit: ENGINE_COMMIT };
-}
-function readManifest(brainDir2) {
-  const p = manifestPath(brainDir2);
-  if (!existsSync6(p)) return void 0;
-  try {
-    return JSON.parse(readFileSync8(p, "utf8"));
-  } catch {
-    return void 0;
-  }
-}
-function writeManifest(brainDir2) {
-  const p = manifestPath(brainDir2);
-  const existed = existsSync6(p);
-  const cur = readManifest(brainDir2);
-  const next = currentManifest();
-  if (cur && JSON.stringify(cur) === JSON.stringify(next)) return "skipped";
-  mkdirSync5(dirname3(p), { recursive: true });
-  writeFileSync3(p, JSON.stringify(next, null, 2) + "\n");
-  return existed ? "updated" : "created";
-}
-
-// src/init.ts
 var AGENTS_MARKER = "<!-- vfkb:how-we-track-work -->";
 var BOOTSTRAP_REL = ".vfkb/bin/bootstrap.mjs";
 function mcpConfig(project) {
@@ -17284,7 +17294,7 @@ async function dispatch() {
       let failed = 0;
       for (const r of results) {
         if (r.ok) {
-          process.stdout.write(`written	${r.target}	${r.id}	${r.posture}
+          process.stdout.write(`written	${r.target}	${r.id}	${r.posture}${r.healed ? "	(manifest healed \u2014 brain was wired but manifest-less, vfkb#193)" : ""}
 `);
         } else {
           failed++;
