@@ -1,14 +1,14 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.6.0",
+  "pluginVersion": "0.7.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-16T13:36:46.625Z",
+  "generated": "2026-07-17T17:24:16.136Z",
   "upgradeFrom": "vfkb--v0.3.0",
   "ref": "re-vendor/engine",
-  "headSha": "b96610add8e12e9557c5e5a13761ef4a48b11548",
-  "pluginTreeHash": "f0d45999746ff061e456e6e4c344668d57d5a144b21cbea618ea9da6f54d15ae",
+  "headSha": "bb17fb421d9036e3322fd6bc825bf789df0aeb79",
+  "pluginTreeHash": "e6f987c3b3434a26229d90c2050dab8d29240654095a345021b1c15868f8cd0b",
   "arms": {
     "fresh": {
       "role": "positive",
@@ -22,7 +22,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Last done** — The handoff (2026-07-16 13:32Z) states the delivery refactor shipped and verified en",
+          "out": "No GitHub remote configured; queue state unavailable. **Step 5: The brief** --- **Last done:** The d",
           "err": ""
         },
         {
@@ -30,7 +30,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "## Session-start Brief **Last done** — The handoff (2026-07-16 13:34Z) records that the delivery ref",
+          "out": "**Last done** — The delivery refactor shipped and verified end-to-end (as of 2026-07-17 17:21Z). **M",
           "err": ""
         },
         {
@@ -38,7 +38,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Last done** The delivery refactor shipped and verified end-to-end (handoff dated 2026-07-16 13:35Z",
+          "out": "**Last done** — Per handoff (2026-07-17 17:22Z): the delivery refactor shipped and verified end-to-e",
           "err": ""
         }
       ]
@@ -56,7 +56,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Session-start brief **Last done** — Delivery refactor shipped and verified end-to-end (handoff re",
+          "afterOut": "--- ## Session-start brief **Last done** (2026-07-17 17:20Z): The delivery refactor shipped and veri",
           "err": ""
         },
         {
@@ -64,7 +64,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "**Last done** The delivery refactor shipped and was verified end-to-end (handoff recorded 2026-07-16",
+          "afterOut": "**Last done:** 2026-07-17 17:22Z — delivery refactor shipped and verified end-to-end. **Moved since:",
           "err": ""
         },
         {
@@ -72,7 +72,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Step 5: The brief **Last done** — The delivery refactor shipped and verified end-to-end, as recor",
+          "afterOut": "**Last done** — The handoff (2026-07-17 17:23Z) records that the delivery refactor shipped and verif",
           "err": ""
         }
       ]

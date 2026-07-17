@@ -1,10 +1,10 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.6.0",
+  "pluginVersion": "0.7.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-16T13:31:37.650Z",
+  "generated": "2026-07-17T17:17:45.180Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -36,7 +36,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE",
+          "t3": "DONE The fact 'SMOKE TRIAL NOTE 2-wired' has been successfully recorded in the vfkb knowle",
           "err": ""
         },
         {
@@ -69,7 +69,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED The kb_add tool is not available in the current environment. I searched through: 1.",
+          "t3": "I need write permission to update the knowledge base file. The system is asking for author",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — Permission denied to write to the vfkb entries file. You'll need to grant write a",
+          "t3": "FAILED The `kb_add` tool is not available. I searched for it with ToolSearch but it's not ",
           "err": ""
         },
         {
@@ -91,7 +91,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED The kb_add MCP tool is not available in the current environment. I located the vfkb",
+          "t3": "I need permission to write to the knowledge base file. Please grant permission to proceed.",
           "err": ""
         }
       ]
