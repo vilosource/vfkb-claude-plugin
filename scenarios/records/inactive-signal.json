@@ -1,10 +1,10 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.7.0",
+  "pluginVersion": "0.8.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-17T17:19:28.839Z",
+  "generated": "2026-07-17T18:29:53.590Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -21,13 +21,13 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "out": "(1) SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         }
       ]
@@ -47,13 +47,13 @@
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "NOBANNER **Migration codename:** plumcanyon-verdigris-73",
+          "out": "NOBANNER plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "NOBANNER plumcanyon-verdigris-73",
+          "out": "NOBANNER Migration codename: **plumcanyon-verdigris-73**",
           "err": ""
         }
       ]
