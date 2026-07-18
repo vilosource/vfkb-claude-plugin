@@ -48,27 +48,45 @@ re-vendoring — you cannot fix engine logic by editing files here.
 
 Releases are **hand-cut** (no release-please here — that's the vfkb *engine/npm* repo). The flow:
 bump `plugin/.claude-plugin/plugin.json` `version` → **re-pin the version-bound L4 records** (metered,
-one at a time) → deterministic gates green → PR → merge → **tag** with `claude plugin tag plugin --push`
-(creates `vfkb--v{version}`, ADR-0060). **Bump-and-tag is one atomic step** — a version that ships
-without its `vfkb--v{version}` tag is a release defect (it leaves "the previous release" unresolvable
-and lets features drift onto a shipped version, as happened to `0.5.0`). All versions `v0.1.0`–`v0.5.0`
-are tagged.
+one at a time) → deterministic gates green → PR → merge. **Bump-and-tag is one atomic step**
+(ADR-0060), and the tag half is now **automated**: `release-tag.yml` re-runs the deterministic gates
+on every `main` push and creates the annotated `vfkb--v{version}` tag at that commit if the version
+is untagged (manual `claude plugin tag plugin --push` is only the fallback if that workflow is red —
+verify the tag actually landed either way). A version that ships without its tag is a release defect
+(it leaves "the previous release" unresolvable and lets features drift onto a shipped version, as
+happened to `0.5.0` — the version Brake and the auto-tag exist because both hand-run halves were
+once skipped).
 
 - **The release-gate CI Brake** (`scenarios/release-gate.mjs`, run by `release-gate.yml`) is
   deterministic and must be green: it fails any PR whose committed records don't match the tree, and
   enforces the delivery disclosure. The **live L4 scenarios are NOT run in CI** (they need the
   operator's Claude-Code OAuth) — their committed, version-bound records are what CI verifies.
+- **Release PRs need no approval hold** (operator ruling 2026-07-18; vfkb brain decision
+  `872c1ff0ff90` — same rule as vfkb CLAUDE.md, adapted to this repo's chain). A release PR here
+  (re-vendor + version bump) rides the standing autonomous-PR grant: the engine changes it vendors
+  were already reviewed in the vfkb repo before landing on its `main`, and this repo's packaging /
+  evidence / version surface is enforced by the deterministic Brakes above — so do **not** hold the
+  PR for the operator and do **not** re-review the vendored engine content. Chain: PR → required
+  checks green → merge → `release-tag.yml` auto-tags `vfkb--v{version}` (**verify the tag landed on
+  origin**) → consumers pick it up via `claude plugin marketplace update` + `claude plugin update`
+  (broadcast when the release warrants it). What remains is **cadence** ("is this batch complete?")
+  plus the unchanged DoD gate: a release carrying a new user-facing capability still needs its
+  version-bound L4 records re-pinned *before* the bump — that's release content, not merge approval.
+  Report merges with the outward-publish callout: **merging to `main` IS distribution** — the
+  marketplace clone every consumer tracks is this repo.
 
 ## Delivery honesty is mandatory (ADR-0051)
 
-`DELIVERY-STATUS.json` is `delivery: "unproven"` and the README carries the disclosure string **until
-`scenarios/records/install-path.json` lands** (a DEMONSTRATED, version-bound delivery proof). The gate
-**derives** the status from that record — do **not** hand-flip `DELIVERY-STATUS.json` or drop the
-disclosure. Until then, every release note / handoff must keep stating delivery is unproven.
+`DELIVERY-STATUS.json` is **`delivery: "proven"` since 2026-07-16**: `scenarios/records/install-path.json`
+is a DEMONSTRATED, version-bound delivery proof (fresh 3/3, upgrade 3/3, contrast 0/3, through the real
+marketplace path — not `--plugin-dir`). The gate **derives** the status from that record and flips it
+back to `unproven` (re-requiring the README disclosure) if a
+release ships without re-pinning the record to the new `pluginVersion` — so do **not** hand-edit
+`DELIVERY-STATUS.json` in either direction; keep the record pinned instead.
 
 ## The L4 scenarios (`scenarios/`)
 
-`brief-skill.mjs`, `hooks-smoke.mjs`, `inactive-signal.mjs` (and the pending `install-path.mjs`) are
+`brief-skill.mjs`, `hooks-smoke.mjs`, `inactive-signal.mjs`, `install-path.mjs` are
 **live, metered** proofs — real `claude -p` in a sandboxed HOME, `claudeAiOauth` only (ADR-0022 §8),
 run **one at a time**. Records land in `scenarios/records/*.json`, **version-bound** to the shipping
 `pluginVersion`; the gate rejects a record bound to any other version. `verdict()` (in
@@ -86,8 +104,9 @@ for manual brain edits use `VFKB_DATA_DIR=.vfkb node ~/VFKB/vfkb/dist/cli.js <cm
 
 - **No AI attribution** in any commit (no `Co-Authored-By: Claude`, no 🤖, no "Generated with").
 - **Always branch → PR**, never push to `main` directly. Report clickable PR + file URLs after a push.
-- **Tags are the exception** — `claude plugin tag … --push` pushes a tag directly (that's the release
-  mechanism, ADR-0060), not a branch.
+- **Tags are the exception** — the `vfkb--v{version}` release tag is pushed directly, not via a
+  branch (ADR-0060). Normally `release-tag.yml` does it automatically on `main` push; the manual
+  `claude plugin tag … --push` is the fallback when that workflow is red.
 - **VERIFIED = observed, not asserted** — never relay a gate's/scenario's "passed" without reading
   ground truth.
 
@@ -100,15 +119,11 @@ for manual brain edits use `VFKB_DATA_DIR=.vfkb node ~/VFKB/vfkb/dist/cli.js <cm
 - `templates/vfkb-guard.mjs` — the ADR-0059 guard consumers commit.
 - `RELEASING.md`, `DELIVERY-STATUS.json`, `MIGRATION_GUIDE.md`, `SETUP_GUIDE.md`, `README.md`.
 
-## Current in-flight work (2026-07-16)
+## Recently completed (kept for orientation; the queue lives in GitHub issues)
 
-- **`install-path` delivery L4** (earns the ADR-0051 `delivery: proven` flip): **Phase 0 DONE** —
-  tagging adopted (ADR-0060), all versions tagged, a tag verified to resolve as a github marketplace
-  ref. **Phase 1 in progress** — writing `scenarios/install-path.mjs` (fresh / upgrade / contrast arms;
-  upgrade pair is `v0.3.0` no-brief → `v0.4.0` brief-present), RED-verified, no metered cost, then a
-  hard stop before the Phase 2 metered run. Plan: `~/VFKB/vfkb/docs/install-path-L4-PLAN.md`.
-- **Possible concurrent agent** on **automated plugin versioning** (would own `RELEASING.md`,
-  `.github/workflows/`, release config, and a new ADR in vfkb). If you are that agent, **stay off**
-  `scenarios/install-path.mjs`, `scenarios/records/install-path.json`, the delivery Brake in
-  `scenarios/release-gate.mjs`, and the vfkb plan doc — and **preserve the `vfkb--v{version}` tag
-  format** (ADR-0060).
+- **`install-path` delivery L4 — DONE 2026-07-16** (the ADR-0051 `delivery: proven` flip):
+  `scenarios/install-path.mjs` DEMONSTRATED through the real marketplace path (fresh 3/3, upgrade
+  3/3, contrast 0/3), record re-pinned per release since (currently bound to `0.10.0`).
+- **Automated versioning/tagging — DONE**: `release-tag.yml` + the version Brake (ADR-0060/0061)
+  now enforce bump-and-tag mechanically; the `vfkb--v{version}` tag format is a contract
+  (ref-pinning + the install-path upgrade arm resolve it) — **preserve it**.
