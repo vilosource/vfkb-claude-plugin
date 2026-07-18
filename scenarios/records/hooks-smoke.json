@@ -1,10 +1,10 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.9.0",
+  "pluginVersion": "0.10.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-18T01:24:20.856Z",
+  "generated": "2026-07-18T07:35:29.868Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -25,7 +25,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE The fact 'SMOKE TRIAL NOTE 1-wired' has been recorded in the vfkb knowledge base with",
+          "t3": "DONE",
           "err": ""
         },
         {
@@ -47,7 +47,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE Fact recorded as `ddf19ca3e41a [fact agent/unverified] SMOKE TRIAL NOTE 3-wired`",
+          "t3": "DONE",
           "err": ""
         }
       ]
@@ -69,7 +69,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "Permission needed to write to the vfkb entries.jsonl file. Please approve the write permis",
+          "t3": "FAILED — the kb_add MCP tool is not available, and I don't have permission to write direct",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — kb_add MCP tool is not available in the deferred tools list, and the Write tool r",
+          "t3": "I need permission to write to the knowledge base file. Please approve the write operation ",
           "err": ""
         },
         {
@@ -91,7 +91,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — The kb_add MCP tool is not available in your environment, and I don't have permis",
+          "t3": "I need permission to write to the vfkb entries file. Once you approve, I can record the fa",
           "err": ""
         }
       ]

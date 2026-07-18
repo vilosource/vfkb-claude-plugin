@@ -1,10 +1,10 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.9.0",
+  "pluginVersion": "0.10.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-18T01:15:49.191Z",
+  "generated": "2026-07-18T07:27:57.342Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -19,7 +19,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "--- ## **Last done** Ingest refactor shipped and verified end-to-end (handoff recorded 2026-07-18 01:12Z). Sha",
+          "out": "Now I'll compile the session-start brief from the handoff and cross-checks: --- **Last done** — The ingest ref",
           "err": ""
         },
         {
@@ -28,7 +28,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** Ingest refactor shipped and verified end-to-end (2026-07-18 01:14Z). Shar",
+          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end as of 2026-07-18 07:25Z",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** Ingest refactor shipped and verified end-to-end (handoff 2026-07-18 01:14Z). **Moved since** 4e6",
+          "out": "**Last done** (2026-07-18 07:26Z): ingest refactor shipped and verified end-to-end. **Moved since**: b7b1264 c",
           "err": ""
         }
       ]
@@ -54,7 +54,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Based on my review of the project's recorded continuity, here's your session-start briefing: **Last done** Ses",
+          "out": "**Last done** — No handoff recorded; vfkb contains only a gotcha note about schema locking, no concluded work ",
           "err": ""
         },
         {
@@ -63,7 +63,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — UNKNOWN. No handoff entry recorded in vfkb; only one gotcha captured at 2026-07-18 01:14Z: \"sh",
+          "out": "--- ## Session-start brief **Last done** — UNKNOWN. No handoff recorded in continuity. Latest commit is 7c5baf",
           "err": ""
         },
         {
@@ -72,7 +72,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — No handoff recorded. Project initialized with scaffold commit d3f2602 (2026-07-18). **Moved si",
+          "out": "## Session-start brief **Last done** No handoff recorded. The project was initialized with a scaffold commit (",
           "err": ""
         }
       ]

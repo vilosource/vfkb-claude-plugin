@@ -9,7 +9,7 @@ var __export = (target, all) => {
 import { randomBytes as randomBytes2 } from "node:crypto";
 
 // src/storage.ts
-import { basename, dirname, join as join3, resolve } from "node:path";
+import { basename, dirname as dirname2, join as join4, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 
@@ -205,6 +205,134 @@ var jsonl = new JsonlFsBackend();
 var current = jsonl;
 function storageBackend() {
   return current;
+}
+
+// src/journal.ts
+import { execFileSync } from "node:child_process";
+import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname, join as join3, relative, sep } from "node:path";
+var walPath = (brain) => join3(brain, ".journal", "wal.jsonl");
+var suppressedPath = (brain) => join3(brain, ".journal", "suppressed");
+function rewriteWal(wal, keep) {
+  const tmp = `${wal}.tmp`;
+  writeFileSync2(tmp, keep.length > 0 ? keep.map((l) => l.raw).join("\n") + "\n" : "", "utf8");
+  renameSync(tmp, wal);
+}
+var pairOf = (r) => `${String(r.id)}\0${String(r.updated ?? "")}`;
+function parseLines(text) {
+  const out = [];
+  for (const raw of text.split("\n")) {
+    if (raw.trim().length === 0) continue;
+    try {
+      const rec = JSON.parse(raw);
+      if (typeof rec.id !== "string") continue;
+      out.push({ raw, pair: pairOf(rec), id: rec.id });
+    } catch {
+    }
+  }
+  return out;
+}
+function pairsOfFile(path) {
+  if (!existsSync2(path)) return /* @__PURE__ */ new Set();
+  return new Set(parseLines(readFileSync3(path, "utf8")).map((l) => l.pair));
+}
+function suppressedPairs(brain) {
+  const p = suppressedPath(brain);
+  if (!existsSync2(p)) return /* @__PURE__ */ new Set();
+  return new Set(
+    readFileSync3(p, "utf8").split("\n").filter((l) => l.includes("	")).map((l) => l.replace("	", "\0"))
+  );
+}
+function journalAppend(brain, rec) {
+  if (process.env.VFKB_NO_JOURNAL) return;
+  try {
+    mkdirSync3(join3(brain, ".journal"), { recursive: true });
+    appendFileSync2(walPath(brain), JSON.stringify(rec) + "\n", "utf8");
+  } catch (err) {
+    process.stderr.write(
+      `vfkb: journal mirror failed (primary append proceeds unprotected): ${err.message}
+`
+    );
+  }
+}
+function pairsAtHead(brain) {
+  const repoDir = dirname(brain);
+  const git2 = (...a) => execFileSync("git", ["-C", repoDir, ...a], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  }).trim();
+  try {
+    if (git2("rev-parse", "--is-inside-work-tree") !== "true") return "not-git";
+  } catch {
+    return "not-git";
+  }
+  try {
+    const top = git2("rev-parse", "--show-toplevel");
+    const rel = relative(top, join3(brain, "entries.jsonl")).split(sep).join("/");
+    const head = execFileSync("git", ["-C", repoDir, "cat-file", "-p", `HEAD:${rel}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    return new Set(parseLines(head).map((l) => l.pair));
+  } catch {
+    return "unknown";
+  }
+}
+function recoverFromJournal(brain) {
+  if (process.env.VFKB_NO_JOURNAL) return { restored: 0, pruned: 0 };
+  const wal = walPath(brain);
+  if (!existsSync2(wal)) return { restored: 0, pruned: 0 };
+  const walLines = parseLines(readFileSync3(wal, "utf8"));
+  if (walLines.length === 0) return { restored: 0, pruned: 0 };
+  const entriesPath = join3(brain, "entries.jsonl");
+  const present = pairsOfFile(entriesPath);
+  const suppressed = suppressedPairs(brain);
+  const toRestore = walLines.filter((l) => !present.has(l.pair) && !suppressed.has(l.pair));
+  if (toRestore.length > 0) {
+    let prefix = "";
+    if (existsSync2(entriesPath)) {
+      const cur = readFileSync3(entriesPath, "utf8");
+      if (cur.length > 0 && !cur.endsWith("\n")) prefix = "\n";
+    }
+    appendFileSync2(entriesPath, prefix + toRestore.map((l) => l.raw).join("\n") + "\n", "utf8");
+  }
+  const head = pairsAtHead(brain);
+  let keep;
+  if (head === "unknown") {
+    keep = walLines;
+  } else if (head === "not-git") {
+    keep = walLines.filter((l) => !suppressed.has(l.pair) && !present.has(l.pair) && !toRestore.includes(l));
+  } else {
+    keep = walLines.filter((l) => !suppressed.has(l.pair) && !head.has(l.pair));
+  }
+  const pruned = walLines.length - keep.length;
+  if (pruned > 0) {
+    rewriteWal(wal, keep);
+  }
+  return { restored: toRestore.length, pruned };
+}
+function purgeJournal(brain, opts) {
+  const wal = walPath(brain);
+  if (!existsSync2(wal)) return { purged: 0 };
+  const walLines = parseLines(readFileSync3(wal, "utf8"));
+  const gone = walLines.filter((l) => opts.all ? true : l.id === opts.id);
+  if (gone.length === 0) return { purged: 0 };
+  const keep = walLines.filter((l) => !gone.includes(l));
+  mkdirSync3(join3(brain, ".journal"), { recursive: true });
+  appendFileSync2(suppressedPath(brain), gone.map((l) => l.pair.replace("\0", "	")).join("\n") + "\n", "utf8");
+  rewriteWal(wal, keep);
+  return { purged: gone.length };
+}
+function journalStatus(brain) {
+  const wal = walPath(brain);
+  const walLines = existsSync2(wal) ? parseLines(readFileSync3(wal, "utf8")) : [];
+  const present = pairsOfFile(join3(brain, "entries.jsonl"));
+  const suppressed = suppressedPairs(brain);
+  return {
+    walLines: walLines.length,
+    restorable: walLines.filter((l) => !present.has(l.pair) && !suppressed.has(l.pair)).length,
+    suppressedInEntries: [...suppressed].filter((p) => present.has(p)).length
+  };
 }
 
 // node_modules/zod/v4/classic/external.js
@@ -14772,7 +14900,7 @@ function isTombstone(r) {
   return r.deleted === true;
 }
 function brainDir() {
-  return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join3(homedir(), ".vfkb");
+  return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join4(homedir(), ".vfkb");
 }
 function defaultProject() {
   const raw = (() => {
@@ -14781,7 +14909,7 @@ function defaultProject() {
     if (explicit) {
       const abs = resolve(explicit);
       const name = basename(abs);
-      return name.startsWith(".") ? basename(dirname(abs)) : name;
+      return name.startsWith(".") ? basename(dirname2(abs)) : name;
     }
     const root = process.env.CLAUDE_PROJECT_DIR;
     if (root) return basename(resolve(root));
@@ -14790,7 +14918,9 @@ function defaultProject() {
   return raw.replace(/["<>&]/g, "") || "spike";
 }
 function appendRecord(rec) {
-  storageBackend().append(rec);
+  const be = storageBackend();
+  if (be.name === "jsonl-fs") journalAppend(be.location(), rec);
+  be.append(rec);
   writeMeta();
 }
 function withExclusive(fn) {
@@ -14960,21 +15090,21 @@ function assertNoSecrets(text) {
 }
 
 // src/counters.ts
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, existsSync as existsSync2 } from "node:fs";
-import { join as join4 } from "node:path";
+import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync4, readFileSync as readFileSync4, existsSync as existsSync3 } from "node:fs";
+import { join as join5 } from "node:path";
 function signalsFile() {
-  return join4(brainDir(), ".signals", "counters.jsonl");
+  return join5(brainDir(), ".signals", "counters.jsonl");
 }
 function recordSignal(entryId, kind, source) {
   const sig = { entryId, kind, at: (/* @__PURE__ */ new Date()).toISOString(), source };
-  mkdirSync3(join4(brainDir(), ".signals"), { recursive: true });
-  appendFileSync2(signalsFile(), JSON.stringify(sig) + "\n", "utf8");
+  mkdirSync4(join5(brainDir(), ".signals"), { recursive: true });
+  appendFileSync3(signalsFile(), JSON.stringify(sig) + "\n", "utf8");
   return sig;
 }
 function readSignals() {
   const f = signalsFile();
-  if (!existsSync2(f)) return [];
-  return readFileSync3(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+  if (!existsSync3(f)) return [];
+  return readFileSync4(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
 }
 function tally(entryId, signals = readSignals()) {
   let helpful = 0;
@@ -15611,15 +15741,15 @@ ${bundle}`;
 
 // src/export.ts
 import {
-  existsSync as existsSync3,
-  mkdirSync as mkdirSync4,
+  existsSync as existsSync4,
+  mkdirSync as mkdirSync5,
   readdirSync as readdirSync2,
-  readFileSync as readFileSync4,
+  readFileSync as readFileSync5,
   rmSync,
   statSync as statSync2,
-  writeFileSync as writeFileSync2
+  writeFileSync as writeFileSync3
 } from "node:fs";
-import { dirname as dirname2, join as join5 } from "node:path";
+import { dirname as dirname3, join as join6 } from "node:path";
 var GENERATED_MARKER = "generated by vfkb export";
 var MARKER_LINE_RE = /^<!-- generated by vfkb export /m;
 var EXPORT_BUDGET_CHARS = 4e4;
@@ -15668,7 +15798,7 @@ function listFiles(dir) {
   const out = [];
   const walk = (d) => {
     for (const name of readdirSync2(d)) {
-      const p = join5(d, name);
+      const p = join6(d, name);
       if (statSync2(p).isDirectory()) walk(p);
       else out.push(p);
     }
@@ -15679,14 +15809,14 @@ function listFiles(dir) {
 function isGenerated(path) {
   if (!path.endsWith(".md")) return false;
   try {
-    return MARKER_LINE_RE.test(readFileSync4(path, "utf8"));
+    return MARKER_LINE_RE.test(readFileSync5(path, "utf8"));
   } catch {
     return false;
   }
 }
 function prepareTree(dir) {
-  if (!existsSync3(dir)) {
-    mkdirSync4(dir, { recursive: true });
+  if (!existsSync4(dir)) {
+    mkdirSync5(dir, { recursive: true });
     return;
   }
   const files = listFiles(dir);
@@ -15701,7 +15831,7 @@ function prepareTree(dir) {
   const dirs = [];
   const collect = (d) => {
     for (const name of readdirSync2(d)) {
-      const p = join5(d, name);
+      const p = join6(d, name);
       if (statSync2(p).isDirectory()) {
         collect(p);
         dirs.push(p);
@@ -15717,8 +15847,8 @@ function exportAgentsMd(opts = {}) {
   const { superseded, asOf, eligible } = projectionInputs();
   const project = opts.project ?? defaultProject();
   const budget = opts.budget ?? EXPORT_BUDGET_CHARS;
-  const out = opts.out ?? join5(process.cwd(), "AGENTS.md");
-  if (existsSync3(out) && !MARKER_LINE_RE.test(readFileSync4(out, "utf8"))) {
+  const out = opts.out ?? join6(process.cwd(), "AGENTS.md");
+  if (existsSync4(out) && !MARKER_LINE_RE.test(readFileSync5(out, "utf8"))) {
     throw new Error(
       `vfkb export: refusing to overwrite ${out} \u2014 it is not a previous export (no generated marker)`
     );
@@ -15777,8 +15907,8 @@ ${spine.trim()}
   }
   if (dropped > 0) body += `<!-- ${dropped} entries omitted for the ${budget}-char budget -->
 `;
-  mkdirSync4(dirname2(out), { recursive: true });
-  writeFileSync2(out, head + body);
+  mkdirSync5(dirname3(out), { recursive: true });
+  writeFileSync3(out, head + body);
   return { path: out };
 }
 function okfDoc(e, asOf, exportedDirs) {
@@ -15875,14 +16005,14 @@ function deriveLog(eligibleIds, records, live) {
 function exportOkf(opts = {}) {
   const { superseded, asOf, eligible } = projectionInputs();
   const project = opts.project ?? defaultProject();
-  const dir = opts.out ?? join5(process.cwd(), ".okf");
+  const dir = opts.out ?? join6(process.cwd(), ".okf");
   prepareTree(dir);
   const marker = `<!-- ${GENERATED_MARKER} okf; regenerate with \`vfkb export okf\`, do not hand-edit (as-of ${asOf}) -->`;
   const files = [];
   const write = (rel, content) => {
-    const p = join5(dir, rel);
-    mkdirSync4(dirname2(p), { recursive: true });
-    writeFileSync2(p, content);
+    const p = join6(dir, rel);
+    mkdirSync5(dirname3(p), { recursive: true });
+    writeFileSync3(p, content);
     files.push(rel);
   };
   const exportedDirs = new Map(eligible.map((e) => [e.id, TYPE_DIR[e.type]]));
@@ -15937,43 +16067,43 @@ function runExport(target, opts = {}) {
 }
 
 // src/broadcast.ts
-import { execFileSync } from "node:child_process";
-import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
-import { basename as basename2, join as join7, resolve as resolve2 } from "node:path";
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { basename as basename2, join as join8, resolve as resolve2 } from "node:path";
 
 // src/manifest.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname3, join as join6 } from "node:path";
+import { existsSync as existsSync5, mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname4, join as join7 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "a710bc7" : "dev";
+var ENGINE_VERSION = true ? "0.3.0" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "f9181ee" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
-  return join6(brainDir2, "manifest.json");
+  return join7(brainDir2, "manifest.json");
 }
 function currentManifest() {
   return { schema_version: SCHEMA_VERSION, engine_version: ENGINE_VERSION, engine_commit: ENGINE_COMMIT };
 }
 function readManifest(brainDir2) {
   const p = manifestPath(brainDir2);
-  if (!existsSync4(p)) return void 0;
+  if (!existsSync5(p)) return void 0;
   try {
-    return JSON.parse(readFileSync5(p, "utf8"));
+    return JSON.parse(readFileSync6(p, "utf8"));
   } catch {
     return void 0;
   }
 }
 function writeManifest(brainDir2) {
   const p = manifestPath(brainDir2);
-  const existed = existsSync4(p);
+  const existed = existsSync5(p);
   const cur = readManifest(brainDir2);
   const next = currentManifest();
   if (cur && JSON.stringify(cur) === JSON.stringify(next)) return "skipped";
-  mkdirSync5(dirname3(p), { recursive: true });
-  writeFileSync3(p, JSON.stringify(next, null, 2) + "\n");
+  mkdirSync6(dirname4(p), { recursive: true });
+  writeFileSync4(p, JSON.stringify(next, null, 2) + "\n");
   return existed ? "updated" : "created";
 }
 
@@ -15981,10 +16111,10 @@ function writeManifest(brainDir2) {
 var FORBIDDEN_TAGS = /* @__PURE__ */ new Set(["handoff", "next"]);
 function targetBrainDir(target) {
   const abs = resolve2(target);
-  return basename2(abs) === ".vfkb" ? abs : join7(abs, ".vfkb");
+  return basename2(abs) === ".vfkb" ? abs : join8(abs, ".vfkb");
 }
 function gitPosture(repoDir) {
-  const git2 = (...a) => execFileSync("git", ["-C", repoDir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  const git2 = (...a) => execFileSync2("git", ["-C", repoDir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   try {
     const branch = git2("rev-parse", "--abbrev-ref", "HEAD");
     const parked = branch === "main" || branch === "master";
@@ -16022,10 +16152,10 @@ function broadcast(text, targets, opts = {}) {
       continue;
     }
     const repoDir = resolve2(brain, "..");
-    const manifestPath2 = join7(brain, "manifest.json");
+    const manifestPath2 = join8(brain, "manifest.json");
     let healed = false;
-    if (!existsSync5(manifestPath2)) {
-      if (!existsSync5(join7(brain, "entries.jsonl"))) {
+    if (!existsSync6(manifestPath2)) {
+      if (!existsSync6(join8(brain, "entries.jsonl"))) {
         results.push({ target, ok: false, reason: `no brain (no entries.jsonl in ${brain}) \u2014 never bootstrap a wire-less brain (ADR-0063 \xA73)` });
         continue;
       }
@@ -16039,7 +16169,7 @@ function broadcast(text, targets, opts = {}) {
     }
     let schema;
     try {
-      schema = JSON.parse(readFileSync6(manifestPath2, "utf8")).schema_version;
+      schema = JSON.parse(readFileSync7(manifestPath2, "utf8")).schema_version;
     } catch {
       results.push({ target, ok: false, reason: "unreadable manifest.json" });
       continue;
@@ -16287,9 +16417,9 @@ function isBrainWrite(toolName, input, brain = brainDir()) {
 var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing files directly (keeps the index, freshness, and no-secrets invariants).";
 
 // src/stop-reminder.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
-import { readFileSync as readFileSync7 } from "node:fs";
-import { join as join8, relative } from "node:path";
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { readFileSync as readFileSync8 } from "node:fs";
+import { join as join9, relative as relative2 } from "node:path";
 var STOP_REMINDER = 'vfkb decision-capture check: this turn changed code/docs but no `decision` was recorded to the brain. If a load-bearing decision was made, capture it now via `mcp__vfkb__kb_add` (type=decision, why=<rationale>, role=human) \u2014 or `vfkb add decision "\u2026" --why "\u2026" --role human` \u2014 and add an ADR under docs/adr/ for anything architectural. If NO decision was made this turn, just finish normally.';
 var HANDOFF_MIN_ENTRIES = 3;
 var HANDOFF_REMINDER = 'vfkb handoff check: this session has recorded knowledge but no `handoff`/`next` entry. If you are WRAPPING UP, record a durable handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human) naming what the NEXT session should pick up (a real "next:", not just a summary). If you are still mid-session, ignore this and finish normally \u2014 the SessionEnd floor will leave a fallback if you never do.';
@@ -16305,11 +16435,11 @@ function decideStop(input, ctx) {
 function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
   let out;
   try {
-    out = execFileSync2("git", ["status", "--porcelain"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    out = execFileSync3("git", ["status", "--porcelain"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   } catch {
     return false;
   }
-  const brainRel = relative(cwd, brain).replace(/\\/g, "/");
+  const brainRel = relative2(cwd, brain).replace(/\\/g, "/");
   return out.split("\n").some((line) => {
     const p = line.slice(3).trim();
     if (!p) return false;
@@ -16318,17 +16448,17 @@ function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
   });
 }
 function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd()) {
-  const file2 = join8(brain, "entries.jsonl");
+  const file2 = join9(brain, "entries.jsonl");
   let current2;
   try {
-    current2 = readFileSync7(file2, "utf8").split("\n").filter(Boolean);
+    current2 = readFileSync8(file2, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
-  const rel = relative(cwd, file2).replace(/\\/g, "/");
+  const rel = relative2(cwd, file2).replace(/\\/g, "/");
   let headCount = 0;
   try {
-    const head = execFileSync2("git", ["show", `HEAD:${rel}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const head = execFileSync3("git", ["show", `HEAD:${rel}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     headCount = head.split("\n").filter(Boolean).length;
   } catch {
     headCount = 0;
@@ -16353,14 +16483,14 @@ function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
 }
 
 // src/git.ts
-import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync6 } from "node:fs";
-import { join as join9 } from "node:path";
+import { execFileSync as execFileSync4 } from "node:child_process";
+import { existsSync as existsSync7 } from "node:fs";
+import { join as join10 } from "node:path";
 function git(args, cwd) {
-  return execFileSync3("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 function ensureRepo(brain) {
-  if (!existsSync6(join9(brain, ".git"))) {
+  if (!existsSync7(join10(brain, ".git"))) {
     git(["init", "-q"], brain);
   }
 }
@@ -16386,12 +16516,12 @@ function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
 }
 
 // src/session-end.ts
-import { execFileSync as execFileSync4 } from "node:child_process";
-import { readFileSync as readFileSync8 } from "node:fs";
-import { join as join10, isAbsolute } from "node:path";
-var realGit = (args, cwd) => execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+import { execFileSync as execFileSync5 } from "node:child_process";
+import { readFileSync as readFileSync9 } from "node:fs";
+import { join as join11, isAbsolute } from "node:path";
+var realGit = (args, cwd) => execFileSync5("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 function brainEntriesRelPath(dataDir2) {
-  return join10(dataDir2, "entries.jsonl").replace(/\\/g, "/");
+  return join11(dataDir2, "entries.jsonl").replace(/\\/g, "/");
 }
 function tryGit(git2, args, cwd) {
   try {
@@ -16415,7 +16545,7 @@ function countAdded(git2, cwd, path) {
 function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
   let lines;
   try {
-    lines = readFileSync8(absEntries, "utf8").split("\n").filter(Boolean);
+    lines = readFileSync9(absEntries, "utf8").split("\n").filter(Boolean);
   } catch {
     return [];
   }
@@ -16492,8 +16622,8 @@ function runSessionEnd(opts = {}) {
         systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} on \`${branch}\` left uncommitted \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
       };
     }
-    const absBrain = isAbsolute(dataDir2) ? dataDir2 : join10(cwd, dataDir2);
-    const fresh = newEntriesSinceHead(git2, cwd, entries, join10(absBrain, "entries.jsonl"));
+    const absBrain = isAbsolute(dataDir2) ? dataDir2 : join11(cwd, dataDir2);
+    const fresh = newEntriesSinceHead(git2, cwd, entries, join11(absBrain, "entries.jsonl"));
     let autoHandoff = false;
     if (fresh.length > 0 && !fresh.some(isHandoff2)) {
       try {
@@ -16513,8 +16643,8 @@ function runSessionEnd(opts = {}) {
 }
 
 // src/init.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync4 } from "node:fs";
-import { basename as basename3, join as join11 } from "node:path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync7, readFileSync as readFileSync10, writeFileSync as writeFileSync5 } from "node:fs";
+import { basename as basename3, join as join12 } from "node:path";
 var AGENTS_MARKER = "<!-- vfkb:how-we-track-work -->";
 var BOOTSTRAP_REL = ".vfkb/bin/bootstrap.mjs";
 function mcpConfig(project) {
@@ -16599,15 +16729,15 @@ If it is unset, a session-start banner tells you; run \`vfkb doctor\` to check.
 `;
 }
 function readJson(path) {
-  if (!existsSync7(path)) return void 0;
+  if (!existsSync8(path)) return void 0;
   try {
-    return JSON.parse(readFileSync9(path, "utf8"));
+    return JSON.parse(readFileSync10(path, "utf8"));
   } catch {
     return void 0;
   }
 }
 function writeJson(path, value) {
-  writeFileSync4(path, JSON.stringify(value, null, 2) + "\n");
+  writeFileSync5(path, JSON.stringify(value, null, 2) + "\n");
 }
 function eventHasVfkb(arr2) {
   return JSON.stringify(arr2 ?? "").includes(BOOTSTRAP_REL);
@@ -16615,32 +16745,32 @@ function eventHasVfkb(arr2) {
 function initProject(root, opts = {}) {
   const project = opts.project || basename3(root) || "project";
   const changes = [];
-  const brainDir2 = join11(root, ".vfkb");
-  const entries = join11(brainDir2, "entries.jsonl");
-  if (!existsSync7(entries)) {
-    mkdirSync6(brainDir2, { recursive: true });
-    writeFileSync4(entries, "");
+  const brainDir2 = join12(root, ".vfkb");
+  const entries = join12(brainDir2, "entries.jsonl");
+  if (!existsSync8(entries)) {
+    mkdirSync7(brainDir2, { recursive: true });
+    writeFileSync5(entries, "");
     changes.push({ path: ".vfkb/entries.jsonl", action: "created" });
   } else {
     changes.push({ path: ".vfkb/entries.jsonl", action: "skipped" });
   }
   changes.push({ path: ".vfkb/manifest.json", action: writeManifest(brainDir2) });
   {
-    const binDir = join11(brainDir2, "bin");
-    const path = join11(binDir, "bootstrap.mjs");
-    const existed = existsSync7(path);
-    const same = existed && readFileSync9(path, "utf8") === BOOTSTRAP_SRC;
+    const binDir = join12(brainDir2, "bin");
+    const path = join12(binDir, "bootstrap.mjs");
+    const existed = existsSync8(path);
+    const same = existed && readFileSync10(path, "utf8") === BOOTSTRAP_SRC;
     if (same) {
       changes.push({ path: BOOTSTRAP_REL, action: "skipped" });
     } else {
-      mkdirSync6(binDir, { recursive: true });
-      writeFileSync4(path, BOOTSTRAP_SRC);
+      mkdirSync7(binDir, { recursive: true });
+      writeFileSync5(path, BOOTSTRAP_SRC);
       changes.push({ path: BOOTSTRAP_REL, action: existed ? "updated" : "created" });
     }
   }
   {
-    const path = join11(root, ".mcp.json");
-    const existed = existsSync7(path);
+    const path = join12(root, ".mcp.json");
+    const existed = existsSync8(path);
     const cfg = readJson(path) ?? {};
     cfg.mcpServers = cfg.mcpServers ?? {};
     const desired = mcpConfig(project);
@@ -16654,9 +16784,9 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const dir = join11(root, ".claude");
-    const path = join11(dir, "settings.json");
-    const existed = existsSync7(path);
+    const dir = join12(root, ".claude");
+    const path = join12(dir, "settings.json");
+    const existed = existsSync8(path);
     const cfg = readJson(path) ?? {};
     cfg.hooks = cfg.hooks ?? {};
     const want = settingsHooks(project);
@@ -16671,7 +16801,7 @@ function initProject(root, opts = {}) {
       touched = true;
     }
     if (touched) {
-      mkdirSync6(dir, { recursive: true });
+      mkdirSync7(dir, { recursive: true });
       writeJson(path, cfg);
       changes.push({ path: ".claude/settings.json", action: existed ? "updated" : "created" });
     } else {
@@ -16679,10 +16809,10 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const path = join11(root, ".gitignore");
-    const lines = [".vfkb/index-meta.json", ".vfkb/.sessions/", ".vfkb/.signals/"];
-    const existed = existsSync7(path);
-    const cur = existed ? readFileSync9(path, "utf8") : "";
+    const path = join12(root, ".gitignore");
+    const lines = [".vfkb/index-meta.json", ".vfkb/.sessions/", ".vfkb/.signals/", ".vfkb/.journal/"];
+    const existed = existsSync8(path);
+    const cur = existed ? readFileSync10(path, "utf8") : "";
     const missing = lines.filter((l) => !cur.split(/\r?\n/).includes(l));
     if (missing.length === 0) {
       changes.push({ path: ".gitignore", action: "skipped" });
@@ -16691,15 +16821,15 @@ function initProject(root, opts = {}) {
       const block = `${prefix}${cur ? "\n" : ""}# vfkb \u2014 derived/operational (only .vfkb/entries.jsonl is committed)
 ${missing.join("\n")}
 `;
-      writeFileSync4(path, cur + block);
+      writeFileSync5(path, cur + block);
       changes.push({ path: ".gitignore", action: existed ? "updated" : "created" });
     }
   }
   {
-    const path = join11(root, ".gitattributes");
+    const path = join12(root, ".gitattributes");
     const line = ".vfkb/entries.jsonl merge=union";
-    const existed = existsSync7(path);
-    const cur = existed ? readFileSync9(path, "utf8") : "";
+    const existed = existsSync8(path);
+    const cur = existed ? readFileSync10(path, "utf8") : "";
     if (cur.split(/\r?\n/).includes(line)) {
       changes.push({ path: ".gitattributes", action: "skipped" });
     } else {
@@ -16707,19 +16837,19 @@ ${missing.join("\n")}
       const block = `${prefix}${cur ? "\n" : ""}# vfkb \u2014 the append-only brain unions across branches (ADR-0041)
 ${line}
 `;
-      writeFileSync4(path, cur + block);
+      writeFileSync5(path, cur + block);
       changes.push({ path: ".gitattributes", action: existed ? "updated" : "created" });
     }
   }
   {
-    const path = join11(root, "AGENTS.md");
-    const existed = existsSync7(path);
-    const cur = existed ? readFileSync9(path, "utf8") : "";
+    const path = join12(root, "AGENTS.md");
+    const existed = existsSync8(path);
+    const cur = existed ? readFileSync10(path, "utf8") : "";
     if (cur.includes(AGENTS_MARKER)) {
       changes.push({ path: "AGENTS.md", action: "skipped" });
     } else {
-      const sep = cur && !cur.endsWith("\n") ? "\n\n" : cur ? "\n" : "";
-      writeFileSync4(path, cur + sep + agentsSnippet(project));
+      const sep2 = cur && !cur.endsWith("\n") ? "\n\n" : cur ? "\n" : "";
+      writeFileSync5(path, cur + sep2 + agentsSnippet(project));
       changes.push({ path: "AGENTS.md", action: existed ? "updated" : "created" });
     }
   }
@@ -16738,13 +16868,13 @@ function approvalNotice(project) {
 }
 
 // src/doctor.ts
-import { execFileSync as execFileSync5 } from "node:child_process";
-import { existsSync as existsSync8, readFileSync as readFileSync10, writeFileSync as writeFileSync5, mkdirSync as mkdirSync7 } from "node:fs";
-import { join as join12, dirname as dirname4 } from "node:path";
+import { execFileSync as execFileSync6 } from "node:child_process";
+import { existsSync as existsSync9, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8 } from "node:fs";
+import { join as join13, dirname as dirname5 } from "node:path";
 function readJson2(path) {
-  if (!existsSync8(path)) return void 0;
+  if (!existsSync9(path)) return void 0;
   try {
-    return JSON.parse(readFileSync10(path, "utf8"));
+    return JSON.parse(readFileSync11(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -16777,16 +16907,16 @@ function detectPluginWiring(settings, root, pluginsFile) {
 }
 function claudeConfigDir(env) {
   if (env.CLAUDE_CONFIG_DIR) return env.CLAUDE_CONFIG_DIR;
-  return env.HOME ? join12(env.HOME, ".claude") : void 0;
+  return env.HOME ? join13(env.HOME, ".claude") : void 0;
 }
 function localHeadSha(cloneDir) {
-  const head = readFileMaybe(join12(cloneDir, ".git", "HEAD"));
+  const head = readFileMaybe(join13(cloneDir, ".git", "HEAD"));
   if (!head) return void 0;
   const ref = head.trim().match(/^ref:\s*(\S+)$/)?.[1];
   if (!ref) return /^[0-9a-f]{40}$/.test(head.trim()) ? head.trim() : void 0;
-  const loose = readFileMaybe(join12(cloneDir, ".git", ...ref.split("/")));
+  const loose = readFileMaybe(join13(cloneDir, ".git", ...ref.split("/")));
   if (loose) return loose.trim();
-  const packed = readFileMaybe(join12(cloneDir, ".git", "packed-refs"));
+  const packed = readFileMaybe(join13(cloneDir, ".git", "packed-refs"));
   for (const line of packed?.split("\n") ?? []) {
     const [sha, name] = line.trim().split(/\s+/);
     if (name === ref) return sha;
@@ -16795,12 +16925,12 @@ function localHeadSha(cloneDir) {
 }
 function readFileMaybe(path) {
   try {
-    return readFileSync10(path, "utf8");
+    return readFileSync11(path, "utf8");
   } catch {
     return void 0;
   }
 }
-var realGit2 = (args, cwd) => execFileSync5("git", args, {
+var realGit2 = (args, cwd) => execFileSync6("git", args, {
   cwd,
   encoding: "utf8",
   timeout: 5e3,
@@ -16809,14 +16939,14 @@ var realGit2 = (args, cwd) => execFileSync5("git", args, {
 });
 function checkCurrency(plugin, opts, configDir) {
   const marketplace = plugin.key.split("@")[1];
-  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join12(configDir, "plugins", "known_marketplaces.json") : void 0);
+  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join13(configDir, "plugins", "known_marketplaces.json") : void 0);
   const entry = kmFile ? readJson2(kmFile)?.[marketplace] : void 0;
   const skip = (detail) => ({ status: "skip", detail });
   if (!entry) return skip(`no marketplace "${marketplace}" in ${kmFile ?? "the plugin registry"} \u2014 cannot check currency`);
   if (entry.source?.source !== "github") {
     return skip(`marketplace "${marketplace}" is a ${entry.source?.source ?? "unknown"}-source \u2014 no clone to compare`);
   }
-  if (!entry.installLocation || !existsSync8(join12(entry.installLocation, ".git"))) {
+  if (!entry.installLocation || !existsSync9(join13(entry.installLocation, ".git"))) {
     return skip(`marketplace clone not found at ${entry.installLocation ?? "(unset installLocation)"}`);
   }
   const clone2 = entry.installLocation;
@@ -16847,7 +16977,7 @@ var NPM_REGISTRY_URL = "https://registry.npmjs.org/@viloforge%2Fvfkb/latest";
 var NPM_CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var NPM_CACHE_FILE = "npm-currency-cache.json";
 function npmCacheFilePath(opts) {
-  return opts.cacheFile ?? join12(opts.brainDir, ".signals", NPM_CACHE_FILE);
+  return opts.cacheFile ?? join13(opts.brainDir, ".signals", NPM_CACHE_FILE);
 }
 function readNpmCache(path) {
   const raw = readJson2(path);
@@ -16857,8 +16987,8 @@ function readNpmCache(path) {
 }
 function writeNpmCache(path, entry) {
   try {
-    mkdirSync7(dirname4(path), { recursive: true });
-    writeFileSync5(path, JSON.stringify(entry));
+    mkdirSync8(dirname5(path), { recursive: true });
+    writeFileSync6(path, JSON.stringify(entry));
   } catch {
   }
 }
@@ -16940,9 +17070,9 @@ function runDoctor(opts) {
   const checks = [];
   const add = (name, status, detail) => checks.push({ name, status, detail });
   add("engine", "ok", `version ${ENGINE_VERSION} \xB7 commit ${ENGINE_COMMIT} \xB7 schema v${SCHEMA_VERSION}`);
-  const settings = readJson2(join12(root, ".claude", "settings.json"));
+  const settings = readJson2(join13(root, ".claude", "settings.json"));
   const configDir = claudeConfigDir(env);
-  const pluginsFile = opts.pluginsFile ?? (configDir ? join12(configDir, "plugins", "installed_plugins.json") : void 0);
+  const pluginsFile = opts.pluginsFile ?? (configDir ? join13(configDir, "plugins", "installed_plugins.json") : void 0);
   const plugin = detectPluginWiring(settings, root, pluginsFile);
   const mf = readManifest(brainDir2);
   if (!mf) {
@@ -16963,6 +17093,41 @@ function runDoctor(opts) {
       add("engine drift", "warn", `brain last stamped by engine ${mf.engine_commit}, running ${ENGINE_COMMIT} \u2014 possible dual-clone drift`);
     }
   }
+  {
+    const js = journalStatus(brainDir2);
+    if (js.suppressedInEntries > 0) {
+      add(
+        "journal",
+        "warn",
+        `${js.suppressedInEntries} suppressed (purged) pair(s) still present in entries.jsonl \u2014 a redaction is half-done: remove the line(s) from entries.jsonl too (ADR-0064 \xA74)`
+      );
+    } else if (js.restorable > 0) {
+      add(
+        "journal",
+        "warn",
+        `${js.restorable} journaled entr${js.restorable === 1 ? "y" : "ies"} missing from entries.jsonl \u2014 the next session-start restores them (or run \`vfkb hook session-start\` after checking why they vanished; recovery runs ONLY there)`
+      );
+    } else {
+      add("journal", "ok", `${js.walLines} line(s) in the uncommitted window, nothing to restore`);
+    }
+    if (existsSync9(join13(brainDir2, ".journal"))) {
+      try {
+        execFileSync6("git", ["-C", root, "check-ignore", "-q", join13(brainDir2, ".journal", "wal.jsonl")], {
+          stdio: "ignore"
+        });
+      } catch {
+        try {
+          execFileSync6("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], { stdio: "ignore" });
+          add(
+            "journal gitignore",
+            "warn",
+            `.vfkb/.journal/ exists but is NOT gitignored \u2014 add '.vfkb/.journal/' to .gitignore before the next brain commit (a committed journal defeats its purpose and the ADR-0064 \xA74 redaction)`
+          );
+        } catch {
+        }
+      }
+    }
+  }
   const home = env.VFKB_BUNDLE_DIR || env.VFKB_HOME;
   if (!home) {
     if (plugin) {
@@ -16970,7 +17135,7 @@ function runDoctor(opts) {
     } else {
       add("$VFKB_BUNDLE_DIR", "warn", "unset \u2014 set it once per machine to the vfkb bundles dir (so the wiring resolves the engine)");
     }
-  } else if (!existsSync8(join12(home, "vfkb.mjs")) || !existsSync8(join12(home, "vfkb-mcp.mjs"))) {
+  } else if (!existsSync9(join13(home, "vfkb.mjs")) || !existsSync9(join13(home, "vfkb-mcp.mjs"))) {
     add("$VFKB_BUNDLE_DIR", "warn", `set to ${home} but vfkb.mjs / vfkb-mcp.mjs not found there (run \`npm run build:bundles\`)`);
   } else {
     add("$VFKB_BUNDLE_DIR", "ok", home);
@@ -16981,7 +17146,7 @@ function runDoctor(opts) {
   if (env.VFKB_HOME && !env.VFKB_BUNDLE_DIR) {
     add("env (deprecated)", "warn", "VFKB_HOME is a deprecated alias \u2014 rename it to VFKB_BUNDLE_DIR");
   }
-  const mcp = readJson2(join12(root, ".mcp.json"));
+  const mcp = readJson2(join13(root, ".mcp.json"));
   const mcpProject = mcp?.mcpServers?.vfkb?.env?.VFKB_PROJECT;
   const mcpPresent = Boolean(mcp?.mcpServers?.vfkb);
   if (plugin && mcpPresent) {
@@ -17011,7 +17176,7 @@ function runDoctor(opts) {
   if (!plugin && have.length > 0 && hooksBlob.includes("bootstrap.mjs") && !hooksBlob.includes("CLAUDE_PROJECT_DIR")) {
     add("hooks anchor", "warn", "vfkb hooks use a CWD-relative bootstrap path \u2014 they break when the session cd's out of the repo root; re-run `vfkb init` to anchor them to $CLAUDE_PROJECT_DIR (issue #22)");
   }
-  if (existsSync8(join12(root, ".vfkb", "bin", "bootstrap.mjs"))) {
+  if (existsSync9(join13(root, ".vfkb", "bin", "bootstrap.mjs"))) {
     add("bootstrap", "ok", ".vfkb/bin/bootstrap.mjs present");
   } else if (!plugin && (mcpPresent || have.length > 0)) {
     add("bootstrap", "warn", "wiring present but .vfkb/bin/bootstrap.mjs is missing \u2014 run `vfkb init`");
@@ -17051,9 +17216,9 @@ function renderDoctor(report) {
 }
 
 // src/import.ts
-import { existsSync as existsSync9, readdirSync as readdirSync3, readFileSync as readFileSync11, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync10, readdirSync as readdirSync3, readFileSync as readFileSync12, statSync as statSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename4, extname, join as join13 } from "node:path";
+import { basename as basename4, extname, join as join14 } from "node:path";
 var MYKB_FILES = {
   "decisions.jsonl": "decision",
   "facts.jsonl": "fact",
@@ -17078,16 +17243,16 @@ function mykbText(type, e) {
   return parts.filter(Boolean).join("\n\n");
 }
 function resolveMykbArea(nameOrDir) {
-  if (existsSync9(nameOrDir) && statSync3(nameOrDir).isDirectory()) return nameOrDir;
-  return join13(homedir2(), ".mykb", "areas", nameOrDir);
+  if (existsSync10(nameOrDir) && statSync3(nameOrDir).isDirectory()) return nameOrDir;
+  return join14(homedir2(), ".mykb", "areas", nameOrDir);
 }
 function fromMykb(areaDir) {
-  if (!existsSync9(areaDir)) throw new Error(`mykb area not found: ${areaDir}`);
+  if (!existsSync10(areaDir)) throw new Error(`mykb area not found: ${areaDir}`);
   const out = [];
   for (const [file2, type] of Object.entries(MYKB_FILES)) {
-    const path = join13(areaDir, file2);
-    if (!existsSync9(path)) continue;
-    for (const line of readFileSync11(path, "utf8").split(/\r?\n/)) {
+    const path = join14(areaDir, file2);
+    if (!existsSync10(path)) continue;
+    for (const line of readFileSync12(path, "utf8").split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       let e;
@@ -17106,24 +17271,24 @@ function fromMykb(areaDir) {
 }
 function mdTitle(path) {
   try {
-    const heading = readFileSync11(path, "utf8").split(/\r?\n/).find((l) => l.startsWith("# "));
+    const heading = readFileSync12(path, "utf8").split(/\r?\n/).find((l) => l.startsWith("# "));
     if (heading) return heading.replace(/^#\s+/, "").trim();
   } catch {
   }
   return basename4(path, extname(path));
 }
 function fromAdr(dir = "docs/adr") {
-  if (!existsSync9(dir)) throw new Error(`ADR dir not found: ${dir}`);
+  if (!existsSync10(dir)) throw new Error(`ADR dir not found: ${dir}`);
   const out = [];
   for (const file2 of readdirSync3(dir).sort()) {
     if (extname(file2) !== ".md" || /readme/i.test(file2)) continue;
-    const rel = join13(dir, file2);
+    const rel = join14(dir, file2);
     out.push(stamp("link", `${mdTitle(rel)} \u2192 ${rel}`, ["adr"], false));
   }
   return out;
 }
 function fromMarkdown(file2) {
-  if (!existsSync9(file2)) throw new Error(`markdown file not found: ${file2}`);
+  if (!existsSync10(file2)) throw new Error(`markdown file not found: ${file2}`);
   return [stamp("link", `${mdTitle(file2)} \u2192 ${file2}`, ["doc"], false)];
 }
 
@@ -17202,13 +17367,13 @@ var ENTRY_TYPES = ["fact", "decision", "gotcha", "pattern", "link"];
 var DECISION_STATUSES = ["proposed", "accepted", "deprecated", "superseded"];
 
 // src/cli.ts
-import { readFileSync as readFileSync12 } from "node:fs";
+import { readFileSync as readFileSync13 } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname as dirname5, join as join14 } from "node:path";
+import { dirname as dirname6, join as join15 } from "node:path";
 function packageVersion() {
   try {
-    const here = dirname5(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync12(join14(here, "..", "package.json"), "utf8"));
+    const here = dirname6(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync13(join15(here, "..", "package.json"), "utf8"));
     return pkg.version || ENGINE_VERSION;
   } catch {
     return ENGINE_VERSION;
@@ -17249,7 +17414,7 @@ ${USAGE}`);
     throw err;
   }
 }
-var USAGE = "usage: vfkb <add|broadcast|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n";
+var USAGE = "usage: vfkb <add|broadcast|journal purge|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n";
 async function dispatch() {
   const [cmd, sub, ...rest] = process.argv.slice(2);
   if (cmd === "--help" || cmd === "-h" || cmd === "help") {
@@ -17640,7 +17805,18 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
       const project = defaultProject();
       const lim = flag(rest, "limit");
       const session = SessionState.load(effectiveSessionId(payloadId));
-      const additionalContext = rest.includes("--naive") ? renderNaiveDump(project, void 0, lim ? Number(lim) : void 0) : renderResume(project, session);
+      let restoreNote = "";
+      try {
+        const rec = withExclusive(() => recoverFromJournal(brainDir()));
+        if (rec.restored > 0) {
+          writeMeta();
+          restoreNote = `\u26A0 vfkb restored ${rec.restored} journaled entr${rec.restored === 1 ? "y" : "ies"} lost from entries.jsonl \u2014 likely a destructive git operation on uncommitted brain state (ADR-0064). Verify with kb_list and commit the brain on your next topic branch.
+
+`;
+        }
+      } catch {
+      }
+      const additionalContext = restoreNote + (rest.includes("--naive") ? renderNaiveDump(project, void 0, lim ? Number(lim) : void 0) : renderResume(project, session));
       session.save();
       process.stdout.write(
         JSON.stringify({
@@ -17755,6 +17931,23 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     const p = parseArgs("save", argsOf(sub, rest), {});
     const r = save(p.positionals.join(" ").trim() || void 0);
     process.stdout.write((r.committed ? "committed: " : "no-op: ") + r.message + "\n");
+    return;
+  }
+  if (cmd === "journal") {
+    if (sub !== "purge") {
+      throw new UsageError("usage: vfkb journal purge (--id <id> | --all)");
+    }
+    const p = parseArgs("journal purge", rest, { id: "value", all: "boolean" });
+    const id = flagValue(p, "id");
+    const all = p.flags.has("all");
+    if (!!id === all) {
+      throw new UsageError("usage: vfkb journal purge (--id <id> | --all)");
+    }
+    const r = withExclusive(() => purgeJournal(brainDir(), { id, all }));
+    process.stdout.write(
+      r.purged > 0 ? `purged ${r.purged} journal line(s); pair(s) suppressed \u2014 recovery will never restore them (ADR-0064 \xA74). Remember: a redaction of entries.jsonl is complete only with this purge.
+` : "no matching journal lines\n"
+    );
     return;
   }
   process.stderr.write(USAGE);
