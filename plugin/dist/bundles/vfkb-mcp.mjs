@@ -3648,49 +3648,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        relative2 = parse3(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3698,7 +3698,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -30956,7 +30956,7 @@ var StdioServerTransport = class {
 import { randomBytes as randomBytes2 } from "node:crypto";
 
 // src/storage.ts
-import { basename, dirname, join as join3, resolve } from "node:path";
+import { basename, dirname as dirname2, join as join4, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 
@@ -31154,6 +31154,23 @@ function storageBackend() {
   return current;
 }
 
+// src/journal.ts
+import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname, join as join3, relative, sep } from "node:path";
+var walPath = (brain) => join3(brain, ".journal", "wal.jsonl");
+function journalAppend(brain, rec) {
+  if (process.env.VFKB_NO_JOURNAL) return;
+  try {
+    mkdirSync3(join3(brain, ".journal"), { recursive: true });
+    appendFileSync2(walPath(brain), JSON.stringify(rec) + "\n", "utf8");
+  } catch (err) {
+    process.stderr.write(
+      `vfkb: journal mirror failed (primary append proceeds unprotected): ${err.message}
+`
+    );
+  }
+}
+
 // src/validate.ts
 var ROLE = external_exports.enum(["architect", "pm", "executor", "judge", "human", "init", "import"]);
 var PROV_STATUS = external_exports.enum(["verified", "unverified", "stale", "expired"]);
@@ -31205,7 +31222,7 @@ function isTombstone(r) {
   return r.deleted === true;
 }
 function brainDir() {
-  return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join3(homedir(), ".vfkb");
+  return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join4(homedir(), ".vfkb");
 }
 function defaultProject() {
   const raw = (() => {
@@ -31214,7 +31231,7 @@ function defaultProject() {
     if (explicit) {
       const abs = resolve(explicit);
       const name = basename(abs);
-      return name.startsWith(".") ? basename(dirname(abs)) : name;
+      return name.startsWith(".") ? basename(dirname2(abs)) : name;
     }
     const root = process.env.CLAUDE_PROJECT_DIR;
     if (root) return basename(resolve(root));
@@ -31223,7 +31240,9 @@ function defaultProject() {
   return raw.replace(/["<>&]/g, "") || "spike";
 }
 function appendRecord(rec) {
-  storageBackend().append(rec);
+  const be = storageBackend();
+  if (be.name === "jsonl-fs") journalAppend(be.location(), rec);
+  be.append(rec);
   writeMeta();
 }
 function withExclusive(fn) {
@@ -31387,15 +31406,15 @@ function assertNoSecrets(text2) {
 }
 
 // src/counters.ts
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, existsSync as existsSync2 } from "node:fs";
-import { join as join4 } from "node:path";
+import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync4, readFileSync as readFileSync4, existsSync as existsSync3 } from "node:fs";
+import { join as join5 } from "node:path";
 function signalsFile() {
-  return join4(brainDir(), ".signals", "counters.jsonl");
+  return join5(brainDir(), ".signals", "counters.jsonl");
 }
 function readSignals() {
   const f = signalsFile();
-  if (!existsSync2(f)) return [];
-  return readFileSync3(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+  if (!existsSync3(f)) return [];
+  return readFileSync4(f, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
 }
 function tally(entryId, signals = readSignals()) {
   let helpful = 0;
@@ -31988,7 +32007,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
+var ENGINE_VERSION = true ? "0.3.0" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;
