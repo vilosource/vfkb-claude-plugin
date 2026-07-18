@@ -30954,6 +30954,9 @@ var StdioServerTransport = class {
 
 // src/engine.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
+import { existsSync as existsSync4 } from "node:fs";
+import { dirname as dirname3, join as join6, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // src/storage.ts
 import { basename, dirname as dirname2, join as join4, resolve } from "node:path";
@@ -31775,6 +31778,16 @@ function latestCrossRepo(all = readAll(), today = nowIso().slice(0, 10), superse
   }
   return latest;
 }
+var CLI_FACES = ["vfkb.mjs", "cli.js", "cli.mjs"];
+function resolveCliFace(engineDir) {
+  return CLI_FACES.map((f) => join6(engineDir, f)).find((p) => existsSync4(p));
+}
+function renderCaptureFallback(engineDir = dirname3(fileURLToPath(import.meta.url))) {
+  const cli = resolveCliFace(engineDir);
+  const target = cli ? `node "${cli}"` : `node <vfkb CLI not found beside the engine at ${engineDir} \u2014 locate vfkb.mjs or cli.js>`;
+  return `capture fallback: if the kb_* tools error or disappear, the CLI still writes (same engine, separate process; journaled per ADR-0064) \u2014
+  VFKB_DATA_DIR="${resolvePath(brainDir())}" ${target} add <type> "\u2026" [--tags a,b] [--why "\u2026"]`;
+}
 function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
@@ -31813,6 +31826,7 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 `;
   }
   body += renderContextMap() + "\n\n";
+  body += renderCaptureFallback() + "\n\n";
   const kept = [];
   let keptLen = 0;
   let dropped = 0;
@@ -32007,7 +32021,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.3.0" : ownPackageVersion();
+var ENGINE_VERSION = true ? "0.4.1" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;
