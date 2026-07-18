@@ -1,10 +1,10 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.8.0",
+  "pluginVersion": "0.9.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-17T18:28:16.247Z",
+  "generated": "2026-07-18T01:24:20.856Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -25,7 +25,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE",
+          "t3": "DONE The fact 'SMOKE TRIAL NOTE 1-wired' has been recorded in the vfkb knowledge base with",
           "err": ""
         },
         {
@@ -47,7 +47,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE Fact 'SMOKE TRIAL NOTE 3-wired' recorded in vfkb with ID 144c110bfa83.",
+          "t3": "DONE Fact recorded as `ddf19ca3e41a [fact agent/unverified] SMOKE TRIAL NOTE 3-wired`",
           "err": ""
         }
       ]
@@ -69,7 +69,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need permission to write to the vfkb entries file. Please approve the write operation to",
+          "t3": "Permission needed to write to the vfkb entries.jsonl file. Please approve the write permis",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "The kb_add tool doesn't appear to be available in the deferred tools list, and I need perm",
+          "t3": "FAILED — kb_add MCP tool is not available in the deferred tools list, and the Write tool r",
           "err": ""
         },
         {
@@ -91,7 +91,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need your permission to write to the vfkb entries file. Please approve the write permiss",
+          "t3": "FAILED — The kb_add MCP tool is not available in your environment, and I don't have permis",
           "err": ""
         }
       ]

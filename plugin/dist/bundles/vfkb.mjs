@@ -15404,23 +15404,46 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 `;
   }
   body += renderContextMap() + "\n\n";
+  const kept = [];
+  let keptLen = 0;
   let dropped = 0;
+  const fixedLen = () => header.length + body.length + footer.length;
   for (const e of injectable) {
     if (constitutionalIds.has(e.id)) continue;
     if (handoff && e.id === handoff.id) continue;
     if (crossRepo && e.id === crossRepo.id) continue;
     const line = `- [${e.type} ${trustGlyph(e)}] ${e.text}
 `;
-    if (header.length + body.length + line.length + footer.length > budget) {
+    if (fixedLen() + keptLen + line.length > budget) {
       dropped++;
       continue;
     }
-    body += line;
+    kept.push(line);
+    keptLen += line.length;
   }
   if (dropped > 0) {
-    const note = `<!-- ${dropped} lower-ranked entries omitted for the ${budget}-char budget -->
+    const note = () => `(+ ${dropped} lower-ranked entries omitted for the ${budget}-char budget \u2014 kb_search / kb_list pulls them)
 `;
-    if (header.length + body.length + note.length + footer.length <= budget) body += note;
+    const evicted = [];
+    while (kept.length > 0 && fixedLen() + keptLen + note().length > budget) {
+      const line = kept.pop();
+      keptLen -= line.length;
+      evicted.push(line);
+      dropped++;
+    }
+    if (fixedLen() + keptLen + note().length <= budget) {
+      body += kept.join("") + note();
+    } else {
+      while (evicted.length > 0) {
+        const line = evicted.pop();
+        kept.push(line);
+        keptLen += line.length;
+        dropped--;
+      }
+      body += kept.join("");
+    }
+  } else {
+    body += kept.join("");
   }
   return header + body + footer;
 }
@@ -15925,7 +15948,7 @@ import { dirname as dirname3, join as join6 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.2.3" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "bd11887" : "dev";
+var ENGINE_COMMIT = true ? "a710bc7" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {

@@ -1,10 +1,10 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.8.0",
+  "pluginVersion": "0.9.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-17T18:19:45.925Z",
+  "generated": "2026-07-18T01:15:49.191Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -19,7 +19,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — Handoff recorded 2026-07-17 18:16Z: ingest refactor shipped and verified end-to-end. **Moved s",
+          "out": "--- ## **Last done** Ingest refactor shipped and verified end-to-end (handoff recorded 2026-07-18 01:12Z). Sha",
           "err": ""
         },
         {
@@ -28,7 +28,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "--- **Last done** (2026-07-17): Ingest refactor shipped and verified end-to-end. **Moved since**: One commit a",
+          "out": "## Session-start brief **Last done** Ingest refactor shipped and verified end-to-end (2026-07-18 01:14Z). Shar",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Step 5: The brief** **Last done:** Ingest refactor shipped and verified end-to-end, as of 2026-07-17 18:18Z.",
+          "out": "**Last done** Ingest refactor shipped and verified end-to-end (handoff 2026-07-18 01:14Z). **Moved since** 4e6",
           "err": ""
         }
       ]
@@ -54,7 +54,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Based on the vfkb records and git history, here is the session-start brief: --- **Last done**: No handoff reco",
+          "out": "Based on my review of the project's recorded continuity, here's your session-start briefing: **Last done** Ses",
           "err": ""
         },
         {
@@ -63,7 +63,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "--- ## Session-start brief **Last done** No handoff recorded in vfkb. Project appears to be freshly initialize",
+          "out": "**Last done** — UNKNOWN. No handoff entry recorded in vfkb; only one gotcha captured at 2026-07-18 01:14Z: \"sh",
           "err": ""
         },
         {
@@ -72,7 +72,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — No handoff recorded in .vfkb/entries.jsonl. Project state: one commit (875b91d, \"chore: scaffo",
+          "out": "**Last done** — No handoff recorded. Project initialized with scaffold commit d3f2602 (2026-07-18). **Moved si",
           "err": ""
         }
       ]

@@ -31794,23 +31794,46 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 `;
   }
   body += renderContextMap() + "\n\n";
+  const kept = [];
+  let keptLen = 0;
   let dropped = 0;
+  const fixedLen = () => header.length + body.length + footer.length;
   for (const e of injectable) {
     if (constitutionalIds.has(e.id)) continue;
     if (handoff && e.id === handoff.id) continue;
     if (crossRepo && e.id === crossRepo.id) continue;
     const line2 = `- [${e.type} ${trustGlyph(e)}] ${e.text}
 `;
-    if (header.length + body.length + line2.length + footer.length > budget) {
+    if (fixedLen() + keptLen + line2.length > budget) {
       dropped++;
       continue;
     }
-    body += line2;
+    kept.push(line2);
+    keptLen += line2.length;
   }
   if (dropped > 0) {
-    const note = `<!-- ${dropped} lower-ranked entries omitted for the ${budget}-char budget -->
+    const note = () => `(+ ${dropped} lower-ranked entries omitted for the ${budget}-char budget \u2014 kb_search / kb_list pulls them)
 `;
-    if (header.length + body.length + note.length + footer.length <= budget) body += note;
+    const evicted = [];
+    while (kept.length > 0 && fixedLen() + keptLen + note().length > budget) {
+      const line2 = kept.pop();
+      keptLen -= line2.length;
+      evicted.push(line2);
+      dropped++;
+    }
+    if (fixedLen() + keptLen + note().length <= budget) {
+      body += kept.join("") + note();
+    } else {
+      while (evicted.length > 0) {
+        const line2 = evicted.pop();
+        kept.push(line2);
+        keptLen += line2.length;
+        dropped--;
+      }
+      body += kept.join("");
+    }
+  } else {
+    body += kept.join("");
   }
   return header + body + footer;
 }
