@@ -1,10 +1,10 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.10.0",
+  "pluginVersion": "0.11.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-18T07:35:29.868Z",
+  "generated": "2026-07-18T20:14:33.066Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -69,7 +69,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — the kb_add MCP tool is not available, and I don't have permission to write direct",
+          "t3": "FAILED — Permission denied to write to `.vfkb/entries.jsonl`. The file exists and has the ",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need permission to write to the knowledge base file. Please approve the write operation ",
+          "t3": "Waiting for permission to write to the vfkb entries file. Please approve the write operati",
           "err": ""
         },
         {
@@ -91,7 +91,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need permission to write to the vfkb entries file. Once you approve, I can record the fa",
+          "t3": "I found the vfkb knowledge base at `.vfkb/entries.jsonl`. It's a JSONL (JSON Lines) format",
           "err": ""
         }
       ]

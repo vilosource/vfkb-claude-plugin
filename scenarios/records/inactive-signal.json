@@ -1,10 +1,10 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.10.0",
+  "pluginVersion": "0.11.0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-18T07:36:35.200Z",
+  "generated": "2026-07-18T20:02:33.410Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -21,13 +21,13 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "out": "(1) SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
           "err": ""
         }
       ]
