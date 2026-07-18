@@ -48,23 +48,41 @@ re-vendoring — you cannot fix engine logic by editing files here.
 
 Releases are **hand-cut** (no release-please here — that's the vfkb *engine/npm* repo). The flow:
 bump `plugin/.claude-plugin/plugin.json` `version` → **re-pin the version-bound L4 records** (metered,
-one at a time) → deterministic gates green → PR → merge → **tag** with `claude plugin tag plugin --push`
-(creates `vfkb--v{version}`, ADR-0060). **Bump-and-tag is one atomic step** — a version that ships
-without its `vfkb--v{version}` tag is a release defect (it leaves "the previous release" unresolvable
-and lets features drift onto a shipped version, as happened to `0.5.0`). All versions `v0.1.0`–`v0.5.0`
-are tagged.
+one at a time) → deterministic gates green → PR → merge. **Bump-and-tag is one atomic step**
+(ADR-0060), and the tag half is now **automated**: `release-tag.yml` re-runs the deterministic gates
+on every `main` push and creates the annotated `vfkb--v{version}` tag at that commit if the version
+is untagged (manual `claude plugin tag plugin --push` is only the fallback if that workflow is red —
+verify the tag actually landed either way). A version that ships without its tag is a release defect
+(it leaves "the previous release" unresolvable and lets features drift onto a shipped version, as
+happened to `0.5.0` — the version Brake and the auto-tag exist because both hand-run halves were
+once skipped).
 
 - **The release-gate CI Brake** (`scenarios/release-gate.mjs`, run by `release-gate.yml`) is
   deterministic and must be green: it fails any PR whose committed records don't match the tree, and
   enforces the delivery disclosure. The **live L4 scenarios are NOT run in CI** (they need the
   operator's Claude-Code OAuth) — their committed, version-bound records are what CI verifies.
+- **Release PRs need no approval hold** (operator ruling 2026-07-18; vfkb brain decision
+  `872c1ff0ff90` — same rule as vfkb CLAUDE.md, adapted to this repo's chain). A release PR here
+  (re-vendor + version bump) rides the standing autonomous-PR grant: the engine changes it vendors
+  were already reviewed in the vfkb repo before landing on its `main`, and this repo's packaging /
+  evidence / version surface is enforced by the deterministic Brakes above — so do **not** hold the
+  PR for the operator and do **not** re-review the vendored engine content. Chain: PR → required
+  checks green → merge → `release-tag.yml` auto-tags `vfkb--v{version}` (**verify the tag landed on
+  origin**) → consumers pick it up via `claude plugin marketplace update` + `claude plugin update`
+  (broadcast when the release warrants it). What remains is **cadence** ("is this batch complete?")
+  plus the unchanged DoD gate: a release carrying a new user-facing capability still needs its
+  version-bound L4 records re-pinned *before* the bump — that's release content, not merge approval.
+  Report merges with the outward-publish callout: **merging to `main` IS distribution** — the
+  marketplace clone every consumer tracks is this repo.
 
 ## Delivery honesty is mandatory (ADR-0051)
 
-`DELIVERY-STATUS.json` is `delivery: "unproven"` and the README carries the disclosure string **until
-`scenarios/records/install-path.json` lands** (a DEMONSTRATED, version-bound delivery proof). The gate
-**derives** the status from that record — do **not** hand-flip `DELIVERY-STATUS.json` or drop the
-disclosure. Until then, every release note / handoff must keep stating delivery is unproven.
+`DELIVERY-STATUS.json` is **`delivery: "proven"` since 2026-07-16**: `scenarios/records/install-path.json`
+is a DEMONSTRATED, version-bound delivery proof (fresh 3/3, upgrade 3/3, contrast 0/3, through the real
+marketplace path — not `--plugin-dir`). The gate **derives** the status from that record and flips it
+back to `unproven` (re-requiring the README disclosure) if a
+release ships without re-pinning the record to the new `pluginVersion` — so do **not** hand-edit
+`DELIVERY-STATUS.json` in either direction; keep the record pinned instead.
 
 ## The L4 scenarios (`scenarios/`)
 
