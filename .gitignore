@@ -5,3 +5,4 @@ node_modules/
 .vfkb/index-meta.json
 .vfkb/.sessions/
 .vfkb/.signals/
+.vfkb/.journal/
