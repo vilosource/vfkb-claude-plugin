@@ -519,6 +519,15 @@ const CASES = [
     },
   },
   {
+    // Per-RECORD, not just per-mechanism. Without this, exempting one slug from
+    // the loop (an allowlist, an early continue) left the selftest 76/76 green —
+    // the third capability proof was covered only by the generic code path, not
+    // by an observation (review of #41, minor 1).
+    name: '#28 the THIRD capability record is bound too (inactive-signal)',
+    expect: /\[evidence\] inactive-signal: record carries no pluginTreeHash/s,
+    break: (r) => write(r, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', '0.4.0')),
+  },
+  {
     name: 'delivery claims PROVEN with no install-path record',
     expect: /\[delivery\].*claims delivery is PROVEN.*missing record/s,
     break: (r) => write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' }),
