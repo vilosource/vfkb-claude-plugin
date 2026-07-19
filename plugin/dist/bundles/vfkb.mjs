@@ -16090,8 +16090,8 @@ import { dirname as dirname5, join as join8 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.5.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "aeaa5fa" : "dev";
+var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "9921586" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16849,7 +16849,8 @@ function initProject(root, opts = {}) {
       ".vfkb/.sessions/",
       ".vfkb/.signals/",
       ".vfkb/.journal/",
-      ".vfkb/.lock"
+      ".vfkb/.lock",
+      ".vfkb/.write-probe-*"
     ];
     const HEADER = [
       "# vfkb \u2014 entries.jsonl + manifest.json (the ADR-0030 engine stamp) are committed;",
@@ -16924,7 +16925,8 @@ function approvalNotice(project) {
 
 // src/doctor.ts
 import { execFileSync as execFileSync6 } from "node:child_process";
-import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync } from "node:fs";
+import { randomBytes as randomBytes3 } from "node:crypto";
+import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync, unlinkSync as unlinkSync2 } from "node:fs";
 import { join as join14, dirname as dirname6, relative as relative3, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
 function readJson2(path) {
   if (!existsSync10(path)) return void 0;
@@ -17190,6 +17192,29 @@ function runDoctor(opts) {
     add("brain\u2194engine compat", "ok", `schema v${mf.schema_version} matches${sentinel}`);
     if (engineDrift(mf.engine_commit, runningCommit)) {
       add("engine drift", "warn", `brain last stamped by engine ${mf.engine_commit}, running ${runningCommit} \u2014 possible dual-clone drift`);
+    }
+  }
+  {
+    const probe = join14(brainDir2, `.write-probe-${process.pid}-${randomBytes3(4).toString("hex")}`);
+    const payload = `vfkb write-probe ${process.pid} ${Date.now()}`;
+    let failure;
+    try {
+      mkdirSync8(brainDir2, { recursive: true });
+      writeFileSync6(probe, payload);
+      if (readFileSync11(probe, "utf8") !== payload) failure = "wrote the probe file but read back different bytes";
+    } catch (e) {
+      failure = e.message;
+    } finally {
+      try {
+        if (existsSync10(probe)) unlinkSync2(probe);
+      } catch {
+      }
+    }
+    const SCOPE = " \u2014 scope: this is the CLI/engine/filesystem path only; it does NOT check the MCP server, so it cannot tell you whether kb_* capture is reaching the brain (ADR-0065 \xA70: a hung MCP server loses a write with no error at all)";
+    if (failure) {
+      add("write-health (filesystem)", "fail", `cannot write to ${brainDir2}: ${failure}${SCOPE}`);
+    } else {
+      add("write-health (filesystem)", "ok", `round-trip verified in ${brainDir2}${SCOPE}`);
     }
   }
   {

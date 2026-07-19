@@ -1,11 +1,11 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.11.0",
-  "pluginTreeHash": "2f5a400b9008f3b2580a0dfedc1d68c70ff7bef37d7619aeaee105013f1d60e0",
+  "pluginVersion": "0.12.0",
+  "pluginTreeHash": "5bd17f6b7b1a723fd00218869cb1c1f41dbef644af1ce2ae57af2b925d9a5a14",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-19T05:22:55.371Z",
+  "generated": "2026-07-19T13:53:23.351Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -20,7 +20,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — Ingest refactor shipped and verified end-to-end, per handoff dated 2026-07-19 05:20Z. **Moved ",
+          "out": "--- ## Session-start brief **Last done** — ingest refactor shipped and verified end-to-end (handoff recorded 2",
           "err": ""
         },
         {
@@ -29,7 +29,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — Ingest refactor shipped and verified end-to-end (handoff: 2026-07-19 05:21Z). **Moved since** ",
+          "out": "## Session-start brief **Last done** — Handoff recorded 2026-07-19 13:51Z: ingest refactor shipped and verifie",
           "err": ""
         },
         {
@@ -38,7 +38,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — Ingest refactor shipped and verified end-to-end, as of 2026-07-19 05:22Z. The single named nex",
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end, as of 2026-07-19 13:52Z. **Moved since** — On",
           "err": ""
         }
       ]
@@ -55,7 +55,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Based on my review of the vfkb continuity and git state: **Last done** No handoff is recorded in this project.",
+          "out": "**Last done** — No handoff recorded in vfkb. This project has no prior continuity logged. **Moved since** — Th",
           "err": ""
         },
         {
@@ -64,7 +64,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** — No handoff recorded in this project; previous state unknown. **Moved si",
+          "out": "Based on the checklist work: **Last done** — No handoff has been recorded yet. The knowledge base contains one",
           "err": ""
         },
         {
@@ -73,7 +73,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done:** No handoff recorded in vfkb. The knowledge base contains one gotcha entry from 2026-07-19 05:22",
+          "out": "## Session-start brief **Last done** — No handoff recorded. One gotcha is tracked: \"shard workers must drain b",
           "err": ""
         }
       ]
