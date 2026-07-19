@@ -2,9 +2,10 @@
   "scenario": "brief-skill",
   "recordVersion": 2,
   "pluginVersion": "0.11.0",
+  "pluginTreeHash": "2f5a400b9008f3b2580a0dfedc1d68c70ff7bef37d7619aeaee105013f1d60e0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-18T20:06:54.859Z",
+  "generated": "2026-07-19T05:22:55.371Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -19,7 +20,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** — ingest refactor shipped and verified end-to-end (handoff dated 2026-07-18 20:03Z). **Moved sin",
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end, per handoff dated 2026-07-19 05:20Z. **Moved ",
           "err": ""
         },
         {
@@ -28,7 +29,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Step 5: The brief** **Last done** — The handoff from 2026-07-18 20:04Z records the ingest refactor shipped a",
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end (handoff: 2026-07-19 05:21Z). **Moved since** ",
           "err": ""
         },
         {
@@ -37,7 +38,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** Ingest refactor shipped and verified end-to-end, per handoff recorded 202",
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end, as of 2026-07-19 05:22Z. The single named nex",
           "err": ""
         }
       ]
@@ -54,7 +55,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** No handoff recorded in knowledge base. Project initialized with scaffold ",
+          "out": "Based on my review of the vfkb continuity and git state: **Last done** No handoff is recorded in this project.",
           "err": ""
         },
         {
@@ -63,7 +64,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** No handoff recorded. Project initialized on 2026-07-18 with commit fbde16",
+          "out": "## Session-start brief **Last done** — No handoff recorded in this project; previous state unknown. **Moved si",
           "err": ""
         },
         {
@@ -72,7 +73,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done**: No handoff recorded. The knowledge base contains only 1 verified gotcha ",
+          "out": "**Last done:** No handoff recorded in vfkb. The knowledge base contains one gotcha entry from 2026-07-19 05:22",
           "err": ""
         }
       ]

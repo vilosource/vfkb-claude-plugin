@@ -460,6 +460,42 @@ function checkPackaging(repo) {
   return fails;
 }
 
+// Tree-binding (issue #22, widened to every record by issue #28).
+//
+// A version string is not a tree. Between re-vendors a version stays UNRELEASED
+// and may legitimately drift, so version-binding alone lets a record prove an
+// EARLIER plugin/ tree while every other gate stays green — the exact dishonesty
+// #22 closed for the delivery record. #22 deliberately scoped itself to that one
+// record; this leaves the same hole open for the three capability proofs, which
+// is what #28 reports. One implementation, applied to all four.
+//
+// Returns findings (possibly empty) rather than throwing: a dangling symlink or
+// unreadable file under plugin/ must surface as a gate finding, not a stack
+// trace (review of #27).
+export function treeBindingReasons(repo, rec, slug) {
+  const want = rec?.pluginTreeHash;
+  if (typeof want !== 'string' || !want) {
+    return [
+      `record carries no pluginTreeHash, so it cannot prove which plugin/ tree it exercised ` +
+        `— re-run scenarios/${slug}.mjs (records are tree-bound since issues #22/#28)`,
+    ];
+  }
+  let got = '';
+  try {
+    got = hashTree(join(repo, 'plugin'));
+  } catch (e) {
+    return [`could not hash the shipping plugin/ tree: ${e.message}`];
+  }
+  if (got !== want) {
+    return [
+      `record proves plugin/ tree ${want.slice(0, 12)}…, but the tree shipping now hashes ` +
+        `${got.slice(0, 12)}… — plugin/ changed after the record was pinned; re-run ` +
+        `scenarios/${slug}.mjs against this tree`,
+    ];
+  }
+  return [];
+}
+
 // ---------------------------------------------------------------------------
 // Brake 3 — delivery honesty (ADR-0051, Reading B: the violation is silence)
 // ---------------------------------------------------------------------------
@@ -489,31 +525,10 @@ function checkDelivery(repo, version) {
   // the honesty fix and cannot support `proven`; a mismatched one proves a tree
   // that is not the one shipping.
   if (proof.ok) {
-    const want = proof.rec.pluginTreeHash;
-    if (typeof want !== 'string' || !want) {
+    const reasons = treeBindingReasons(repo, proof.rec, DELIVERY_PROOF);
+    if (reasons.length) {
       proof.ok = false;
-      proof.reasons.push(
-        `record carries no pluginTreeHash, so it cannot prove which plugin/ tree its run installed ` +
-          `— re-run scenarios/${DELIVERY_PROOF}.mjs (records are tree-bound since issue #22)`,
-      );
-    } else {
-      // A finding, not a stack trace (review of #27) — a dangling symlink or
-      // unreadable file in plugin/ must be reported like every other failure.
-      let got = '';
-      try {
-        got = hashTree(join(repo, 'plugin'));
-      } catch (e) {
-        proof.ok = false;
-        proof.reasons.push(`could not hash the shipping plugin/ tree: ${e.message}`);
-      }
-      if (proof.ok && got !== want) {
-        proof.ok = false;
-        proof.reasons.push(
-          `record proves plugin/ tree ${want.slice(0, 12)}…, but the tree shipping now hashes ` +
-            `${got.slice(0, 12)}… — plugin/ changed after the record was pinned; re-run ` +
-            `scenarios/${DELIVERY_PROOF}.mjs against this tree`,
-        );
-      }
+      proof.reasons.push(...reasons);
     }
   }
   const derived = proof.ok ? 'proven' : 'unproven';
@@ -623,6 +638,15 @@ export function runGate(repo) {
 
   for (const slug of REQUIRED) {
     const r = checkRecord(repo, slug, version);
+    // #28: capability records were version-bound only, so a mid-cycle plugin/
+    // change kept them green while they proved the earlier tree.
+    if (r.ok) {
+      const treeReasons = treeBindingReasons(repo, r.rec, slug);
+      if (treeReasons.length) {
+        r.ok = false;
+        r.reasons.push(...treeReasons);
+      }
+    }
     if (!r.ok) failures.push(...r.reasons.map((m) => `[evidence] ${slug}: ${m}`));
     else {
       const arms = Object.entries(r.rec.arms)

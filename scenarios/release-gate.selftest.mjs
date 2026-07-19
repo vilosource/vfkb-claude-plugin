@@ -29,16 +29,27 @@ const write = (root, rel, body) => {
 const trial = (sentinel, haiku = true) => ({ sentinel, haiku, models: ['claude-haiku-4-5-20251001'] });
 
 /** A record that passes: positive 3/3, contrast 0/3. */
-const goodRecord = (scenario, version) => ({
+const goodRecord = (scenario, version, treeHash) => ({
   scenario,
   recordVersion: 2,
   pluginVersion: version,
+  // #28: capability records are tree-bound too. Cases pass the fixture's real
+  // hash so they fail for the ONE thing they break, not for a missing binding.
+  ...(treeHash ? { pluginTreeHash: treeHash } : {}),
   trials: 3,
   arms: {
     wired: { role: 'positive', predicate: ['sentinel', 'haiku'], trials: [trial(true), trial(true), trial(true)] },
     contrast: { role: 'contrast', predicate: ['sentinel'], trials: [trial(false), trial(false), trial(false)] },
   },
 });
+
+/** Re-pin the three capability records to the CURRENT plugin/ tree (#28). */
+function restampCapabilityRecords(root, version = '0.4.0') {
+  const TREE = hashTree(join(root, 'plugin'));
+  for (const slug of ['brief-skill', 'hooks-smoke', 'inactive-signal']) {
+    write(root, `scenarios/records/${slug}.json`, goodRecord(slug, version, TREE));
+  }
+}
 
 /** A complete, healthy plugin tree. Each case mutates one thing. */
 function fixture() {
@@ -53,9 +64,10 @@ function fixture() {
   write(root, 'plugin/.mcp.json', { mcpServers: { vfkb: { args: ['dist/bundles/vfkb-mcp.mjs'] } } });
   write(root, 'plugin/dist/bundles/vfkb.mjs', '// bundle\n');
   write(root, 'plugin/dist/bundles/vfkb-mcp.mjs', '// bundle\n');
-  write(root, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', V));
-  write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V));
-  write(root, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', V));
+  const TREE = hashTree(join(root, 'plugin'));
+  write(root, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', V, TREE));
+  write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V, TREE));
+  write(root, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', V, TREE));
   write(root, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: DISCLOSURE });
   write(root, 'README.md', `# plugin\n\n> ${DISCLOSURE}\n`);
   return root;
@@ -77,7 +89,7 @@ const CASES = [
     name: 'contrast arm leaks on every trial (the proof could not fail)',
     expect: /\[evidence\].*contrast arm "contrast" leaked 3\/3/s,
     break: (r) => {
-      const rec = goodRecord('brief-skill', '0.4.0');
+      const rec = goodRecord('brief-skill', '0.4.0', hashTree(join(r, 'plugin')));
       rec.arms.contrast.trials = [trial(true), trial(true), trial(true)];
       write(r, 'scenarios/records/brief-skill.json', rec);
     },
@@ -86,7 +98,7 @@ const CASES = [
     name: 'positive arm misses the haiku pin (sentinel hit, fork not observed)',
     expect: /\[evidence\].*positive arm "wired" hit 0\/3/s,
     break: (r) => {
-      const rec = goodRecord('brief-skill', '0.4.0');
+      const rec = goodRecord('brief-skill', '0.4.0', hashTree(join(r, 'plugin')));
       rec.arms.wired.trials = [trial(true, false), trial(true, false), trial(true, false)];
       write(r, 'scenarios/records/brief-skill.json', rec);
     },
@@ -115,7 +127,7 @@ const CASES = [
     name: 'hooks-smoke positive arm below threshold (wiring regressed)',
     expect: /\[evidence\].*positive arm "wired" hit 1\/3/s,
     break: (r) => {
-      const rec = goodRecord('hooks-smoke', '0.4.0');
+      const rec = goodRecord('hooks-smoke', '0.4.0', hashTree(join(r, 'plugin')));
       rec.arms.wired.trials = [trial(true), trial(false), trial(false)];
       write(r, 'scenarios/records/hooks-smoke.json', rec);
     },
@@ -129,7 +141,7 @@ const CASES = [
     name: 'inactive-signal contrast leaks (guard banners even with plugin present)',
     expect: /\[evidence\].*contrast arm "contrast" leaked 3\/3/s,
     break: (r) => {
-      const rec = goodRecord('inactive-signal', '0.4.0');
+      const rec = goodRecord('inactive-signal', '0.4.0', hashTree(join(r, 'plugin')));
       rec.arms.contrast.trials = [trial(true), trial(true), trial(true)];
       write(r, 'scenarios/records/inactive-signal.json', rec);
     },
@@ -444,7 +456,7 @@ const CASES = [
     name: 'EVASION — a single-trial record passing as DEMONSTRATED (ADR-0022 §5 says N>=3)',
     expect: /\[evidence\].*trials=1.*requires N>=3/s,
     break: (r) => {
-      const rec = goodRecord('brief-skill', '0.4.0');
+      const rec = goodRecord('brief-skill', '0.4.0', hashTree(join(r, 'plugin')));
       rec.trials = 1;
       rec.arms.wired.trials = [trial(true)];
       rec.arms.contrast.trials = [trial(false)];
@@ -455,7 +467,7 @@ const CASES = [
     name: 'EVASION — contrast arm scores on a field no trial carries, so it holds vacuously',
     expect: /\[evidence\].*not a boolean on every trial.*vacuously/s,
     break: (r) => {
-      const rec = goodRecord('brief-skill', '0.4.0');
+      const rec = goodRecord('brief-skill', '0.4.0', hashTree(join(r, 'plugin')));
       rec.arms.contrast.predicate = ['nonexistent_field'];
       rec.arms.contrast.trials = [trial(true), trial(true), trial(true)]; // leaks on every trial
       write(r, 'scenarios/records/brief-skill.json', rec);
@@ -480,7 +492,40 @@ const CASES = [
   {
     name: 'a quoted `agent: "vfkb:briefer"` frontmatter value still resolves',
     expect: null,
-    break: (r) => write(r, 'plugin/skills/brief/SKILL.md', '---\nname: brief\nagent: "vfkb:briefer"\n---\n\n# brief\n'),
+    break: (r) => {
+      write(r, 'plugin/skills/brief/SKILL.md', '---\nname: brief\nagent: "vfkb:briefer"\n---\n\n# brief\n');
+      // Editing plugin/ moves the tree hash, so the capability records must be
+      // re-pinned — which is what a real re-vendor does (#28). Without this the
+      // case would go red for tree drift rather than prove what it is about.
+      restampCapabilityRecords(r);
+    },
+  },
+  // ---- #28: the capability records are tree-bound too ----
+  // #22 closed this class for the DELIVERY record only. These two cases are the
+  // same defect aimed at a capability proof: a record that is DEMONSTRATED and
+  // correctly version-bound, while proving a plugin/ tree that is not shipping.
+  {
+    name: '#28 capability record carries no pluginTreeHash (version-bound only)',
+    expect: /\[evidence\] brief-skill: record carries no pluginTreeHash/s,
+    break: (r) => write(r, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', '0.4.0')),
+  },
+  {
+    name: '#28 plugin/ changed after a capability record was pinned (same version)',
+    expect: /\[evidence\] hooks-smoke: record proves plugin\/ tree .*but the tree shipping now hashes/s,
+    break: (r) => {
+      // The window version-binding cannot see: an unreleased version may drift,
+      // so the version string still matches while the tree has moved on.
+      write(r, 'plugin/skills/vfkb/SKILL.md', '---\nname: vfkb\n---\n\n# vfkb (edited after the re-pin)\n');
+    },
+  },
+  {
+    // Per-RECORD, not just per-mechanism. Without this, exempting one slug from
+    // the loop (an allowlist, an early continue) left the selftest 76/76 green —
+    // the third capability proof was covered only by the generic code path, not
+    // by an observation (review of #41, minor 1).
+    name: '#28 the THIRD capability record is bound too (inactive-signal)',
+    expect: /\[evidence\] inactive-signal: record carries no pluginTreeHash/s,
+    break: (r) => write(r, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', '0.4.0')),
   },
   {
     name: 'delivery claims PROVEN with no install-path record',
@@ -491,7 +536,7 @@ const CASES = [
     name: 'delivery claims PROVEN on a record bound to the wrong version',
     expect: /\[delivery\].*claims delivery is PROVEN.*produced against plugin 0\.3\.0/s,
     break: (r) => {
-      write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.3.0'));
+      write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.3.0', hashTree(join(r, 'plugin'))));
       write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
     },
   },
@@ -499,7 +544,7 @@ const CASES = [
     name: 'delivery claims PROVEN on a record whose contrast arm leaked',
     expect: /\[delivery\].*claims delivery is PROVEN.*contrast arm .* leaked/s,
     break: (r) => {
-      const rec = goodRecord('install-path', '0.4.0');
+      const rec = goodRecord('install-path', '0.4.0', hashTree(join(r, 'plugin')));
       rec.arms.contrast.trials = [trial(true), trial(true), trial(true)];
       write(r, 'scenarios/records/install-path.json', rec);
       write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
@@ -538,6 +583,7 @@ const CASES = [
     name: 'delivery claims PROVEN on a record with no pluginTreeHash (pre-#22 shape)',
     expect: /\[delivery\].*claims delivery is PROVEN.*carries no pluginTreeHash/s,
     break: (r) => {
+      // deliberately NO third arg: the missing binding IS the defect under test
       write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.4.0'));
       write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
       write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');

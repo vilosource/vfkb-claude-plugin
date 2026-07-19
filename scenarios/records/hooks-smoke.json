@@ -2,9 +2,10 @@
   "scenario": "hooks-smoke",
   "recordVersion": 2,
   "pluginVersion": "0.11.0",
+  "pluginTreeHash": "2f5a400b9008f3b2580a0dfedc1d68c70ff7bef37d7619aeaee105013f1d60e0",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-18T20:14:33.066Z",
+  "generated": "2026-07-19T05:29:09.373Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -36,7 +37,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE",
+          "t3": "DONE Recorded as fact `2928844cef6c`: SMOKE TRIAL NOTE 2-wired",
           "err": ""
         },
         {
@@ -47,7 +48,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE",
+          "t3": "DONE Fact \"SMOKE TRIAL NOTE 3-wired\" recorded to vfkb with ID 510ce64dbb30.",
           "err": ""
         }
       ]
@@ -69,7 +70,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — Permission denied to write to `.vfkb/entries.jsonl`. The file exists and has the ",
+          "t3": "**FAILED** — Permission needed to write to `.vfkb/entries.jsonl`. Please approve the file ",
           "err": ""
         },
         {
@@ -80,7 +81,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "Waiting for permission to write to the vfkb entries file. Please approve the write operati",
+          "t3": "I need permission to write to the `.vfkb/entries.jsonl` file. Please approve the write per",
           "err": ""
         },
         {
@@ -91,7 +92,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I found the vfkb knowledge base at `.vfkb/entries.jsonl`. It's a JSONL (JSON Lines) format",
+          "t3": "DONE I've recorded the fact 'SMOKE TRIAL NOTE 3-unwired' in the vfkb knowledge base at `.v",
           "err": ""
         }
       ]
