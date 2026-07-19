@@ -29,7 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { verdict } from './release-gate.mjs';
+import { verdict, hashTree } from './release-gate.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -122,7 +122,12 @@ const pluginVersion = JSON.parse(
   readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8'),
 ).version;
 const record = {
-  scenario: 'brief-skill', recordVersion: 2, pluginVersion, outerModel: OUTER_MODEL,
+  scenario: 'brief-skill', recordVersion: 2, pluginVersion,
+  // Tree-binding (#28): a version string is not a tree. Between re-vendors the
+  // version stays unreleased and may drift, so version-binding alone would let
+  // this record prove an EARLIER plugin/ tree while every gate stayed green —
+  // the dishonesty #22 closed for the delivery record only.
+  pluginTreeHash: hashTree(join(REPO, 'plugin')), outerModel: OUTER_MODEL,
   trials: TRIALS, generated: new Date().toISOString(), arms,
 };
 
