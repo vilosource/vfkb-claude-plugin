@@ -16090,8 +16090,8 @@ import { dirname as dirname5, join as join8 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "9921586" : "dev";
+var ENGINE_VERSION = true ? "0.7.0" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "4e03c50" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16517,10 +16517,21 @@ function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
 
 // src/git.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync8 } from "node:fs";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync8, realpathSync } from "node:fs";
+import { dirname as dirname6, join as join11 } from "node:path";
 function git(args, cwd) {
   return execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+function insideSurroundingRepo(brain) {
+  try {
+    return git(["rev-parse", "--is-inside-work-tree"], dirname6(realpathSync(brain))).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function isStandaloneBrain(brain) {
+  if (existsSync8(join11(brain, ".git"))) return true;
+  return !insideSurroundingRepo(brain);
 }
 function ensureRepo(brain) {
   if (!existsSync8(join11(brain, ".git"))) {
@@ -16528,6 +16539,13 @@ function ensureRepo(brain) {
   }
 }
 function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
+  if (!isStandaloneBrain(brain)) {
+    return {
+      committed: false,
+      refused: true,
+      message: `brain at ${brain} is inside a git worktree \u2014 not committing here (an in-repo brain is committed by the project, via the session-end pathspec commit)`
+    };
+  }
   ensureRepo(brain);
   git(["add", "-A"], brain);
   const status = git(["status", "--porcelain"], brain).trim();
@@ -16677,9 +16695,10 @@ function runSessionEnd(opts = {}) {
 
 // src/init.ts
 import { existsSync as existsSync9, mkdirSync as mkdirSync7, readFileSync as readFileSync10, writeFileSync as writeFileSync5 } from "node:fs";
-import { basename as basename3, join as join13 } from "node:path";
+import { basename as basename3, join as join13, relative as relative3 } from "node:path";
 var AGENTS_MARKER = "<!-- vfkb:how-we-track-work -->";
 var BOOTSTRAP_REL = ".vfkb/bin/bootstrap.mjs";
+var PI_PACKAGE_SOURCE = "git:github.com/vilosource/vfkb-pi-package";
 function mcpConfig(project) {
   return {
     command: "node",
@@ -16742,7 +16761,7 @@ function settingsHooks(project) {
     SessionEnd: [{ hooks: [{ type: "command", command: hookCommand(project, "session-end") }] }]
   };
 }
-function agentsSnippet(project) {
+function agentsSnippet(project, pi) {
   return `${AGENTS_MARKER}
 ## How we track work HERE \u2014 vfkb
 
@@ -16754,8 +16773,19 @@ This repo uses **vfkb** as its knowledge substrate (project \`${project}\`). Kno
   \`decision\`, \`fact\`, \`gotcha\`, \`pattern\`, \`link\` \u2014 put a decision's rationale in its text.
   **Capture load-bearing decisions immediately \u2014 don't defer.**
 - Committed: \`.vfkb/entries.jsonl\`, \`.vfkb/manifest.json\` (the ADR-0030 engine stamp \u2014
-  **never gitignore \`manifest.json\`**), and \`.vfkb/bin/\`. Derived/gitignored, all five:
-  \`.vfkb/index-meta.json\`, \`.vfkb/.sessions/\`, \`.vfkb/.signals/\`, \`.vfkb/.journal/\`, \`.vfkb/.lock\`.
+  **never gitignore \`manifest.json\`**), \`.vfkb/bin/\`${pi ? ", and `.pi/settings.json`" : ""}.
+  Derived/gitignored: \`.vfkb/index-meta.json\`, \`.vfkb/.sessions/\`, \`.vfkb/.signals/\`,
+  \`.vfkb/.journal/\`, \`.vfkb/.lock\`${pi ? ", and `.pi/git/` (pi's package clone)" : ""}.${pi ? `
+- **Works in [pi](https://pi.dev) too** (ADR-0066): \`.pi/settings.json\` loads the \`vfkb-pi-package\`
+  and pi auto-installs it at startup, so a teammate's clone wires itself. The package vendors its
+  own engine and finds this brain by itself \u2014 there is **no \`.vfkb/mcp.json\` to write, and its
+  absence is normal**. (You may add one to override or add MCP servers; \`vfkb doctor\` validates it
+  if present. Do NOT hand-write one pointing at \`.vfkb/bin/bootstrap.mjs\` \u2014 that re-imposes the
+  per-machine \`$VFKB_BUNDLE_DIR\` the package exists to retire, and shadows its bundled server.)
+  Run \`vfkb doctor\` to check the wiring.` : `
+- **This repo was wired for Claude Code only** (\`vfkb init --no-pi\`). If a \`.pi/settings.json\`
+  exists, the pi face was added later and IS in use \u2014 commit that file; this paragraph is not
+  updated on a re-init, because the snippet is written once.`}
 
 Two env vars: **\`VFKB_DATA_DIR\`** = this repo's brain (\`.vfkb\`, set by the wiring) \xB7 **\`VFKB_BUNDLE_DIR\`**
 = the shared vfkb engine bundles \u2014 set it once per machine, e.g. \`export VFKB_BUNDLE_DIR=/path/to/vfkb/dist/bundles\`.
@@ -16766,6 +16796,17 @@ function readJson(path) {
   if (!existsSync9(path)) return void 0;
   try {
     return JSON.parse(readFileSync10(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function preserveUnparseable(root, path) {
+  if (!existsSync9(path)) return void 0;
+  if (readJson(path) !== void 0) return void 0;
+  const backup = `${path}.corrupt-backup`;
+  try {
+    writeFileSync5(backup, readFileSync10(path, "utf8"));
+    return relative3(root, backup);
   } catch {
     return void 0;
   }
@@ -16850,7 +16891,14 @@ function initProject(root, opts = {}) {
       ".vfkb/.signals/",
       ".vfkb/.journal/",
       ".vfkb/.lock",
-      ".vfkb/.write-probe-*"
+      ".vfkb/.write-probe-*",
+      // Derived per-machine MCP config the pi package writes (absolute paths inside).
+      ".vfkb/.pi-mcp.json",
+      // pi clones the vfkb package (plus its node_modules) into the PROJECT when the
+      // package entry is project-scoped. Derived, multi-hundred-KB, and re-fetched on
+      // demand — never commit it. Without this line a consumer's `git status` fills
+      // with a vendored clone the moment they first start pi.
+      ".pi/git/"
     ];
     const HEADER = [
       "# vfkb \u2014 entries.jsonl + manifest.json (the ADR-0030 engine stamp) are committed;",
@@ -16897,6 +16945,26 @@ ${line}
       changes.push({ path: ".gitattributes", action: existed ? "updated" : "created" });
     }
   }
+  if (opts.pi !== false) {
+    const dir = join13(root, ".pi");
+    const path = join13(dir, "settings.json");
+    const existed = existsSync9(path);
+    const rescued = preserveUnparseable(root, path);
+    if (rescued) changes.push({ path: rescued, action: "created" });
+    const cfg = readJson(path) ?? {};
+    const cur = Array.isArray(cfg.packages) ? cfg.packages : [];
+    const has = cur.some(
+      (p) => typeof p === "string" ? p === PI_PACKAGE_SOURCE : !!p && typeof p === "object" && p.source === PI_PACKAGE_SOURCE
+    );
+    if (has) {
+      changes.push({ path: ".pi/settings.json", action: "skipped" });
+    } else {
+      cfg.packages = [...cur, PI_PACKAGE_SOURCE];
+      mkdirSync7(dir, { recursive: true });
+      writeJson(path, cfg);
+      changes.push({ path: ".pi/settings.json", action: existed ? "updated" : "created" });
+    }
+  }
   {
     const path = join13(root, "AGENTS.md");
     const existed = existsSync9(path);
@@ -16905,7 +16973,7 @@ ${line}
       changes.push({ path: "AGENTS.md", action: "skipped" });
     } else {
       const sep2 = cur && !cur.endsWith("\n") ? "\n\n" : cur ? "\n" : "";
-      writeFileSync5(path, cur + sep2 + agentsSnippet(project));
+      writeFileSync5(path, cur + sep2 + agentsSnippet(project, opts.pi !== false));
       changes.push({ path: "AGENTS.md", action: existed ? "updated" : "created" });
     }
   }
@@ -16926,8 +16994,8 @@ function approvalNotice(project) {
 // src/doctor.ts
 import { execFileSync as execFileSync6 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync, unlinkSync as unlinkSync2 } from "node:fs";
-import { join as join14, dirname as dirname6, relative as relative3, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
+import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync as realpathSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import { join as join14, dirname as dirname7, relative as relative4, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
 function readJson2(path) {
   if (!existsSync10(path)) return void 0;
   try {
@@ -17044,7 +17112,7 @@ function readNpmCache(path) {
 }
 function writeNpmCache(path, entry) {
   try {
-    mkdirSync8(dirname6(path), { recursive: true });
+    mkdirSync8(dirname7(path), { recursive: true });
     writeFileSync6(path, JSON.stringify(entry));
   } catch {
   }
@@ -17147,13 +17215,77 @@ function isUnder(parent, child) {
   if (!parent) return false;
   const real = (p) => {
     try {
-      return realpathSync(p);
+      return realpathSync2(p);
     } catch {
       return resolve4(p);
     }
   };
-  const rel = relative3(real(parent), real(child));
+  const rel = relative4(real(parent), real(child));
   return rel === "" || !rel.startsWith("..") && !isAbsolute2(rel);
+}
+var PI_PACKAGE_SOURCE2 = "git:github.com/vilosource/vfkb-pi-package";
+function piPackageListed(piSettings) {
+  const pkgs = Array.isArray(piSettings?.packages) ? piSettings.packages : [];
+  return pkgs.some(
+    (p) => typeof p === "string" ? p.includes("vfkb-pi-package") : !!p && typeof p === "object" && String(p.source ?? "").includes("vfkb-pi-package")
+  );
+}
+function piExtensionOrderProblem(piSettings) {
+  const exts = Array.isArray(piSettings?.extensions) ? piSettings.extensions : [];
+  const paths = exts.filter((e) => typeof e === "string");
+  const bridgeAt = paths.findIndex((p) => /pi-mcp-bridge|vfkb-pi-bridge/.test(p));
+  if (bridgeAt < 0) return void 0;
+  const wrapperAt = paths.findIndex((p) => /vfkb-config|vfkb-pi-wrapper|vfkb-wrapper/.test(p));
+  if (wrapperAt < 0) {
+    return "pi-mcp-bridge is listed in .pi/settings.json `extensions` with no wrapper before it \u2014 the bridge reads $VFKB_MCP_CONFIG at import, so it will register ZERO kb_* tools (silently)";
+  }
+  if (wrapperAt > bridgeAt) {
+    return `the vfkb pi wrapper is listed AFTER pi-mcp-bridge (index ${wrapperAt} vs ${bridgeAt}) \u2014 pi loads extensions in array order and the bridge resolves its config at import, so it will register ZERO kb_* tools (silently)`;
+  }
+  return void 0;
+}
+function checkPiWiring(piSettings, piMcp, piSettingsExists, piMcpExists, pluginWired = false) {
+  const out = [];
+  const listed = piPackageListed(piSettings);
+  const hasMcp = !!piMcp?.mcpServers?.vfkb;
+  const orderProblem = piExtensionOrderProblem(piSettings);
+  const exts = Array.isArray(piSettings?.extensions) ? piSettings.extensions : [];
+  const handWired = exts.some((e) => typeof e === "string" && /vfkb/i.test(e));
+  const fix = pluginWired ? 'add `.pi/settings.json` (packages: ["' + PI_PACKAGE_SOURCE2 + '"]) and `.vfkb/mcp.json`' : "run `vfkb init`";
+  if (!listed && !handWired && !piMcpExists && !orderProblem) {
+    out.push({
+      name: "pi wiring",
+      status: "skip",
+      detail: piSettingsExists ? ".pi/settings.json has no vfkb wiring \u2014 pi face not wired (optional)" : "no .pi/settings.json \u2014 pi face not wired (optional)"
+    });
+    return out;
+  }
+  if (listed) {
+    out.push({ name: "pi wiring", status: "ok", detail: `.pi/settings.json loads ${PI_PACKAGE_SOURCE2}` });
+  } else if (handWired) {
+    out.push({ name: "pi wiring", status: "ok", detail: ".pi/settings.json hand-lists local extensions (package not used)" });
+  } else {
+    out.push({ name: "pi wiring", status: "warn", detail: `.pi/settings.json exists but does not load the vfkb pi package \u2014 ${fix}` });
+  }
+  if (piMcpExists && !hasMcp) {
+    out.push({
+      name: "pi mcp override",
+      status: "fail",
+      detail: ".vfkb/mcp.json exists but has no mcpServers.vfkb \u2014 the bridge reads that exact shape, so it will register ZERO kb_* tools and NOTHING will report it; fix the file or delete it to fall back to the package's own server"
+    });
+  } else if (hasMcp) {
+    out.push({ name: "pi mcp override", status: "ok", detail: ".vfkb/mcp.json overrides the package's bundled MCP server" });
+  } else if (listed) {
+    out.push({ name: "pi mcp config", status: "ok", detail: `kb_* tools come from ${PI_PACKAGE_SOURCE2}'s bundled MCP server (no .vfkb/mcp.json needed)` });
+  } else if (handWired) {
+    out.push({
+      name: "pi mcp config",
+      status: "warn",
+      detail: "pi extensions are hand-listed with no .vfkb/mcp.json and no vfkb package \u2014 unless $VFKB_MCP_CONFIG is exported, the bridge will register ZERO kb_* tools"
+    });
+  }
+  if (orderProblem) out.push({ name: "pi extension order", status: "fail", detail: orderProblem });
+  return out;
 }
 function runDoctor(opts) {
   const { root, brainDir: brainDir2, env } = opts;
@@ -17329,6 +17461,59 @@ function runDoctor(opts) {
   } else if (mcpProject || settingsProject) {
     add("VFKB_PROJECT", "ok", `${mcpProject ?? settingsProject}`);
   }
+  {
+    const embedded = join14(brainDir2, ".git");
+    const inRepo = isUnder(repoToplevel(root), brainDir2);
+    const top = repoToplevel(root);
+    const brainIsRoot = top !== void 0 && resolve4(brainDir2) === resolve4(top);
+    if (inRepo && !brainIsRoot && existsSync10(embedded)) {
+      const rel = relative4(root, join14(brainDir2, "entries.jsonl"));
+      const brainRel = relative4(root, brainDir2);
+      const gitRun = opts.git ?? realGit2;
+      const q = (args) => {
+        try {
+          return gitRun(args, root).trim();
+        } catch {
+          return void 0;
+        }
+      };
+      const degraded = q(["rev-parse", "--git-dir"]) === void 0;
+      const ask = (args) => q(args) ?? "";
+      const isSubmodule = /^160000/m.test(q(["ls-files", "-s", "--", brainRel]) ?? "") && (q(["config", "--file", ".gitmodules", "--get-regexp", "path"]) ?? "").includes(brainRel);
+      const ignored = ask(["check-ignore", "--no-index", "--", brainRel]).length > 0;
+      const inHistory = ask(["log", "--oneline", "-1", "--", rel]).length > 0;
+      const inIndex = ask(["ls-files", "--", rel]).length > 0;
+      if (isSubmodule) {
+      } else if (degraded) {
+        add(
+          "brain gitlink",
+          "skip",
+          `${embedded} exists, but git could not be queried here (lock contention or timeout) \u2014 cannot tell a deliberately standalone brain from one gitlinked out of this project. Re-run when git is idle.`
+        );
+      } else if (!ignored && (inHistory || inIndex)) {
+        add(
+          "brain gitlink",
+          "fail",
+          `${embedded} exists and this project tracks ${rel} \u2014 the brain is an EMBEDDED git repo, so \`git add ${rel}\` silently tracks NOTHING and new entries stop reaching the project's history. Fix: remove ${embedded}, then re-add the file`
+        );
+      } else if (!ignored) {
+        add(
+          "brain gitlink",
+          "warn",
+          `${embedded} exists inside this project and ${brainRel} is not gitignored. If this brain is meant to ship WITH the repo (ADR-0019, the default), it currently cannot: \`git add ${rel}\` exits 0 and tracks nothing. Fix: remove ${embedded}, then commit ${rel}. If this brain is deliberately standalone, gitignore ${brainRel} to silence this.`
+        );
+      }
+    }
+  }
+  {
+    const piSettingsPath = join14(root, ".pi", "settings.json");
+    const piSettings = readJson2(piSettingsPath);
+    const piMcpPath = join14(brainDir2, "mcp.json");
+    const piMcp = readJson2(piMcpPath);
+    for (const c of checkPiWiring(piSettings, piMcp, existsSync10(piSettingsPath), existsSync10(piMcpPath), !!plugin)) {
+      add(c.name, c.status, c.detail);
+    }
+  }
   return { checks, ok: !checks.some((c) => c.status === "fail") };
 }
 var ICON = { ok: "OK  ", warn: "WARN", fail: "FAIL", skip: "SKIP" };
@@ -17493,10 +17678,10 @@ var DECISION_STATUSES = ["proposed", "accepted", "deprecated", "superseded"];
 // src/cli.ts
 import { readFileSync as readFileSync13 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { dirname as dirname7, join as join16 } from "node:path";
+import { dirname as dirname8, join as join16 } from "node:path";
 function packageVersion() {
   try {
-    const here = dirname7(fileURLToPath2(import.meta.url));
+    const here = dirname8(fileURLToPath2(import.meta.url));
     const pkg = JSON.parse(readFileSync13(join16(here, "..", "package.json"), "utf8"));
     return pkg.version || ENGINE_VERSION;
   } catch {
@@ -17650,11 +17835,11 @@ broadcast: ${results.length - failed}/${results.length} written${failed ? ` \u20
     return;
   }
   if (cmd === "init") {
-    const p = parseArgs("init", argsOf(sub, rest), {});
+    const p = parseArgs("init", argsOf(sub, rest), { "no-pi": "boolean" });
     if (p.positionals.length > 1) throw new UsageError("init: at most one [project] argument");
     const root = process.cwd();
     const project = p.positionals[0] || process.env.VFKB_PROJECT;
-    const changes = initProject(root, { project });
+    const changes = initProject(root, { project, pi: !p.flags.get("no-pi") });
     const resolved = project || root.split(/[/\\]/).filter(Boolean).pop() || "project";
     for (const c of changes) process.stdout.write(`${c.action}	${c.path}
 `);
@@ -18065,6 +18250,16 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
   if (cmd === "save") {
     const p = parseArgs("save", argsOf(sub, rest), {});
     const r = save(p.positionals.join(" ").trim() || void 0);
+    if (r.refused) {
+      process.stdout.write(
+        `not committed: ${r.message}
+  this brain ships INSIDE a project repo (ADR-0019), so commit it there:
+      git add <brain>/entries.jsonl && git commit -m "vfkb: update"
+  (a Claude Code session does this for you at session end \u2014 ADR-0033)
+`
+      );
+      return;
+    }
     process.stdout.write((r.committed ? "committed: " : "no-op: ") + r.message + "\n");
     return;
   }
