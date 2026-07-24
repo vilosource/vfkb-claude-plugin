@@ -1,11 +1,11 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.12.0",
-  "pluginTreeHash": "5bd17f6b7b1a723fd00218869cb1c1f41dbef644af1ce2ae57af2b925d9a5a14",
+  "pluginVersion": "0.13.0",
+  "pluginTreeHash": "fe58506a5ef6278da65b0d7c41eeead098324e238827e490590ca0a9000a274b",
   "outerModel": "claude-haiku-4-5-20251001",
   "trials": 3,
-  "generated": "2026-07-19T13:50:38.616Z",
+  "generated": "2026-07-24T09:41:47.296Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -16,19 +16,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
+          "out": "**1.** SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) bu",
+          "err": ""
+        },
+        {
+          "bannerShown": true,
+          "vfkbLive": false,
+          "out": "(1) **VERBATIM first line:** \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfk",
+          "err": ""
+        },
+        {
+          "bannerShown": true,
+          "vfkbLive": false,
           "out": "(1) \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
-          "err": ""
-        },
-        {
-          "bannerShown": true,
-          "vfkbLive": false,
-          "out": "(1) SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
-          "err": ""
-        },
-        {
-          "bannerShown": true,
-          "vfkbLive": false,
-          "out": "(1) **First line of vfkb warning (verbatim):** > SessionStart:startup hook success: vfkb INACTIVE — this proje",
           "err": ""
         }
       ]
