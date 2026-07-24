@@ -32015,7 +32015,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
+var ENGINE_VERSION = true ? "0.7.0" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;

@@ -1,14 +1,14 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.12.0",
+  "pluginVersion": "0.13.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-19T14:07:51.165Z",
+  "generated": "2026-07-24T09:46:49.757Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "chore/revendor-0.12.0",
-  "headSha": "da3ca1bc066c2abe61a792b2d77fa7a11b0802c3",
-  "pluginTreeHash": "5bd17f6b7b1a723fd00218869cb1c1f41dbef644af1ce2ae57af2b925d9a5a14",
+  "ref": "re-vendor/engine",
+  "headSha": "2dd00cea319dc506322c73d22eb88949a645a350",
+  "pluginTreeHash": "fe58506a5ef6278da65b0d7c41eeead098324e238827e490590ca0a9000a274b",
   "arms": {
     "fresh": {
       "role": "positive",
@@ -22,7 +22,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Last done** — The handoff (2026-07-19 14:03Z) records that the delivery refactor shipped and was v",
+          "out": "Based on the vfkb handoff and git log, here is the session-start brief: **Last done** — Per handoff ",
           "err": ""
         },
         {
@@ -30,7 +30,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Last done** — The handoff (2026-07-19 14:04Z) states the delivery refactor shipped and was verifie",
+          "out": "## Session-start Brief **Last done** — The delivery refactor shipped and verified end-to-end, as of ",
           "err": ""
         },
         {
@@ -38,7 +38,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Last done:** Delivery refactor shipped and verified end-to-end (2026-07-19 14:06Z). **Moved since:",
+          "out": "## Session-start brief **Last done** Handoff recorded 2026-07-24 09:45Z: the delivery refactor shipp",
           "err": ""
         }
       ]
@@ -56,7 +56,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "**Last done** The delivery refactor shipped and verified end-to-end, recorded 2026-07-19 14:04Z. **M",
+          "afterOut": "Project has vfkb enabled. I have the handoff but no GitHub remote is configured for the queue check.",
           "err": ""
         },
         {
@@ -64,7 +64,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Session-start brief **Last done** (2026-07-19 14:05Z): The delivery refactor shipped and was veri",
+          "afterOut": "**Last done** (2026-07-24): The delivery refactor shipped and verified end-to-end, per the handoff r",
           "err": ""
         },
         {
@@ -72,7 +72,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Session-start brief **Last done** — The handoff (2026-07-19 14:07Z) recorded that the delivery re",
+          "afterOut": "**Last done.** The delivery refactor shipped and verified end-to-end (2026-07-24 09:46Z). **Moved si",
           "err": ""
         }
       ]
