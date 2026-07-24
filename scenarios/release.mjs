@@ -349,12 +349,12 @@ function land(branch, ver) {
 
   if (DRY) {
     info(`would push, wait for CI, squash-merge the PR for ${branch}, verify ${tagFor('vfkb', ver)}`);
-    return;
+    return { landed: false, why: 'dry-run' };
   }
   if (run('git', ['push', '-q', 'origin', branch]) !== 0) die(`could not push ${branch}`);
   ok('pushed');
 
-  if (SKIP_MERGE) { info('--skip-merge: stopping before merge'); return; }
+  if (SKIP_MERGE) { info('--skip-merge: stopping before merge'); return { landed: false, why: '--skip-merge' }; }
 
   const pr = execFileSync('gh', ['pr', 'list', '-R', REMOTE, '--head', branch, '--state', 'open', '--json', 'number', '-q', '.[0].number'], { encoding: 'utf8' }).trim();
   if (!pr) die(`no open PR for ${branch}`, `gh pr create -R ${REMOTE} --head ${branch}`);
@@ -382,7 +382,7 @@ function land(branch, ver) {
   const want = tagFor('vfkb', ver);
   for (let i = 0; i < 15; i++) {
     const tags = execFileSync('git', ['ls-remote', '--tags', `https://github.com/${REMOTE}.git`], { encoding: 'utf8' });
-    if (tags.includes(want)) { ok(`tag ${want} created by CI`); return; }
+    if (tags.includes(want)) { ok(`tag ${want} created by CI`); return { landed: true }; }
     execFileSync('sleep', ['20']);
   }
   die(`tag ${want} did not appear`, 'check .github/workflows/release-tag.yml on main');
@@ -395,11 +395,19 @@ const ver = version(willChange);
 publishTree(branch, ver);
 evidence(ver, willChange);
 gates();
-land(branch, ver);
+const landing = land(branch, ver);
 
-console.log(
-  DRY
-    ? `\nDRY RUN complete — nothing was written, invoked, or merged. Target version: ${ver}`
-    : `\nRELEASE COMPLETE — v${ver} merged and tagged ${tagFor('vfkb', ver)}.` +
+if (DRY) {
+  console.log(`\nDRY RUN complete — nothing was written, invoked, or merged. Target version: ${ver}`);
+} else if (landing?.landed) {
+  console.log(
+    `\nRELEASE COMPLETE — v${ver} merged and tagged ${tagFor('vfkb', ver)} (tag observed, not assumed).` +
       `\nOutward effect: marketplace consumers resolve this tag on their next plugin update.`,
-);
+  );
+} else {
+  console.log(
+    `\nEVIDENCE COMPLETE, NOT RELEASED — v${ver} records are re-pinned and the gates are green,` +
+      `\nbut the PR was NOT merged and ${tagFor('vfkb', ver)} does NOT exist (${landing?.why ?? 'unknown'}).` +
+      `\nFinish with: node scenarios/release.mjs   (or merge the PR by hand)`,
+  );
+}
