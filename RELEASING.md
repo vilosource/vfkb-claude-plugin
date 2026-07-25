@@ -112,3 +112,7 @@ delivers it — that is the gap `install-path` closes.
 re-running `install-path.mjs` (step 3 above) reverts the gate to `unproven` and re-requires the README
 disclosure — by design (ADR-0051). The `claude plugin tag` prerequisite (ADR-0060) that unblocked this
 remains in force: every release is tagged and a tag resolves as a github marketplace ref.
+
+**Dispatch target note (observed 2026-07-25):** `main` is branch-protected (required check
+`release-gate`), so a `l4-evidence.yml` dispatch on `main` produces and verifies but its vouch
+push is rejected — dispatch on a branch (the release branch) and land the vouched records via PR.

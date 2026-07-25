@@ -36,6 +36,9 @@ const goodRecord = (scenario, version, treeHash) => ({
   // #28: capability records are tree-bound too. Cases pass the fixture's real
   // hash so they fail for the ONE thing they break, not for a missing binding.
   ...(treeHash ? { pluginTreeHash: treeHash } : {}),
+  // ADR-0067 D5: same principle — REQUIRE_PROVENANCE is on, so every fixture
+  // record carries a valid block; the provenance RED cases test their own thing.
+  producedBy: { ranOn: 'laptop', credentialKind: 'claude-oauth', authBase: 'anthropic-production', runUrl: null, commit: 'fixture' },
   trials: 3,
   arms: {
     wired: { role: 'positive', predicate: ['sentinel', 'haiku'], trials: [trial(true), trial(true), trial(true)] },

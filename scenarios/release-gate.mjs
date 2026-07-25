@@ -620,10 +620,11 @@ export function checkVendor(file = join(dirname(fileURLToPath(import.meta.url)),
 // credential KIND, the commit). Enforcement is PHASED: this flag flips to true
 // together with the first full machine re-pin, because the gate cannot demand
 // a field the four already-committed laptop records lack without going red on
-// main retroactively. Until then provenanceReasons() exists, is selftested,
-// and is simply not consulted.
+// main retroactively. FLIPPED 2026-07-25: the first full machine re-pin
+// (l4-evidence run 30167810888, vouch commit f4f7cfb) put producedBy on all
+// four records, so the gate now demands it.
 // ---------------------------------------------------------------------------
-export const REQUIRE_PROVENANCE = false;
+export const REQUIRE_PROVENANCE = true;
 
 export function provenanceReasons(rec) {
   const p = rec.producedBy;
