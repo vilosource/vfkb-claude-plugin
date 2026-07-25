@@ -690,8 +690,14 @@ export function runGate(repo) {
 
   if (REQUIRE_PROVENANCE) {
     for (const slug of [...REQUIRED, 'install-path']) {
+      // A record that does not exist is not a provenance failure — whether it
+      // MUST exist is the evidence/delivery sections' business (an unproven
+      // tree legitimately has no install-path record). Provenance binds every
+      // record that IS here.
+      const p = join(repo, 'scenarios', 'records', `${slug}.json`);
+      if (!existsSync(p)) continue;
       try {
-        const rec = readJson(join(repo, 'scenarios', 'records', `${slug}.json`));
+        const rec = readJson(p);
         const pv = provenanceReasons(rec);
         failures.push(...pv.map((m) => `[provenance] ${slug}: ${m}`));
       } catch (e) {
