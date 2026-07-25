@@ -91,6 +91,7 @@ function runArm(dir) {
   } catch {
     text = raw;
   }
+  text = redactSecrets(text);
   const sentinel = text.toLowerCase().includes(SENTINEL);
   const haiku = models.some((m) => m.toLowerCase().includes('haiku'));
   return { sentinel, haiku, models, out: text.replace(/\s+/g, ' ').slice(0, 110), err };

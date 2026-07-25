@@ -199,6 +199,7 @@ function brief(sb) {
     text = String(j.result ?? '');
     models = Object.keys(j.modelUsage ?? {});
   } catch { text = raw; }
+  text = redactSecrets(text);
   const sentinel = text.toLowerCase().includes(SENTINEL);
   const haiku = models.some((m) => m.toLowerCase().includes('haiku'));
   // `present` REQUIRES BOTH. The haiku conjunct is load-bearing: SessionStart
@@ -367,7 +368,8 @@ const record = {
   // provenance (asserted at run start); pluginTreeHash is the OBSERVED binding
   // — the in-predicate treeVerified* checks are what tie the installed bytes to
   // it, so a mid-run push lands on a miss, never on a mislabeled record.
-  ref: REF, headSha: HEAD_SHA, pluginTreeHash: LOCAL_TREE, arms,
+  ref: REF, headSha: HEAD_SHA, pluginTreeHash: LOCAL_TREE,
+  producedBy: producedBy(REPO), arms,
 };
 
 const { ok: demonstrated, reasons } = verdict(record);

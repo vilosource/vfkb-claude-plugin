@@ -54,7 +54,11 @@ permissions:
 jobs:
   produce:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # Summed per-turn caps at trials=3 across all four scenarios are ~230 min
+    # BEFORE any D4 retry (reviewer arithmetic, PR #46) — a job-timeout
+    # cancellation vouches nothing yet burns the full metered spend, so the
+    # budget must exceed the caps, not the hoped-for runtime.
+    timeout-minutes: 300
     permissions:
       contents: read # holds the key, cannot push
     steps:
@@ -89,12 +93,15 @@ jobs:
           VFKB_HS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_IS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_IP_TRIALS: ${{ github.event.inputs.trials }}
+          # Never interpolate an input into script text — env-var it (injection
+          # hardening; dispatch already needs write access, this is depth).
+          ONLY: ${{ github.event.inputs.only }}
         run: |
           set -uo pipefail
-          case "${{ github.event.inputs.only }}" in
+          case "$ONLY" in
             all) scenarios="brief-skill hooks-smoke inactive-signal install-path" ;;
-            brief-skill|hooks-smoke|inactive-signal|install-path) scenarios="${{ github.event.inputs.only }}" ;;
-            *) echo "::error::unknown scenario '${{ github.event.inputs.only }}'"; exit 1 ;;
+            brief-skill|hooks-smoke|inactive-signal|install-path) scenarios="$ONLY" ;;
+            *) echo "::error::unknown scenario '$ONLY'"; exit 1 ;;
           esac
           for s in $scenarios; do
             echo "::group::scenario $s"
@@ -154,19 +161,30 @@ jobs:
       - name: Verify with the gate's own functions, then commit ONLY if clean
         run: |
           set -euo pipefail
-          # Re-derive here too — the committing job must not take the producing
-          # job's word for it. verdict() reads per-trial observations;
-          # treeBindingReasons() binds each record to THIS checkout's plugin/
-          # tree; provenanceReasons() enforces ADR-0067 D5 on every NEW record
-          # (the gate-wide flag is phased, but nothing unprovenanced may enter
-          # via this path).
-          node --input-type=module -e '
+          # Only records this run CHANGED are candidates — the produce artifact
+          # sweeps the whole records dir, so validating every file would refuse
+          # a partial (`only=<scenario>`) dispatch because the UNTOUCHED
+          # committed laptop records predate producedBy. Stale-but-unchanged
+          # records are the gate's business (phased flag), not this run's.
+          # `status --porcelain` (not `diff`) so a brand-new untracked record
+          # from a future fifth scenario cannot slip past as "unchanged".
+          changed=$(git status --porcelain -- scenarios/records | awk '{print $2}')
+          if [ -z "$changed" ]; then
+            echo "records unchanged — nothing to vouch"; exit 0
+          fi
+          echo "changed records:"; echo "$changed"
+          # Re-derive on every CHANGED record — the committing job must not take
+          # the producing job's word for it. verdict() reads per-trial
+          # observations; treeBindingReasons() binds the record to THIS
+          # checkout's plugin/ tree; provenanceReasons() enforces ADR-0067 D5 on
+          # everything entering via this path, regardless of the phased flag.
+          CHANGED="$changed" node --input-type=module -e '
             const { verdict, treeBindingReasons, provenanceReasons } = await import("./scenarios/release-gate.mjs");
-            const { readFileSync, readdirSync } = await import("node:fs");
+            const { readFileSync } = await import("node:fs");
             let bad = 0;
-            for (const f of readdirSync("scenarios/records").filter((f) => f.endsWith(".json"))) {
-              const slug = f.replace(/\.json$/, "");
-              const rec = JSON.parse(readFileSync(`scenarios/records/${f}`, "utf8"));
+            for (const path of process.env.CHANGED.split("\n").filter(Boolean)) {
+              const slug = path.replace(/^scenarios\/records\//, "").replace(/\.json$/, "");
+              const rec = JSON.parse(readFileSync(path, "utf8"));
               const reasons = [
                 ...verdict(rec).reasons,
                 ...treeBindingReasons(".", rec, slug),
@@ -177,9 +195,6 @@ jobs:
             }
             process.exit(bad ? 1 : 0);
           '
-          if git diff --quiet -- scenarios/records; then
-            echo "records unchanged — nothing to vouch"; exit 0
-          fi
           git config user.name  "vfkb-release-bot"
           git config user.email "vfkb-release-bot@users.noreply.github.com"
           git add -- scenarios/records

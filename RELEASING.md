@@ -38,6 +38,12 @@ paragraph exists so that decay is at least visible. A bad/rotated `DEEPSEEK_TOKE
 **hang to the timeout** rather than fail fast (observed, plugin#45) — read a first-turn timeout as
 an auth problem, not model flake.
 
+Two vouch-commit caveats: the vouch push uses `GITHUB_TOKEN` + `[skip ci]`, so **the vouched head
+gets no check runs** — the release PR still needs the usual user-authored empty commit before its
+required checks certify the head that actually contains the records. And release-please
+force-pushes its release branch on every `main` push (standing gotcha), which would silently wipe
+a vouch commit — don't push to `main` mid-release.
+
 ## Release checklist
 
 1. **Re-vendor** (if the engine changed): rebuild bundles in vfkb, copy into

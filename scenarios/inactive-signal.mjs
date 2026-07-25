@@ -118,6 +118,7 @@ function runTrial(installed) {
   }
   let text = '';
   try { text = String(JSON.parse(raw).result ?? ''); } catch { text = raw; }
+  text = redactSecrets(text);
   const low = text.toLowerCase();
   const obs = {
     bannerShown: low.includes('vfkb inactive'),
