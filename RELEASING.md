@@ -22,6 +22,22 @@ commits. `scenarios/`, `.github/`, docs and `.vfkb/` are **not** surface: they c
 so they need no bump. (ADR-0060 lists the `hooks-smoke` L4 #15 as drift; observed, it touched only
 `scenarios/` + `RELEASING.md`, so it isn't.)
 
+## Evidence under the hybrid model (ADR-0067, RFC-036 accepted 2026-07-25)
+
+The four L4 records can now be produced two ways, and **both count** — the gate's rules
+(DEMONSTRATED ≥2/3 recomputed, tree-bound, can-fail arm) are identical for both:
+
+| Leg | How | Credential | What it proves |
+| --- | --- | --- | --- |
+| **CI (per release)** | dispatch `.github/workflows/l4-evidence.yml` **on the release branch** (`gh workflow run l4-evidence.yml --ref <branch>`); its `vouch` job commits the records to that branch once every verdict recomputes clean | `DEEPSEEK_TOKEN` repo secret — no personal credential | harness wiring (hooks, skills, MCP, marketplace resolution) on `deepseek-v4-pro`; each record says so in its `producedBy` block |
+| **Laptop (occasional)** | `node scenarios/release.mjs` as before | your Claude OAuth, which **never leaves this machine** | the production model config real consumers run |
+
+The laptop leg has **no mechanical trigger** — run it at your own cadence (before major releases,
+or when CI evidence looks off). If it quietly decays to "never", the fidelity check is gone; this
+paragraph exists so that decay is at least visible. A bad/rotated `DEEPSEEK_TOKEN` makes turns
+**hang to the timeout** rather than fail fast (observed, plugin#45) — read a first-turn timeout as
+an auth problem, not model flake.
+
 ## Release checklist
 
 1. **Re-vendor** (if the engine changed): rebuild bundles in vfkb, copy into

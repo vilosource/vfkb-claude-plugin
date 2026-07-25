@@ -615,6 +615,30 @@ export function checkVendor(file = join(dirname(fileURLToPath(import.meta.url)),
     : [`vendored marked.esm.mjs has sha256 ${got}, expected ${MARKED_SHA256} — see scenarios/vendor/PROVENANCE.md`];
 }
 
+// ---------------------------------------------------------------------------
+// ADR-0067 D5 — every record must say who produced it (where it ran, the
+// credential KIND, the commit). Enforcement is PHASED: this flag flips to true
+// together with the first full machine re-pin, because the gate cannot demand
+// a field the four already-committed laptop records lack without going red on
+// main retroactively. Until then provenanceReasons() exists, is selftested,
+// and is simply not consulted.
+// ---------------------------------------------------------------------------
+export const REQUIRE_PROVENANCE = false;
+
+export function provenanceReasons(rec) {
+  const p = rec.producedBy;
+  if (!p || typeof p !== 'object') return ['record carries no producedBy block (ADR-0067 D5)'];
+  const reasons = [];
+  if (!['laptop', 'github-runner'].includes(p.ranOn)) {
+    reasons.push(`producedBy.ranOn is ${JSON.stringify(p.ranOn)} — must be laptop | github-runner`);
+  }
+  if (!['claude-oauth', 'deepseek-env'].includes(p.credentialKind)) {
+    reasons.push(`producedBy.credentialKind is ${JSON.stringify(p.credentialKind)} — must be claude-oauth | deepseek-env (a KIND, never a value)`);
+  }
+  if (typeof p.commit !== 'string' || !p.commit) reasons.push('producedBy.commit is missing');
+  return reasons;
+}
+
 export function runGate(repo) {
   const failures = [];
   const notes = [];
@@ -662,6 +686,21 @@ export function runGate(repo) {
   const delivery = checkDelivery(repo, version);
   failures.push(...delivery.map((m) => `[delivery] ${m}`));
   if (delivery.length === 0) notes.push('delivery ok: status matches the committed evidence');
+
+  if (REQUIRE_PROVENANCE) {
+    for (const slug of [...REQUIRED, 'install-path']) {
+      try {
+        const rec = readJson(join(repo, 'scenarios', 'records', `${slug}.json`));
+        const pv = provenanceReasons(rec);
+        failures.push(...pv.map((m) => `[provenance] ${slug}: ${m}`));
+      } catch (e) {
+        failures.push(`[provenance] ${slug}: record unreadable: ${e.message}`);
+      }
+    }
+    if (!failures.some((f) => f.startsWith('[provenance]'))) {
+      notes.push('provenance ok: all four records say who produced them (ADR-0067 D5)');
+    }
+  }
 
   return { failures, notes, version };
 }

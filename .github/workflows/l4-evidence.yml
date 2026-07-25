@@ -1,0 +1,191 @@
+# Machine-produced plugin release evidence (ADR-0067 — the CI leg of the hybrid;
+# RFC-036 accepted 2026-07-25). Runs the four L4 scenarios on a GitHub runner
+# authenticated by DeepSeek env auth (spike plugin#45: full pipeline observed
+# working, marketplace install included). The operator's Claude OAuth NEVER
+# appears here — laptop runs via scenarios/release.mjs remain the occasional
+# full-fidelity check.
+#
+# ─── WHY TWO JOBS (the vfkb-pi-package shape, ratified in ADR-0067 D3) ─────────
+#   produce — holds DEEPSEEK_TOKEN, `contents: read`. Runs the scenarios,
+#             uploads the records. Its GITHUB_TOKEN cannot push.
+#   vouch   — `contents: write`, NO secret. Re-derives every verdict with the
+#             gate's own functions (verdict + tree-binding + provenance) and
+#             commits the records to the DISPATCHED REF only if all pass.
+# No single job can both spend the key and push. Honest limit (same as the pi
+# package): vouch trusts produce's observations — it has no independent oracle.
+#
+# ─── SECRET SAFETY (ADR-0067 D3) ──────────────────────────────────────────────
+# Trigger is workflow_dispatch ONLY — never pull_request — so no fork ever sees
+# the key, and dispatch requires write access. Records are redacted at capture
+# (scenarios/auth.mjs redactSecrets): GitHub masks logs, not artifact/file
+# contents.
+#
+# ─── AUTH FAILURE SHAPE (ADR-0067 D4, observed in the spike) ──────────────────
+# A bad token does not error — `claude -p` HANGS to the per-turn timeout. The
+# scenarios carry per-turn timeouts; a first-turn timeout should be read as
+# auth-shaped, not model flake. Flake policy: one automatic retry per scenario,
+# then fail LOUDLY — never a third try, never a relaxed threshold.
+name: l4-evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Scenario to run (all | brief-skill | hooks-smoke | inactive-signal | install-path)'
+        type: string
+        default: 'all'
+      trials:
+        description: 'Trials per arm (ADR-0022 needs >=3 for a release record)'
+        type: string
+        default: '3'
+      commit:
+        description: 'Vouch: commit the machine-produced records back to the dispatched ref'
+        type: boolean
+        default: true
+
+# Metered, and the scenarios say "one at a time" — serialize.
+concurrency:
+  group: l4-evidence
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read # holds the key, cannot push
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # install-path resolves release tags (prevReleaseWithoutBrief) and the
+          # ref under test; both need full history + tags.
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Claude Code (the CLI version the spike verified)
+        run: npm install -g @anthropic-ai/claude-code@2.1.220
+      - name: Route SSH github clones over HTTPS, SYSTEM-wide
+        # `claude plugin marketplace add owner/repo` clones git@github.com:…,
+        # and the scenarios run it under sandbox HOMEs — which never see a
+        # user-level gitconfig. --system lands in /etc/gitconfig, which every
+        # HOME inherits. A runner has no SSH key; without this every arm would
+        # die in SETUP.
+        run: sudo git config --system url."https://github.com/".insteadOf "git@github.com:"
+      - name: Produce the records (metered — real agent sessions on DeepSeek)
+        env:
+          DEEPSEEK_TOKEN: ${{ secrets.DEEPSEEK_TOKEN }} # the ONLY step that sees it
+          VFKB_L4_AUTH: deepseek-env
+          VFKB_IP_REF: ${{ github.ref_name }}
+          VFKB_HS_MODEL: deepseek-v4-pro
+          VFKB_IS_MODEL: deepseek-v4-pro
+          VFKB_BS_OUTER_MODEL: deepseek-v4-pro
+          VFKB_IP_OUTER_MODEL: deepseek-v4-pro
+          VFKB_BS_TRIALS: ${{ github.event.inputs.trials }}
+          VFKB_HS_TRIALS: ${{ github.event.inputs.trials }}
+          VFKB_IS_TRIALS: ${{ github.event.inputs.trials }}
+          VFKB_IP_TRIALS: ${{ github.event.inputs.trials }}
+        run: |
+          set -uo pipefail
+          case "${{ github.event.inputs.only }}" in
+            all) scenarios="brief-skill hooks-smoke inactive-signal install-path" ;;
+            brief-skill|hooks-smoke|inactive-signal|install-path) scenarios="${{ github.event.inputs.only }}" ;;
+            *) echo "::error::unknown scenario '${{ github.event.inputs.only }}'"; exit 1 ;;
+          esac
+          for s in $scenarios; do
+            echo "::group::scenario $s"
+            if ! node "scenarios/$s.mjs"; then
+              # ADR-0067 D4: one automatic retry, then loud failure. A fully red
+              # run on the second try is EVIDENCE that something is wrong.
+              echo "::warning::$s was not DEMONSTRATED on the first run — retrying ONCE (ADR-0067 D4)"
+              if ! node "scenarios/$s.mjs"; then
+                echo "::error::$s failed twice — not retrying again; read the record, do not relax the threshold"
+                echo "::endgroup::"
+                exit 1
+              fi
+            fi
+            echo "::endgroup::"
+          done
+      - name: Recompute every produced verdict (records do not assert their own)
+        run: |
+          node --input-type=module -e '
+            const { verdict } = await import("./scenarios/release-gate.mjs");
+            const { readFileSync, readdirSync } = await import("node:fs");
+            let bad = 0;
+            for (const f of readdirSync("scenarios/records").filter((f) => f.endsWith(".json"))) {
+              const rec = JSON.parse(readFileSync(`scenarios/records/${f}`, "utf8"));
+              const v = verdict(rec);
+              console.log(`${f}: ${v.ok ? "DEMONSTRATED (recomputed)" : "NOT demonstrated: " + v.reasons.join("; ")}`);
+              if (!v.ok) bad++;
+            }
+            process.exit(bad ? 1 : 0);
+          '
+      - name: Upload the machine-produced records
+        uses: actions/upload-artifact@v4
+        with:
+          name: l4-records
+          path: scenarios/records/*.json
+          if-no-files-found: error
+
+  vouch:
+    needs: produce
+    if: ${{ github.event.inputs.commit == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # can push, holds NO secret
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fetch the machine-produced records
+        uses: actions/download-artifact@v4
+        with:
+          name: l4-records
+          path: scenarios/records/
+      - name: Verify with the gate's own functions, then commit ONLY if clean
+        run: |
+          set -euo pipefail
+          # Re-derive here too — the committing job must not take the producing
+          # job's word for it. verdict() reads per-trial observations;
+          # treeBindingReasons() binds each record to THIS checkout's plugin/
+          # tree; provenanceReasons() enforces ADR-0067 D5 on every NEW record
+          # (the gate-wide flag is phased, but nothing unprovenanced may enter
+          # via this path).
+          node --input-type=module -e '
+            const { verdict, treeBindingReasons, provenanceReasons } = await import("./scenarios/release-gate.mjs");
+            const { readFileSync, readdirSync } = await import("node:fs");
+            let bad = 0;
+            for (const f of readdirSync("scenarios/records").filter((f) => f.endsWith(".json"))) {
+              const slug = f.replace(/\.json$/, "");
+              const rec = JSON.parse(readFileSync(`scenarios/records/${f}`, "utf8"));
+              const reasons = [
+                ...verdict(rec).reasons,
+                ...treeBindingReasons(".", rec, slug),
+                ...provenanceReasons(rec),
+              ];
+              if (reasons.length) { console.error(`refusing to vouch ${slug}:\n  ` + reasons.join("\n  ")); bad++; }
+              else console.log(`${slug}: DEMONSTRATED, tree-bound, provenanced — vouchable`);
+            }
+            process.exit(bad ? 1 : 0);
+          '
+          if git diff --quiet -- scenarios/records; then
+            echo "records unchanged — nothing to vouch"; exit 0
+          fi
+          git config user.name  "vfkb-release-bot"
+          git config user.email "vfkb-release-bot@users.noreply.github.com"
+          git add -- scenarios/records
+          git commit \
+            -m "chore: re-pin machine-produced L4 evidence [skip ci]" \
+            -m "Auto-vouched by CI (ADR-0067, run ${{ github.run_id }}): DeepSeek-authenticated scenarios, every verdict recomputed, tree-bound, provenanced. Pathspec-scoped to scenarios/records." \
+            -m "Scope (ADR-0067): these records prove harness wiring on deepseek-v4-pro, not the production model config — that is the laptop leg's job."
+          git push origin "HEAD:${{ github.ref_name }}"
+          echo "vouched: committed the machine-produced records to ${{ github.ref_name }}"
