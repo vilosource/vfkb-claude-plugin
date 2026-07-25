@@ -30,6 +30,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
+assertAuthReady();
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -72,11 +74,12 @@ function runArm(dir) {
     raw = sh('claude', ['-p', '/vfkb:brief', '--plugin-dir', PLUGIN, '--output-format', 'json',
       '--strict-mcp-config', '--dangerously-skip-permissions', '--model', OUTER_MODEL], {
       cwd: dir,
+      env: authEnv(process.env),
       timeout: TIMEOUT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (e) {
-    err = String(e.stderr || e.message || '').replace(/\s+/g, ' ').slice(0, 160);
+    err = redactSecrets(String(e.stderr || e.message || '')).replace(/\s+/g, ' ').slice(0, 160);
     raw = String(e.stdout || '');
   }
   let text = '';
@@ -88,6 +91,7 @@ function runArm(dir) {
   } catch {
     text = raw;
   }
+  text = redactSecrets(text);
   const sentinel = text.toLowerCase().includes(SENTINEL);
   const haiku = models.some((m) => m.toLowerCase().includes('haiku'));
   return { sentinel, haiku, models, out: text.replace(/\s+/g, ' ').slice(0, 110), err };
@@ -128,6 +132,7 @@ const record = {
   // this record prove an EARLIER plugin/ tree while every gate stayed green —
   // the dishonesty #22 closed for the delivery record only.
   pluginTreeHash: hashTree(join(REPO, 'plugin')), outerModel: OUTER_MODEL,
+  producedBy: producedBy(REPO),
   trials: TRIALS, generated: new Date().toISOString(), arms,
 };
 

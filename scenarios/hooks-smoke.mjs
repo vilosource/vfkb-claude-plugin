@@ -48,11 +48,12 @@
 import { execFileSync, spawn } from 'node:child_process';
 import {
   mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync,
-  copyFileSync, chmodSync, existsSync,
+  copyFileSync, existsSync,
 } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -69,17 +70,8 @@ const KB_TOOLS = [
 ];
 const sh = (c, a, o = {}) => execFileSync(c, a, { encoding: 'utf8', ...o });
 
-// --- credentials: the Claude-Code Max OAuth block only (l4-purpose pattern) --
-function stageCreds(homeDir) {
-  const src = join(homedir(), '.claude', '.credentials.json');
-  const all = JSON.parse(readFileSync(src, 'utf8'));
-  if (!all.claudeAiOauth) throw new Error('no claudeAiOauth block in ~/.claude/.credentials.json');
-  const dir = join(homeDir, '.claude');
-  mkdirSync(dir, { recursive: true });
-  const dst = join(dir, '.credentials.json');
-  writeFileSync(dst, JSON.stringify({ claudeAiOauth: all.claudeAiOauth }));
-  chmodSync(dst, 0o600);
-}
+// --- credentials: the ADR-0067 seam (oauth staged file | deepseek env) -------
+assertAuthReady();
 
 // --- sandbox: an isolated HOME + a seeded project repo ----------------------
 function buildSandbox(wired) {
@@ -88,7 +80,7 @@ function buildSandbox(wired) {
   const proj = join(root, 'proj');
   mkdirSync(home, { recursive: true });
   mkdirSync(proj, { recursive: true });
-  stageCreds(home);
+  stageAuth(home);
 
   // project repo: seeded brain with the sentinel handoff, on a topic branch
   // (SessionEnd auto-commits only on a non-main branch, by design — ADR-0033)
@@ -110,9 +102,9 @@ function buildSandbox(wired) {
   if (wired) {
     // The real resolution path: directory-source marketplace over THIS checkout.
     sh('claude', ['plugin', 'marketplace', 'add', REPO],
-      { env: { ...process.env, HOME: home }, stdio: 'ignore', timeout: 60000 });
+      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
     sh('claude', ['plugin', 'install', 'vfkb@vfkb', '--scope', 'user'],
-      { env: { ...process.env, HOME: home }, stdio: 'ignore', timeout: 60000 });
+      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
   }
   return { root, home, proj };
 }
@@ -127,17 +119,18 @@ function turn(sb, prompt, allowedTools) {
   try {
     raw = sh('claude', args, {
       cwd: sb.proj,
-      env: { ...process.env, HOME: sb.home },
+      env: authEnv({ ...process.env, HOME: sb.home }),
       timeout: TIMEOUT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (e) {
     timedOut = e.signal === 'SIGTERM';
-    err = String(e.stderr || e.message || '').replace(/\s+/g, ' ').slice(0, 200);
+    err = redactSecrets(String(e.stderr || e.message || '')).replace(/\s+/g, ' ').slice(0, 200);
     raw = String(e.stdout || '');
   }
   let text = '';
   try { text = String(JSON.parse(raw).result ?? ''); } catch { text = raw; }
+  text = redactSecrets(text);
   return { text, err, timedOut };
 }
 
@@ -268,6 +261,7 @@ const record = {
   // this record prove an EARLIER plugin/ tree while every gate stayed green —
   // the dishonesty #22 closed for the delivery record only.
   pluginTreeHash: hashTree(join(REPO, 'plugin')), outerModel: MODEL,
+  producedBy: producedBy(REPO),
   trials: TRIALS, generated: new Date().toISOString(), arms,
 };
 

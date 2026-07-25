@@ -72,11 +72,12 @@
 // ============================================================================
 import { execFileSync } from 'node:child_process';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, chmodSync,
+  mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync,
 } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -91,7 +92,7 @@ const SETUP_TIMEOUT = parseInt(process.env.VFKB_IP_SETUP_TIMEOUT || '120000', 10
 
 const SENTINEL = 'ironquill-nimbus-84';
 const sh = (c, a, o = {}) => execFileSync(c, a, { encoding: 'utf8', ...o });
-const homeEnv = (home) => ({ ...process.env, HOME: home });
+const homeEnv = (home) => authEnv({ ...process.env, HOME: home });
 
 // --- resolve "the newest release that predates /vfkb:brief" as a durable tag --
 // (ADR-0060 tags make this stable; a hardcoded SHA would rot at the next release.)
@@ -105,16 +106,8 @@ function prevReleaseWithoutBrief() {
   throw new Error('no release tag predates /vfkb:brief — cannot model an upgrade that adds it');
 }
 
-// --- credentials: the Claude-Code Max OAuth block only (ADR-0022 §8) ---------
-function stageCreds(homeDir) {
-  const all = JSON.parse(readFileSync(join(homedir(), '.claude', '.credentials.json'), 'utf8'));
-  if (!all.claudeAiOauth) throw new Error('no claudeAiOauth block in ~/.claude/.credentials.json');
-  const dir = join(homeDir, '.claude');
-  mkdirSync(dir, { recursive: true });
-  const dst = join(dir, '.credentials.json');
-  writeFileSync(dst, JSON.stringify({ claudeAiOauth: all.claudeAiOauth }));
-  chmodSync(dst, 0o600);
-}
+// --- credentials: the ADR-0067 seam (oauth staged file | deepseek env) -------
+assertAuthReady();
 
 // --- sandbox: isolated HOME + a seeded project repo on a topic branch --------
 function buildSandbox() {
@@ -123,7 +116,7 @@ function buildSandbox() {
   const proj = join(root, 'proj');
   mkdirSync(home, { recursive: true });
   mkdirSync(proj, { recursive: true });
-  stageCreds(home);
+  stageAuth(home);
 
   mkdirSync(join(proj, '.vfkb'));
   sh('node', [CLI, 'add', 'fact',
@@ -196,7 +189,7 @@ function brief(sb) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (e) {
-    err = String(e.stderr || e.message || '').replace(/\s+/g, ' ').slice(0, 160);
+    err = redactSecrets(String(e.stderr || e.message || '')).replace(/\s+/g, ' ').slice(0, 160);
     raw = String(e.stdout || '');
   }
   let text = '';
@@ -206,6 +199,7 @@ function brief(sb) {
     text = String(j.result ?? '');
     models = Object.keys(j.modelUsage ?? {});
   } catch { text = raw; }
+  text = redactSecrets(text);
   const sentinel = text.toLowerCase().includes(SENTINEL);
   const haiku = models.some((m) => m.toLowerCase().includes('haiku'));
   // `present` REQUIRES BOTH. The haiku conjunct is load-bearing: SessionStart
@@ -223,7 +217,7 @@ function brief(sb) {
 // with the captured error and lets the run continue, rather than crashing a
 // ~12-session metered run after burning turns and producing no record. A miss is
 // the fail-safe direction — a positive arm that couldn't set up cannot pass.
-const setupErr = (e) => `SETUP: ${String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 160)}`;
+const setupErr = (e) => `SETUP: ${redactSecrets(String((e && e.message) || e)).replace(/\s+/g, ' ').slice(0, 160)}`;
 
 function runFresh() {
   const sb = buildSandbox();
@@ -374,7 +368,8 @@ const record = {
   // provenance (asserted at run start); pluginTreeHash is the OBSERVED binding
   // — the in-predicate treeVerified* checks are what tie the installed bytes to
   // it, so a mid-run push lands on a miss, never on a mislabeled record.
-  ref: REF, headSha: HEAD_SHA, pluginTreeHash: LOCAL_TREE, arms,
+  ref: REF, headSha: HEAD_SHA, pluginTreeHash: LOCAL_TREE,
+  producedBy: producedBy(REPO), arms,
 };
 
 const { ok: demonstrated, reasons } = verdict(record);

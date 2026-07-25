@@ -715,3 +715,34 @@ if (bad) {
   process.exit(1);
 }
 console.log(`release-gate selftest passed: ${total}/${total} cases (the Brake is connected)`);
+
+// --- ADR-0067 D5: provenanceReasons, both directions (the flag is phased, the
+// function must be connected and correct BEFORE it is consulted) --------------
+{
+  const { provenanceReasons } = await import('./release-gate.mjs');
+  const goodProv = {
+    producedBy: { ranOn: 'github-runner', credentialKind: 'deepseek-env', authBase: 'x', runUrl: 'u', commit: 'abc' },
+  };
+  const cases = [
+    ['a record with no producedBy is RED', {}, /no producedBy block/],
+    ['a credential VALUE-shaped kind is RED', { producedBy: { ...goodProv.producedBy, credentialKind: 'sk-abc123' } }, /KIND, never a value/],
+    ['an unknown ranOn is RED', { producedBy: { ...goodProv.producedBy, ranOn: 'mystery-host' } }, /ranOn/],
+    ['a missing commit is RED', { producedBy: { ...goodProv.producedBy, commit: '' } }, /commit/],
+  ];
+  let pbad = 0;
+  for (const [name, rec, expect] of cases) {
+    const reasons = provenanceReasons(rec);
+    if (!reasons.length || !expect.test(reasons.join(' '))) {
+      console.error(`  FAIL   provenance: ${name} — got: ${reasons.join('; ') || '(green)'}`);
+      pbad++;
+    } else console.log(`  ok     provenance: ${name}`);
+  }
+  if (provenanceReasons(goodProv).length) {
+    console.error(`  FAIL   provenance: a complete block must be GREEN — got: ${provenanceReasons(goodProv).join('; ')}`);
+    pbad++;
+  } else console.log('  ok     provenance: a complete block is green (else every red above is vacuous)');
+  if (pbad) {
+    console.error(`provenance selftest FAILED: ${pbad} case(s)`);
+    process.exit(1);
+  }
+}

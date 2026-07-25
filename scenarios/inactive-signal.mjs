@@ -35,11 +35,12 @@
 // ============================================================================
 import { execFileSync } from 'node:child_process';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, copyFileSync, chmodSync,
+  mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, copyFileSync,
 } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const GUARD = join(REPO, 'templates', 'vfkb-guard.mjs');
@@ -51,15 +52,7 @@ const TIMEOUT = parseInt(process.env.VFKB_IS_TIMEOUT || '200000', 10);
 const SENTINEL = 'plumcanyon-verdigris-73';
 const sh = (c, a, o = {}) => execFileSync(c, a, { encoding: 'utf8', ...o });
 
-function stageCreds(homeDir) {
-  const all = JSON.parse(readFileSync(join(homedir(), '.claude', '.credentials.json'), 'utf8'));
-  if (!all.claudeAiOauth) throw new Error('no claudeAiOauth block in ~/.claude/.credentials.json');
-  const dir = join(homeDir, '.claude');
-  mkdirSync(dir, { recursive: true });
-  const dst = join(dir, '.credentials.json');
-  writeFileSync(dst, JSON.stringify({ claudeAiOauth: all.claudeAiOauth }));
-  chmodSync(dst, 0o600);
-}
+assertAuthReady();
 
 function buildSandbox(installed) {
   const root = mkdtempSync(join(tmpdir(), 'vfkb-is-'));
@@ -67,7 +60,7 @@ function buildSandbox(installed) {
   const proj = join(root, 'proj');
   mkdirSync(join(proj, '.claude'), { recursive: true });
   mkdirSync(home, { recursive: true });
-  stageCreds(home);
+  stageAuth(home);
 
   // The consumer wiring, EXACTLY as a migrated repo carries it: declare the
   // plugin + its marketplace, AND wire the guard as a SessionStart hook.
@@ -97,9 +90,9 @@ function buildSandbox(installed) {
 
   if (installed) {
     sh('claude', ['plugin', 'marketplace', 'add', REPO],
-      { env: { ...process.env, HOME: home }, stdio: 'ignore', timeout: 60000 });
+      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
     sh('claude', ['plugin', 'install', 'vfkb@vfkb', '--scope', 'user'],
-      { env: { ...process.env, HOME: home }, stdio: 'ignore', timeout: 60000 });
+      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
   }
   return { root, home, proj };
 }
@@ -115,16 +108,17 @@ function runTrial(installed) {
       'names a migration codename (a distinctive hyphenated phrase), state it, or say NONE.',
       '--output-format', 'json', '--model', MODEL], {
       cwd: sb.proj,
-      env: { ...process.env, HOME: sb.home },
+      env: authEnv({ ...process.env, HOME: sb.home }),
       timeout: TIMEOUT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (e) {
-    err = String(e.stderr || e.message || '').replace(/\s+/g, ' ').slice(0, 160);
+    err = redactSecrets(String(e.stderr || e.message || '')).replace(/\s+/g, ' ').slice(0, 160);
     raw = String(e.stdout || '');
   }
   let text = '';
   try { text = String(JSON.parse(raw).result ?? ''); } catch { text = raw; }
+  text = redactSecrets(text);
   const low = text.toLowerCase();
   const obs = {
     bannerShown: low.includes('vfkb inactive'),
@@ -165,6 +159,7 @@ const record = {
   // this record prove an EARLIER plugin/ tree while every gate stayed green —
   // the dishonesty #22 closed for the delivery record only.
   pluginTreeHash: hashTree(join(REPO, 'plugin')), outerModel: MODEL,
+  producedBy: producedBy(REPO),
   trials: TRIALS, generated: new Date().toISOString(), arms,
 };
 
