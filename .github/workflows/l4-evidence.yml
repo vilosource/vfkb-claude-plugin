@@ -145,6 +145,9 @@ jobs:
     permissions:
       contents: write # can push, holds NO secret
       pull-requests: write # ADR-0068: enable auto-merge (an intent, not a merge)
+      actions: write # `gh workflow run release-tag.yml` — POST .../dispatches
+                     # is an Actions-write endpoint; unlisted permissions default
+                     # to none, so without this the dispatch 403s.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -222,8 +225,14 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # The patterns are the ones this repo has ACTUALLY used for releases,
+          # checked against merged-PR history: re-vendor/engine (v0.6.0-v0.13.0),
+          # chore/revendor-0.11.0, chore/revendor-0.12.0, chore/re-vendor-0.5.0,
+          # repin/*. A guard encoding a convention the repo does not follow would
+          # silently no-op self-merge on the next release — fails safe, but a
+          # capability that works on a coin flip is not the one ADR-0068 describes.
           case "$BRANCH" in
-            release/*|re-vendor/*|repin/*) ;;
+            release/*|re-vendor/*|repin/*|chore/re-vendor*|chore/revendor*) ;;
             *) echo "::notice::$BRANCH is not a release branch — ADR-0068 §5 scopes self-merge to release PRs; not queueing"; exit 0 ;;
           esac
           # Distinguish "gh failed" from "no eligible PR": swallowing both into an
@@ -246,7 +255,10 @@ jobs:
           # Accept MERGED-now or ENABLED-and-open; fail only when neither holds.
           # (autoMergeRequest is NOT cleared on merge, so it alone cannot tell
           # queued from merged either.)
-          read -r amr state <<<"$(gh pr view "$pr" --json autoMergeRequest,state --jq '(if .autoMergeRequest then "enabled" else "none" end) + " " + .state')"
+          if ! observed=$(gh pr view "$pr" --json autoMergeRequest,state --jq '(if .autoMergeRequest then "enabled" else "none" end) + " " + .state'); then
+            echo "::error::gh pr merge --auto succeeded but the PR state could not be observed"; exit 1
+          fi
+          read -r amr state <<<"$observed"
           if [ "$state" = "MERGED" ]; then
             echo "::notice::PR #${pr}: MERGED IMMEDIATELY — the required checks were already green"
             echo "MERGED_NOW=1" >> "$GITHUB_ENV"
@@ -269,12 +281,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          name=$(node -p "require('./plugin/.claude-plugin/plugin.json').name")
           version=$(node -p "require('./plugin/.claude-plugin/plugin.json').version")
-          tag="vfkb--v${version}"
+          tag="${name}--v${version}"
           if [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
             echo "::notice::${tag} already on origin — nothing to do"; exit 0
           fi
-          gh workflow run release-tag.yml --ref main || true
+          # NOT `|| true`: a 403 here (missing actions: write) would otherwise
+          # masquerade 5 minutes later as "the tag never appeared", pointing the
+          # operator at the wrong cause.
+          if ! gh workflow run release-tag.yml --ref main; then
+            echo "::error::could not dispatch release-tag.yml — the tag will not be created. Check the job's actions: write permission."
+            exit 1
+          fi
           # Content assertion, not a green job: the ref either exists on the
           # remote or this release is untagged and someone has to know.
           for i in $(seq 1 20); do
