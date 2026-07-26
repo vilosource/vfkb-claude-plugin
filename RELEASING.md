@@ -44,6 +44,36 @@ required checks certify the head that actually contains the records. And release
 force-pushes its release branch on every `main` push (standing gotcha), which would silently wipe
 a vouch commit — don't push to `main` mid-release.
 
+## Self-merge (ADR-0068)
+
+A **green release PR merges itself.** The `vouch` job enables GitHub's native auto-merge on the
+PR for the dispatched branch, so the merge happens if and only if the required checks
+(`release-gate`) pass — branch protection, not a bot's judgment, is what decides. A red PR
+visibly does not merge.
+
+- **To stop one:** label the PR `hold` before dispatching (vouch skips it), or
+  `gh pr merge <n> --disable-auto` after. Draft PRs are skipped too.
+- **`enabled` is not `merged`.** A PR with auto-merge on and a check that never reports looks
+  identical to success in a summary. Both paths report the state they actually observed — and note
+  that `gh` does **not** enable auto-merge when the PR is already mergeable: it merges on the spot,
+  so "merged immediately" is a normal outcome, not an anomaly.
+- **A CI self-merge does not tag by itself, and that is handled in two places.** A merge performed
+  with the repository's `GITHUB_TOKEN` does not trigger `push:`-triggered workflows, so
+  `release-tag.yml` would never run for it. Coverage:
+  - *merged while the vouch job was still running* → the job dispatches `release-tag.yml`
+    explicitly and **asserts the tag exists on origin**, failing loudly if it does not;
+  - *merged later* (the common shape — auto-merge waits for the empty commit below) → nothing is
+    left running to notice, so `release-tag.yml` also runs **hourly as a reconciler**. It
+    re-verifies every gate and is idempotent, so it tags an untagged release and no-ops otherwise.
+    Worst-case tag latency is therefore about an hour, not never.
+  - Manual recovery, any time: `gh workflow run release-tag.yml --ref main`.
+  - **Status: built, not yet verified** (ADR-0051 clause 2) — no release has yet self-merged and
+    been observed tagging end to end. Until one has, watch the tag after a self-merge.
+- Scope is release PRs — the vouch job only queues branches matching `release/*`, `re-vendor/*`,
+  `repin/*` or `chore/re*vendor*`. **Name your release branch accordingly** (step 1 below); a
+  differently-named branch silently falls back to a manual merge. Feature PRs still go through the
+  ADR-0052 review gate.
+
 ## Release checklist
 
 1. **Re-vendor** (if the engine changed): rebuild bundles in vfkb, copy into

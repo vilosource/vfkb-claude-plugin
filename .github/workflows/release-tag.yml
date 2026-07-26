@@ -18,6 +18,23 @@ name: release-tag
 on:
   push:
     branches: [main]
+  # A merge performed with the repository's GITHUB_TOKEN (an ADR-0068 CI
+  # self-merge) does NOT trigger push-workflows, so `push: main` alone would
+  # leave a CI-merged release untagged. Two additions cover the two shapes:
+  #
+  #   workflow_dispatch — the vouch job asks for this explicitly when the PR
+  #     merged while it was still running, then asserts the tag on origin.
+  #     (workflow_dispatch is a documented EXCEPTION to the GITHUB_TOKEN
+  #     recursion guard, unlike push.)
+  #   schedule — the QUEUED case, which no step can cover: auto-merge fires
+  #     after the vouch job has exited (often much later, once an operator
+  #     pushes the empty commit RELEASING.md calls for), so nothing is left
+  #     running to notice. This job is idempotent and re-verifies every gate
+  #     before tagging, so running it on a timer is a reconciler, not a risk:
+  #     it tags an untagged released version and no-ops otherwise.
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *' # hourly, off the hour to avoid the scheduler stampede
 
 # A tag is a shared, published ref. Two runs racing to create the same one is a
 # lost update at best; serialize them.
