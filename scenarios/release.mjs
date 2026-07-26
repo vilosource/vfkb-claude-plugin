@@ -375,8 +375,28 @@ function land(branch, ver) {
     execFileSync('sleep', ['20']);
   }
 
-  if (run('gh', ['pr', 'merge', pr, '-R', REMOTE, '--squash']) !== 0) die(`could not merge PR #${pr}`);
-  ok(`merged PR #${pr}`);
+  // ADR-0068: a green release PR merges itself, via GitHub's NATIVE auto-merge
+  // — branch protection stays the enforcement, so a red PR cannot merge no
+  // matter what this script asks for. `--auto` is an intent; the merge is
+  // GitHub's. (The CI wait above already ran, so in the normal path the merge
+  // happens immediately; --auto also covers the case where a check re-runs.)
+  if (run('gh', ['pr', 'merge', pr, '-R', REMOTE, '--squash', '--auto']) !== 0) {
+    die(`could not queue PR #${pr} for merge`);
+  }
+  // ENABLED IS NOT MERGED (ADR-0068 quiet-success clause). Observe which state
+  // it actually reached before saying either word.
+  let merged = false;
+  for (let i = 0; i < 15; i++) {
+    const st = execFileSync('gh', ['pr', 'view', pr, '-R', REMOTE, '--json', 'state', '-q', '.state'], { encoding: 'utf8' }).trim();
+    if (st === 'MERGED') { merged = true; break; }
+    if (st === 'CLOSED') die(`PR #${pr} was CLOSED, not merged`);
+    execFileSync('sleep', ['20']);
+  }
+  if (!merged) {
+    info(`PR #${pr}: auto-merge ENABLED but NOT yet merged — GitHub is still waiting on a check`);
+    return { landed: false, why: 'auto-merge queued, not merged', pr };
+  }
+  ok(`merged PR #${pr} (observed state=MERGED)`);
 
   // The tag creates itself (ADR-0061). Verify it — observed, not assumed.
   const want = tagFor('vfkb', ver);

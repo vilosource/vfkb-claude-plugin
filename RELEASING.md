@@ -44,6 +44,20 @@ required checks certify the head that actually contains the records. And release
 force-pushes its release branch on every `main` push (standing gotcha), which would silently wipe
 a vouch commit — don't push to `main` mid-release.
 
+## Self-merge (ADR-0068)
+
+A **green release PR merges itself.** The `vouch` job enables GitHub's native auto-merge on the
+PR for the dispatched branch, so the merge happens if and only if the required checks
+(`release-gate`) pass — branch protection, not a bot's judgment, is what decides. A red PR
+visibly does not merge.
+
+- **To stop one:** label the PR `hold` before dispatching (vouch skips it), or
+  `gh pr merge <n> --disable-auto` after. Draft PRs are skipped too.
+- **`enabled` is not `merged`.** A PR with auto-merge on and a check that never reports looks
+  identical to success in a summary — the wrapper and the workflow both report the state they
+  actually observed, and so should you.
+- Scope is release PRs. Feature PRs still go through the ADR-0052 review gate.
+
 ## Release checklist
 
 1. **Re-vendor** (if the engine changed): rebuild bundles in vfkb, copy into

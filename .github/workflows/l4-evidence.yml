@@ -144,6 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # can push, holds NO secret
+      pull-requests: write # ADR-0068: enable auto-merge (an intent, not a merge)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -204,3 +205,35 @@ jobs:
             -m "Scope (ADR-0067): these records prove harness wiring on deepseek-v4-pro, not the production model config — that is the laptop leg's job."
           git push origin "HEAD:${{ github.ref_name }}"
           echo "vouched: committed the machine-produced records to ${{ github.ref_name }}"
+
+      # ADR-0068 — a green release PR merges itself. GitHub's NATIVE auto-merge
+      # is the mechanism on purpose: it merges only when the branch's required
+      # checks pass, so BRANCH PROTECTION stays the enforcement and a red PR
+      # cannot merge. This step states an intent; it never presses merge.
+      #
+      # `[skip ci]` on the vouch commit means the vouched head gets no check
+      # runs from the push — that is exactly why enabling auto-merge here is not
+      # sufficient on its own and RELEASING.md still calls for the user-authored
+      # empty commit that makes the required check run against the final head.
+      - name: Enable auto-merge on the release PR (ADR-0068)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pr=$(gh pr list --head "$BRANCH" --state open --json number,isDraft,labels \
+                 --jq '.[0] | select(.isDraft==false) | select([.labels[].name] | index("hold") | not) | .number' || true)
+          if [ -z "$pr" ]; then
+            echo "no eligible open PR for $BRANCH (absent, draft, or labelled hold) — nothing to queue"
+            exit 0
+          fi
+          gh pr merge "$pr" --squash --auto
+          # Observed, not assumed — and never reported as "merged" (ADR-0068's
+          # quiet-success clause): enabled and merged are different states.
+          state=$(gh pr view "$pr" --json autoMergeRequest,state \
+                    --jq '(if .autoMergeRequest then "auto-merge ENABLED" else "auto-merge NOT enabled" end) + ", pr " + .state')
+          echo "::notice::PR #${pr}: ${state} — it will merge if and only if the required checks pass"
+          case "$state" in
+            "auto-merge ENABLED"*) ;;
+            *) echo "::error::asked for auto-merge on #${pr} but the API does not report it"; exit 1 ;;
+          esac
