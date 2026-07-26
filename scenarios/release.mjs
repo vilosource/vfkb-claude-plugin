@@ -354,7 +354,17 @@ function land(branch, ver) {
   if (run('git', ['push', '-q', 'origin', branch]) !== 0) die(`could not push ${branch}`);
   ok('pushed');
 
-  if (SKIP_MERGE) { info('--skip-merge: stopping before merge'); return { landed: false, why: '--skip-merge' }; }
+  if (SKIP_MERGE) { info('--skip-merge: stopping before merge'); return { landed: false, why: '--skip-merge', pr }; }
+
+  // ADR-0068 §4 names the `hold` label as the operator's override, and an
+  // override that only one of the two merge paths honours is not an override.
+  const labels = JSON.parse(
+    execFileSync('gh', ['pr', 'view', pr, '-R', REMOTE, '--json', 'labels', '-q', '[.labels[].name]'], { encoding: 'utf8' }) || '[]',
+  );
+  if (labels.includes('hold')) {
+    info(`PR #${pr} is labelled 'hold' — not merging (ADR-0068 §4)`);
+    return { landed: false, why: "labelled 'hold'", pr };
+  }
 
   const pr = execFileSync('gh', ['pr', 'list', '-R', REMOTE, '--head', branch, '--state', 'open', '--json', 'number', '-q', '.[0].number'], { encoding: 'utf8' }).trim();
   if (!pr) die(`no open PR for ${branch}`, `gh pr create -R ${REMOTE} --head ${branch}`);

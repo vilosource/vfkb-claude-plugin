@@ -54,9 +54,16 @@ visibly does not merge.
 - **To stop one:** label the PR `hold` before dispatching (vouch skips it), or
   `gh pr merge <n> --disable-auto` after. Draft PRs are skipped too.
 - **`enabled` is not `merged`.** A PR with auto-merge on and a check that never reports looks
-  identical to success in a summary — the wrapper and the workflow both report the state they
-  actually observed, and so should you.
-- Scope is release PRs. Feature PRs still go through the ADR-0052 review gate.
+  identical to success in a summary. Both paths report the state they actually observed — and note
+  that `gh` does **not** enable auto-merge when the PR is already mergeable: it merges on the spot,
+  so "merged immediately" is a normal outcome, not an anomaly.
+- **A CI self-merge does not tag by itself.** A merge performed with the repository's
+  `GITHUB_TOKEN` does not trigger `push:`-triggered workflows, so `release-tag.yml` would never
+  run. The vouch job therefore dispatches it explicitly and then **asserts the tag exists on
+  origin**, failing loudly if it does not. If you ever see that error: `gh workflow run
+  release-tag.yml --ref main`.
+- Scope is release PRs — the vouch job only queues branches named `release/*`, `re-vendor/*` or
+  `repin/*`. Feature PRs still go through the ADR-0052 review gate.
 
 ## Release checklist
 

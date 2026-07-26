@@ -18,6 +18,11 @@ name: release-tag
 on:
   push:
     branches: [main]
+  # A merge performed with the repository's GITHUB_TOKEN (an ADR-0068 CI
+  # self-merge) does NOT trigger push-workflows, so `push: main` alone would
+  # leave a CI-merged release untagged. The vouch job asks for this explicitly
+  # and then asserts the tag exists on origin.
+  workflow_dispatch:
 
 # A tag is a shared, published ref. Two runs racing to create the same one is a
 # lost update at best; serialize them.
