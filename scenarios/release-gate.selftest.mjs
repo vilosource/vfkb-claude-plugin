@@ -10,7 +10,7 @@
 //
 //   node scenarios/release-gate.selftest.mjs
 // ============================================================================
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runGate, checkVendor, hashTree } from './release-gate.mjs';
@@ -590,6 +590,36 @@ const CASES = [
       write(r, 'scenarios/records/install-path.json', goodRecord('install-path', '0.4.0'));
       write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
       write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+    },
+  },
+  {
+    // Issue #42 — treeBindingReasons has THREE outcomes (missing hash, mismatch,
+    // hashTree THROWING) and only the first two had ever been watched going red.
+    // The throw branch exists because of the #27 review: a corrupted working tree
+    // must surface as a gate FINDING, not a stack trace. A dangling symlink is the
+    // realistic shape — hashTree's statSync() raises ENOENT on it — and it needs no
+    // chmod, so there is no root-skip caveat to get wrong (chmod is a no-op for
+    // root and would turn the case green for the wrong reason).
+    name: '#42 a dangling symlink under plugin/ is a FINDING, not a stack trace (capability record)',
+    expect: /\[evidence\].*could not hash the shipping plugin\/ tree/s,
+    break: (r) => {
+      symlinkSync(join(r, 'plugin', 'nowhere-at-all'), join(r, 'plugin', 'dangling.mjs'));
+    },
+  },
+  {
+    // The SAME corruption through the DELIVERY call site: they are separate
+    // treeBindingReasons calls, and #42 asks for both to be exercised.
+    name: '#42 the delivery call site reports the same corruption as a finding',
+    expect: /\[delivery\].*could not hash the shipping plugin\/ tree/s,
+    break: (r) => {
+      write(r, 'scenarios/records/install-path.json', {
+        ...goodRecord('install-path', '0.4.0'),
+        pluginTreeHash: hashTree(join(r, 'plugin')),
+      });
+      write(r, 'DELIVERY-STATUS.json', { delivery: 'proven', proofRecord: 'install-path' });
+      write(r, 'README.md', '# plugin\n\nDelivery is proven.\n');
+      // Hash first, corrupt second — otherwise the record could not be pinned.
+      symlinkSync(join(r, 'plugin', 'nowhere-at-all'), join(r, 'plugin', 'dangling.mjs'));
     },
   },
   {
