@@ -1,18 +1,18 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.13.0",
-  "pluginTreeHash": "fe58506a5ef6278da65b0d7c41eeead098324e238827e490590ca0a9000a274b",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.14.0",
+  "pluginTreeHash": "b80560cf7efeff03c0d60c095d96c49cb17aef147f0fc7251b656725f92175eb",
+  "outerModel": "claude-sonnet-5",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30167810888",
-    "commit": "3eff9d1097641cab539c9278264528796c1043f8"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "55c311d5005029405a8d9e00f33394f1f650039b"
   },
   "trials": 3,
-  "generated": "2026-07-25T17:34:14.185Z",
+  "generated": "2026-07-28T08:59:49.071Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -27,7 +27,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start briefing. --- - **Last done** -- The handoff (2026-07-25 17:32Z) states the ingest r",
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end (handoff 2026-07-28 08:56Z). **Moved since** —",
           "err": ""
         },
         {
@@ -36,7 +36,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Now I have everything needed for the brief. **Last done** — The last session finished on 2026-07-25 17:32Z; th",
+          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (2026-07-28 08:57Z). **",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "All data collected. Here is the session-start brief. --- **Last done** -- The handoff from 2026-07-25 reports ",
+          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (handoff dated 2026-07-",
           "err": ""
         }
       ]
@@ -62,7 +62,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "No remote and no auth token. Now I have everything needed. Here is the brief. --- **Last done** -- No handoff ",
+          "out": "Based on the project's recorded continuity, here is the session-start brief: **Last done** No handoff recorded",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief. **Last done** -- No handoff exists. The only recorded entry is a gotcha (shar",
+          "out": "## Session-start brief **Last done** No handoff recorded. Project initialized with a single commit on 2026-07-",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Now I have all the information needed. Here is the session-start brief. --- - **Last done** -- No handoff has ",
+          "out": "## Brief **Last done** — No handoff with named next steps found in recorded continuity. Last vfkb session reco",
           "err": ""
         }
       ]

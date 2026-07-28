@@ -1,18 +1,18 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.13.0",
-  "pluginTreeHash": "fe58506a5ef6278da65b0d7c41eeead098324e238827e490590ca0a9000a274b",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.14.0",
+  "pluginTreeHash": "b80560cf7efeff03c0d60c095d96c49cb17aef147f0fc7251b656725f92175eb",
+  "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30167810888",
-    "commit": "3eff9d1097641cab539c9278264528796c1043f8"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "55c311d5005029405a8d9e00f33394f1f650039b"
   },
   "trials": 3,
-  "generated": "2026-07-25T17:38:54.394Z",
+  "generated": "2026-07-28T08:56:53.931Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "1. **NOBANNER** — wait, actually the banner IS present. Here it is verbatim: > \"SessionStart:startup hook succ",
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) **NOBANNER.** The vfkb status came from a `<system-reminder>` block, not a warning banner, and it says \"vf",
+          "out": "(1) **VERBATIM first line:** \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfk",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) VERBATIM first line of warning banner: > SessionStart:startup hook success: vfkb INACTIVE — this project d",
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         }
       ]
@@ -49,19 +49,19 @@
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "(1) **NOBANNER** — no warning banner about vfkb being inactive or not installed appears in the session-start c",
-          "err": ""
-        },
-        {
-          "bannerShown": false,
-          "vfkbLive": true,
-          "out": "1. **NOBANNER** 2. The migration codename is: **plumcanyon-verdigris-73**",
+          "out": "NOBANNER plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
           "out": "(1) NOBANNER (2) plumcanyon-verdigris-73",
+          "err": ""
+        },
+        {
+          "bannerShown": false,
+          "vfkbLive": true,
+          "out": "NOBANNER plumcanyon-verdigris-73",
           "err": ""
         }
       ]

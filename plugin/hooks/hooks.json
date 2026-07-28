@@ -19,6 +19,24 @@
             "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook pre-tool-use"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/git-compound-guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/durable-claim-check.mjs"
+          }
+        ]
       }
     ],
     "Stop": [

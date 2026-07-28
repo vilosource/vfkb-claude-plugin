@@ -45,3 +45,12 @@ jobs:
       # (scope match, wrong-path, fail-open, symlink) without an LLM.
       - name: Guard branch invariants (ADR-0059)
         run: node scenarios/guard-branches.test.mjs
+
+      # Same discipline for the two plugin-bundled process hooks (vfkb ADR-0071):
+      # hooks-smoke proves they fire through the real plugin path; these prove
+      # their internal branch logic, both directions, without an LLM.
+      - name: git-compound-guard branch invariants
+        run: node scenarios/git-compound-guard.test.mjs
+
+      - name: durable-claim-check branch invariants
+        run: node scenarios/durable-claim-check.test.mjs
