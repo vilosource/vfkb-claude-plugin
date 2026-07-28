@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.13.0",
-  "pluginTreeHash": "2e96679c1c174e86f4ed457d8e46f5d3df2a745cd41c0fcc293841be5f862edf",
+  "pluginVersion": "0.14.0",
+  "pluginTreeHash": "b80560cf7efeff03c0d60c095d96c49cb17aef147f0fc7251b656725f92175eb",
   "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "55c311d5005029405a8d9e00f33394f1f650039b"
+    "commit": "bb7de538c3179e333a6e2fe036ae2e5b46d07420"
   },
   "trials": 3,
-  "generated": "2026-07-28T08:05:05.568Z",
+  "generated": "2026-07-28T09:11:10.942Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -33,7 +33,7 @@
           "kbRoundTrip": true,
           "mcpNine": true,
           "t1": "quartzfinch-omega-58",
-          "t3": "DONE The fact \"SMOKE TRIAL NOTE 1-wired\" has been recorded in the vfkb knowledge base with",
+          "t3": "DONE",
           "err": ""
         },
         {
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need permission to write to the `.vfkb/entries.jsonl` file to record the fact. Please ap",
+          "t3": "I'm unable to locate the `kb_add` MCP tool through ToolSearch — it's not appearing in the ",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I found the `.vfkb/entries.jsonl` knowledge base file and am ready to add the fact. The to",
+          "t3": "FAILED The kb_add MCP tool is not available, and attempts to write the fact to the vfkb kn",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need your permission to write to the `.vfkb/entries.jsonl` file to record the fact. A pe",
+          "t3": "Awaiting permission to write to the vfkb knowledge base file...",
           "err": ""
         }
       ]

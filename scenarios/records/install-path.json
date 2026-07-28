@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.13.0",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.14.0",
+  "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-07-25T17:41:17.720Z",
+  "generated": "2026-07-28T09:05:03.745Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "repin/deepseek-0.13.0",
-  "headSha": "3eff9d1097641cab539c9278264528796c1043f8",
-  "pluginTreeHash": "fe58506a5ef6278da65b0d7c41eeead098324e238827e490590ca0a9000a274b",
+  "ref": "feat/generic-process-hooks",
+  "headSha": "bb7de538c3179e333a6e2fe036ae2e5b46d07420",
+  "pluginTreeHash": "b80560cf7efeff03c0d60c095d96c49cb17aef147f0fc7251b656725f92175eb",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30167810888",
-    "commit": "3eff9d1097641cab539c9278264528796c1043f8"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "bb7de538c3179e333a6e2fe036ae2e5b46d07420"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "I have all the sources needed. Here is the session-start brief. --- **Last done** -- The handoff fro",
+          "out": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end (handof",
           "err": ""
         },
         {
@@ -37,15 +37,15 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "All five sources have been checked. Here is the session-start brief. --- - **Last done** -- The hand",
+          "out": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end (handof",
           "err": ""
         },
         {
-          "present": false,
+          "present": true,
           "treeVerified": true,
-          "sentinel": false,
+          "sentinel": true,
           "haiku": true,
-          "out": "Step 4 shows `gh` is present but not authenticated (no `GH_TOKEN` set). Step 5: here is the brief. -",
+          "out": "## Session-start brief **Last done** The delivery refactor shipped and was verified end-to-end, as r",
           "err": ""
         }
       ]
@@ -63,7 +63,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Now I have everything I need. Here is the session-start brief. --- - **Last done** — The handoff (20",
+          "afterOut": "**Last done** The delivery refactor shipped and verified end-to-end (handoff dated 2026-07-28 09:01Z",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Now I have all the information needed. Here is the session-start brief. --- **Last done** -- The han",
+          "afterOut": "## Session-start brief **Last done** (2026-07-28 09:02Z): The delivery refactor shipped and verified",
           "err": ""
         },
         {
@@ -79,7 +79,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "All data collected. Here is the session-start briefing. --- **Last done** -- The handoff (dated 2026",
+          "afterOut": "## Session-start brief **Last done** — Handoff at 2026-07-28 09:04Z records the delivery refactor sh",
           "err": ""
         }
       ]
