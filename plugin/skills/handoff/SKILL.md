@@ -43,18 +43,23 @@ This is the part no external tool can see — review the conversation directly:
 ## 4. Cross-check against git
 
     git log --oneline -15
-    git status --porcelain
+    git status -sb
+    git log --oneline @{u}..HEAD 2>/dev/null
 
-Confirm the session's work matches what's actually committed; note anything still uncommitted or
+Confirm the session's work matches what's actually committed. `git status -sb` names the upstream
+and how far ahead/behind it the branch is; `git status --porcelain` alone cannot show this, and a
+plain `git log` cannot tell a locally-committed change from a pushed one. If there's no upstream
+(`@{u}` errors), say so rather than guessing push state. Note anything still uncommitted or
 unpushed — the SessionEnd hook only auto-commits `.vfkb/entries.jsonl` (ADR-0033), never code — so
 the next session knows the true state of the branch.
 
 ## 5. Write the handoff
 
 One entry, `type: fact`, tagged `handoff,next` (not `auto` — that tag is reserved for the
-SessionEnd floor, ADR-0033), via `mcp__vfkb__kb_add` (CLI fallback: `add fact "…" --tags
-handoff,next`). Structure the text in four short labeled sections so a cold-start reader gets full
-context, not a summary sentence:
+SessionEnd floor, ADR-0033), via `mcp__vfkb__kb_add` (CLI fallback: `VFKB_DATA_DIR="$PWD/.vfkb"
+node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs add fact "…" --tag handoff,next`). Structure the
+text in four short labeled sections so a cold-start reader gets full context, not a summary
+sentence:
 
 - **Done** — what this session finished, concrete enough to verify against git.
 - **Decisions** — load-bearing choices made, referencing entry ids / ADR numbers where they exist.
