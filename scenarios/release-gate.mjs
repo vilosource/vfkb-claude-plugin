@@ -65,7 +65,7 @@ const MIN_TRIALS = 3;
 // It is checked in BOTH directions — a skill present in the tree but absent
 // here would otherwise ship entirely unchecked, and the list would rot in
 // exactly the way the Brake exists to prevent.
-const DECLARED = { skills: ['vfkb', 'brief', 'handoff'], agents: ['briefer'] };
+const DECLARED = { skills: ['vfkb', 'brief', 'handoff', 'update'], agents: ['briefer', 'updater'] };
 
 // The scenario whose committed record — and only that record — flips delivery
 // from `unproven` to `proven` (RFC-024 §4; the L4 is specified and gated).

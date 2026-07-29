@@ -1,18 +1,18 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.15.0",
-  "pluginTreeHash": "ab1bb3cc056711de8b41ede31f5b266eb603ca64f2891caec7e8c07633a552dd",
+  "pluginVersion": "0.16.0",
+  "pluginTreeHash": "abb412ebfd94e3bc7d50b67681f9a9fb8a832c312f70bd249c533a580e95277b",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30441390015",
-    "commit": "4edbe2631eed9bb76b94f035d0aa8b0cf5675326"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30461688636",
+    "commit": "617ebc6deec85ce6a3d3483c62e1e17353526b92"
   },
   "trials": 3,
-  "generated": "2026-07-29T09:54:32.918Z",
+  "generated": "2026-07-29T14:38:29.507Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -27,7 +27,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Good — the guard file exists. No git remotes configured and `gh` is unauthenticated. Now assembling the brief.",
+          "out": "Here is the session-start brief. --- **Last done** — The handoff (dated 2026-07-29 14:36Z) reports that the in",
           "err": ""
         },
         {
@@ -36,7 +36,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief for this project. --- - **Last done** -- The handoff (dated 2026-07-29 09:53Z)",
+          "out": "Here is the session-start brief. --- - **Last done** — The handoff (dated 2026-07-29 14:37Z) reports the inges",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start briefing for this project. --- - **Last done** — The handoff recorded on 2026-07-29 ",
+          "out": "Here is the session-start briefing. - **Last done** -- The handoff from 2026-07-29T14:37Z reports the ingest r",
           "err": ""
         }
       ]
@@ -62,7 +62,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief based on the available continuity. **Last done** — No handoff entry was record",
+          "out": "Here is the session-start brief. **Last done** -- UNKNOWN. No handoff has been recorded in vfkb; the only entr",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Checklist complete. Here is the brief. --- **Last done** — No handoff has been recorded in vfkb; the project's",
+          "out": "Here is the session-start briefing. - **Last done** -- No handoff entry has been recorded in vfkb for this pro",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief. - **Last done** -- No handoff entry is recorded in vfkb. The project's vfkb b",
+          "out": "Here is the session-start briefing. --- **Last done** -- No handoff has been recorded in vfkb. The only commit",
           "err": ""
         }
       ]
