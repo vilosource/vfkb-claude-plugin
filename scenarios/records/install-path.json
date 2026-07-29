@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.14.0",
-  "outerModel": "claude-sonnet-5",
+  "pluginVersion": "0.15.0",
+  "outerModel": "deepseek-v4-pro",
   "trials": 3,
-  "generated": "2026-07-28T09:05:03.745Z",
+  "generated": "2026-07-29T10:02:27.846Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "feat/generic-process-hooks",
-  "headSha": "bb7de538c3179e333a6e2fe036ae2e5b46d07420",
-  "pluginTreeHash": "b80560cf7efeff03c0d60c095d96c49cb17aef147f0fc7251b656725f92175eb",
+  "ref": "feat/handoff-skill",
+  "headSha": "4edbe2631eed9bb76b94f035d0aa8b0cf5675326",
+  "pluginTreeHash": "ab1bb3cc056711de8b41ede31f5b266eb603ca64f2891caec7e8c07633a552dd",
   "producedBy": {
-    "ranOn": "laptop",
-    "credentialKind": "claude-oauth",
-    "authBase": "anthropic-production",
-    "runUrl": null,
-    "commit": "bb7de538c3179e333a6e2fe036ae2e5b46d07420"
+    "ranOn": "github-runner",
+    "credentialKind": "deepseek-env",
+    "authBase": "https://api.deepseek.com/anthropic",
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30441390015",
+    "commit": "4edbe2631eed9bb76b94f035d0aa8b0cf5675326"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end (handof",
+          "out": "All data collected. Here is the session-start brief. --- **Last done** — The handoff (2026-07-29 10:",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end (handof",
+          "out": "Here is the session-start briefing. --- **Last done** — The handoff (2026-07-29 10:01Z) reports the ",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "## Session-start brief **Last done** The delivery refactor shipped and was verified end-to-end, as r",
+          "out": "Here is the session-start brief. --- - **Last done** — The handoff dated 2026-07-29 10:01Z reports t",
           "err": ""
         }
       ]
@@ -63,7 +63,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "**Last done** The delivery refactor shipped and verified end-to-end (handoff dated 2026-07-28 09:01Z",
+          "afterOut": "Now I have all the information needed. Here is the session-start brief. --- **Last done** -- The han",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Session-start brief **Last done** (2026-07-28 09:02Z): The delivery refactor shipped and verified",
+          "afterOut": "Here is the session-start brief. - **Last done** — The delivery refactor shipped and verified end-to",
           "err": ""
         },
         {
@@ -79,7 +79,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Session-start brief **Last done** — Handoff at 2026-07-28 09:04Z records the delivery refactor sh",
+          "afterOut": "The `.vfkb/entries.jsonl` guard passes. Here is the brief. - **Last done** — The handoff (2026-07-29",
           "err": ""
         }
       ]
