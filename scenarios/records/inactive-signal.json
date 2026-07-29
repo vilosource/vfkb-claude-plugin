@@ -1,18 +1,18 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.15.0",
-  "pluginTreeHash": "ab1bb3cc056711de8b41ede31f5b266eb603ca64f2891caec7e8c07633a552dd",
+  "pluginVersion": "0.16.0",
+  "pluginTreeHash": "a2935b6506975b7a5f8b7c758d04c72b2d56a80cc5d174bd77ce8aba6c69217a",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30441390015",
-    "commit": "4edbe2631eed9bb76b94f035d0aa8b0cf5675326"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30454988924",
+    "commit": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a"
   },
   "trials": 3,
-  "generated": "2026-07-29T10:00:16.174Z",
+  "generated": "2026-07-29T13:20:56.319Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) VERBATIM: \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@",
+          "out": "1. **Banner**: `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "1. **VERBATIM:** `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vf",
+          "out": "**1.** `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) b",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) **\"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) bu",
+          "out": "(1) VERBATIM: > SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb",
           "err": ""
         }
       ]
@@ -47,21 +47,21 @@
       ],
       "trials": [
         {
+          "bannerShown": true,
+          "vfkbLive": true,
+          "out": "1. **NOBANNER** — no vfkb inactive/not-installed warning banner appears in the session-start context. 2. **plu",
+          "err": ""
+        },
+        {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "1. **NOBANNER** — there is no warning banner about vfkb being inactive or not installed in the session-start c",
+          "out": "1. NOBANNER 2. plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
           "out": "(1) **NOBANNER** (2) **plumcanyon-verdigris-73**",
-          "err": ""
-        },
-        {
-          "bannerShown": false,
-          "vfkbLive": true,
-          "out": "(1) **NOBANNER** — no warning banner about vfkb being inactive or not installed appears in the session-start c",
           "err": ""
         }
       ]

@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.15.0",
-  "pluginTreeHash": "ab1bb3cc056711de8b41ede31f5b266eb603ca64f2891caec7e8c07633a552dd",
+  "pluginVersion": "0.16.0",
+  "pluginTreeHash": "a2935b6506975b7a5f8b7c758d04c72b2d56a80cc5d174bd77ce8aba6c69217a",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30441390015",
-    "commit": "4edbe2631eed9bb76b94f035d0aa8b0cf5675326"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30454988924",
+    "commit": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a"
   },
   "trials": 3,
-  "generated": "2026-07-29T09:59:31.900Z",
+  "generated": "2026-07-29T13:20:13.795Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED. The record could not be written to the vfkb knowledge base: - The `kb_add` MCP too",
+          "t3": "DONE",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "The tool needs your approval to write to the vfkb knowledge base file. Please approve the ",
+          "t3": "The task is blocked on a permission prompt — the harness needs approval to write to `.vfkb",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "DONE — appended the fact `\"SMOKE TRIAL NOTE 3-unwired\"` as a new entry (id `b1a2c8d7e3f4`)",
+          "t3": "I'm waiting for permission to write to `/tmp/vfkb-hs-qsf3RE/proj/.vfkb/entries.jsonl`. The",
           "err": ""
         }
       ]
