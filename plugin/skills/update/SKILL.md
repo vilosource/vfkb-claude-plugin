@@ -20,12 +20,24 @@ may not have `jq`):
 
     node -e "
       const cwd = process.cwd();
-      const list = JSON.parse(require('child_process').execSync('claude plugin list --json').toString());
+      let list;
+      try {
+        list = JSON.parse(require('child_process').execSync('claude plugin list --json').toString());
+      } catch (e) {
+        console.error('could not check plugin registry:', e.message);
+        process.exit(2);
+      }
       process.exit(list.some(p => p.id === 'vfkb@vfkb' && p.projectPath === cwd) ? 0 : 1);
     "
 
-Exit 0 means installed here; exit 1 means it isn't. If it isn't, say so and stop — don't install it
-fresh; that's a different flow (the vfkb-new-project skill).
+Three distinct outcomes, not two — a broken check must not be read as "not installed":
+
+- **Exit 0** — installed here; continue.
+- **Exit 1** — genuinely not installed for this project; say so and stop. Don't install it fresh;
+  that's a different flow (the vfkb-new-project skill).
+- **Exit 2** (or any crash/stack trace) — the check itself failed (CLI missing, unreadable
+  registry, malformed JSON), not "not installed." Report the actual error and stop; do not tell the
+  user vfkb isn't installed when you actually don't know.
 
 ## 2. Refresh the marketplace
 
@@ -50,8 +62,10 @@ Three possible outcomes — report whichever actually happened, don't assume:
   already-running session and hot-reload the skills that session already loaded into memory — that
   part only happens on restart.
 - Anything else (non-zero exit, an error message, no network) — report the failure plainly, quoting
-  the actual error output. Do not infer an old/new version or say a restart is needed; nothing
-  changed.
+  the actual error output. Do not infer an old/new version, and do not claim a restart is needed —
+  but don't assert "nothing changed" either; an update that errors partway through is not something
+  you observed the state of. Say the version and restart status are unknown/unverified given the
+  error, not that they're unchanged.
 
 Scope this to `--scope project` only, for THIS project's directory. Never touch `user` scope or any
 other project's registry entry — this command is not a fleet-wide update across every project on
