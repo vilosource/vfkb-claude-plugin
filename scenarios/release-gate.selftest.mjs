@@ -63,7 +63,9 @@ function fixture() {
   write(root, 'plugin/skills/vfkb/SKILL.md', '---\nname: vfkb\n---\n\n# vfkb\n');
   write(root, 'plugin/skills/brief/SKILL.md', '---\nname: brief\ncontext: fork\nagent: vfkb:briefer\n---\n\n# brief\n');
   write(root, 'plugin/skills/handoff/SKILL.md', '---\nname: handoff\n---\n\n# handoff\n');
+  write(root, 'plugin/skills/update/SKILL.md', '---\nname: update\ncontext: fork\nagent: vfkb:updater\n---\n\n# update\n');
   write(root, 'plugin/agents/briefer.md', '---\nname: briefer\nmodel: haiku\n---\n\nbrief.\n');
+  write(root, 'plugin/agents/updater.md', '---\nname: updater\nmodel: haiku\n---\n\nupdate.\n');
   write(root, 'plugin/hooks/hooks.json', { hooks: { SessionStart: [{ command: 'node dist/bundles/vfkb.mjs hook session-start' }] } });
   write(root, 'plugin/.mcp.json', { mcpServers: { vfkb: { args: ['dist/bundles/vfkb-mcp.mjs'] } } });
   write(root, 'plugin/dist/bundles/vfkb.mjs', '// bundle\n');
