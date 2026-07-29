@@ -2,17 +2,17 @@
   "scenario": "brief-skill",
   "recordVersion": 2,
   "pluginVersion": "0.16.0",
-  "pluginTreeHash": "7133124140a4627851d0070b1d002d9b6ab460e73f00694199dcbf481e9b3a3a",
+  "pluginTreeHash": "abb412ebfd94e3bc7d50b67681f9a9fb8a832c312f70bd249c533a580e95277b",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30460056345",
-    "commit": "2c8f512ccd76c081f22c05d4c2aec1b4c0e67cf0"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30461688636",
+    "commit": "617ebc6deec85ce6a3d3483c62e1e17353526b92"
   },
   "trials": 3,
-  "generated": "2026-07-29T14:19:08.759Z",
+  "generated": "2026-07-29T14:38:29.507Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -27,7 +27,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "`gh` CLI exists but is not authenticated. Skipping that step. Now let me assemble the final brief. **Breakdown",
+          "out": "Here is the session-start brief. --- **Last done** — The handoff (dated 2026-07-29 14:36Z) reports that the in",
           "err": ""
         },
         {
@@ -36,7 +36,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief. **Last done** -- The handoff dated 2026-07-29 reports the ingest refactor was",
+          "out": "Here is the session-start brief. --- - **Last done** — The handoff (dated 2026-07-29 14:37Z) reports the inges",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief. --- - **Last done** — The handoff (dated 2026-07-29 14:18Z) reports the inges",
+          "out": "Here is the session-start briefing. - **Last done** -- The handoff from 2026-07-29T14:37Z reports the ingest r",
           "err": ""
         }
       ]
@@ -62,7 +62,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "The project root has `.vfkb/entries.jsonl` — guard passed. The resume output shows a session record but contai",
+          "out": "Here is the session-start brief. **Last done** -- UNKNOWN. No handoff has been recorded in vfkb; the only entr",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief for the project at `/tmp/vfkb-bs-kAm10o`. --- - **Last done** — UNKNOWN: no ha",
+          "out": "Here is the session-start briefing. - **Last done** -- No handoff entry has been recorded in vfkb for this pro",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief based on the project's recorded continuity. **Last done** — No handoff is reco",
+          "out": "Here is the session-start briefing. --- **Last done** -- No handoff has been recorded in vfkb. The only commit",
           "err": ""
         }
       ]
