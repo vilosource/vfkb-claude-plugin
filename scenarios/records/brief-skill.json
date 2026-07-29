@@ -2,17 +2,17 @@
   "scenario": "brief-skill",
   "recordVersion": 2,
   "pluginVersion": "0.16.0",
-  "pluginTreeHash": "a2935b6506975b7a5f8b7c758d04c72b2d56a80cc5d174bd77ce8aba6c69217a",
+  "pluginTreeHash": "7133124140a4627851d0070b1d002d9b6ab460e73f00694199dcbf481e9b3a3a",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30454988924",
-    "commit": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30460056345",
+    "commit": "2c8f512ccd76c081f22c05d4c2aec1b4c0e67cf0"
   },
   "trials": 3,
-  "generated": "2026-07-29T13:15:14.149Z",
+  "generated": "2026-07-29T14:19:08.759Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -27,7 +27,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Now I have all the information needed. Here is the briefing. --- **Last done** -- The handoff (2026-07-29 13:1",
+          "out": "`gh` CLI exists but is not authenticated. Skipping that step. Now let me assemble the final brief. **Breakdown",
           "err": ""
         },
         {
@@ -36,7 +36,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief. **Last done** — The handoff from 2026-07-29 13:13Z reports the ingest refacto",
+          "out": "Here is the session-start brief. **Last done** -- The handoff dated 2026-07-29 reports the ingest refactor was",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Now I have everything I need. Here is the session-start brief. --- - **Last done** -- Ingest refactor shipped ",
+          "out": "Here is the session-start brief. --- - **Last done** — The handoff (dated 2026-07-29 14:18Z) reports the inges",
           "err": ""
         }
       ]
@@ -62,7 +62,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "`gh` is available but unauthenticated (no `GH_TOKEN` set). Skipping open queue step. --- ## 5. The brief - **L",
+          "out": "The project root has `.vfkb/entries.jsonl` — guard passed. The resume output shows a session record but contai",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "No handoff entry was found in the vfkb brain (only one entry exists — a gotcha about shard workers and schema ",
+          "out": "Here is the session-start brief for the project at `/tmp/vfkb-bs-kAm10o`. --- - **Last done** — UNKNOWN: no ha",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Here is the session-start brief. - **Last done** -- No handoff entry exists in vfkb. The project has a single ",
+          "out": "Here is the session-start brief based on the project's recorded continuity. **Last done** — No handoff is reco",
           "err": ""
         }
       ]

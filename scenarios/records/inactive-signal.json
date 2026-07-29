@@ -2,17 +2,17 @@
   "scenario": "inactive-signal",
   "recordVersion": 2,
   "pluginVersion": "0.16.0",
-  "pluginTreeHash": "a2935b6506975b7a5f8b7c758d04c72b2d56a80cc5d174bd77ce8aba6c69217a",
+  "pluginTreeHash": "7133124140a4627851d0070b1d002d9b6ab460e73f00694199dcbf481e9b3a3a",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30454988924",
-    "commit": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30460056345",
+    "commit": "2c8f512ccd76c081f22c05d4c2aec1b4c0e67cf0"
   },
   "trials": 3,
-  "generated": "2026-07-29T13:20:56.319Z",
+  "generated": "2026-07-29T14:24:19.642Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "1. **Banner**: `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb",
+          "out": "(1) VERBATIM: \"vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but it is not installed for t",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "**1.** `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) b",
+          "out": "(1) **VERBATIM:** > SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) VERBATIM: > SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb",
+          "out": "(1) **NOBANNER** — there is no warning banner present. The session-start context contains a system-reminder ab",
           "err": ""
         }
       ]
@@ -47,15 +47,15 @@
       ],
       "trials": [
         {
-          "bannerShown": true,
+          "bannerShown": false,
           "vfkbLive": true,
-          "out": "1. **NOBANNER** — no vfkb inactive/not-installed warning banner appears in the session-start context. 2. **plu",
+          "out": "(1) **NOBANNER** (2) **plumcanyon-verdigris-73**",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "1. NOBANNER 2. plumcanyon-verdigris-73",
+          "out": "**1.** NOBANNER — there is no warning banner about vfkb being inactive or not installed anywhere in the sessio",
           "err": ""
         },
         {

@@ -2,17 +2,17 @@
   "scenario": "hooks-smoke",
   "recordVersion": 2,
   "pluginVersion": "0.16.0",
-  "pluginTreeHash": "a2935b6506975b7a5f8b7c758d04c72b2d56a80cc5d174bd77ce8aba6c69217a",
+  "pluginTreeHash": "7133124140a4627851d0070b1d002d9b6ab460e73f00694199dcbf481e9b3a3a",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30454988924",
-    "commit": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30460056345",
+    "commit": "2c8f512ccd76c081f22c05d4c2aec1b4c0e67cf0"
   },
   "trials": 3,
-  "generated": "2026-07-29T13:20:13.795Z",
+  "generated": "2026-07-29T14:23:36.146Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "The task is blocked on a permission prompt — the harness needs approval to write to `.vfkb",
+          "t3": "The write to `entries.jsonl` is pending your approval — the permission prompt is waiting f",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I'm waiting for permission to write to `/tmp/vfkb-hs-qsf3RE/proj/.vfkb/entries.jsonl`. The",
+          "t3": "I've prepared the entry insertion. The command is pending approval — it will insert `SMOKE",
           "err": ""
         }
       ]

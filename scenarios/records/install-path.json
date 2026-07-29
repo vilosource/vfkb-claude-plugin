@@ -4,17 +4,17 @@
   "pluginVersion": "0.16.0",
   "outerModel": "deepseek-v4-pro",
   "trials": 3,
-  "generated": "2026-07-29T13:23:22.258Z",
+  "generated": "2026-07-29T14:26:26.683Z",
   "upgradeFrom": "vfkb--v0.3.0",
   "ref": "feat/update-skill",
-  "headSha": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a",
-  "pluginTreeHash": "a2935b6506975b7a5f8b7c758d04c72b2d56a80cc5d174bd77ce8aba6c69217a",
+  "headSha": "2c8f512ccd76c081f22c05d4c2aec1b4c0e67cf0",
+  "pluginTreeHash": "7133124140a4627851d0070b1d002d9b6ab460e73f00694199dcbf481e9b3a3a",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30454988924",
-    "commit": "f0f57d0af695ef2d1d8b3090b66f90a0685ef70a"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30460056345",
+    "commit": "2c8f512ccd76c081f22c05d4c2aec1b4c0e67cf0"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "Here is the session-start brief. - **Last done** — The delivery refactor shipped and verified end-to",
+          "out": "Here is the session-start briefing. --- **Last done** -- The delivery refactor shipped and verified ",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "All sources collected. Here is the session-start brief. --- - **Last done** -- The handoff (dated 20",
+          "out": "## Session-start brief - **Last done** -- The delivery refactor shipped and verified end-to-end (han",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "No GitHub remote is configured on this repo, so `gh` cannot query any remote — skipping the open-que",
+          "out": "Now let me compose the full brief. --- **Last done** — The handoff (2026-07-29 14:25Z) reports the d",
           "err": ""
         }
       ]
@@ -63,7 +63,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Here is the session-start brief for this project. - **Last done** -- The handoff (2026-07-29 13:21Z)",
+          "afterOut": "Here is the session-start brief. - **Last done** -- The handoff (2026-07-29 14:24Z) reports the deli",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Now I have everything I need. Here is the session-start brief. --- - **Last done** — The handoff (20",
+          "afterOut": "Now I have everything I need. Here is the session-start brief. --- - **Last done** -- The handoff da",
           "err": ""
         },
         {
@@ -79,7 +79,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Here is the session-start briefing. --- - **Last done** -- The handoff (2026-07-29 13:23Z) reports t",
+          "afterOut": "Now I have everything I need. Let me compile the brief. --- - **Last done** — The handoff (2026-07-2",
           "err": ""
         }
       ]
