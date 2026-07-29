@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.14.0",
-  "pluginTreeHash": "b80560cf7efeff03c0d60c095d96c49cb17aef147f0fc7251b656725f92175eb",
-  "outerModel": "claude-haiku-4-5-20251001",
+  "pluginVersion": "0.15.0",
+  "pluginTreeHash": "ab1bb3cc056711de8b41ede31f5b266eb603ca64f2891caec7e8c07633a552dd",
+  "outerModel": "deepseek-v4-pro",
   "producedBy": {
-    "ranOn": "laptop",
-    "credentialKind": "claude-oauth",
-    "authBase": "anthropic-production",
-    "runUrl": null,
-    "commit": "bb7de538c3179e333a6e2fe036ae2e5b46d07420"
+    "ranOn": "github-runner",
+    "credentialKind": "deepseek-env",
+    "authBase": "https://api.deepseek.com/anthropic",
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30441390015",
+    "commit": "4edbe2631eed9bb76b94f035d0aa8b0cf5675326"
   },
   "trials": 3,
-  "generated": "2026-07-28T09:11:10.942Z",
+  "generated": "2026-07-29T09:59:31.900Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I'm unable to locate the `kb_add` MCP tool through ToolSearch — it's not appearing in the ",
+          "t3": "FAILED. The record could not be written to the vfkb knowledge base: - The `kb_add` MCP too",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED The kb_add MCP tool is not available, and attempts to write the fact to the vfkb kn",
+          "t3": "The tool needs your approval to write to the vfkb knowledge base file. Please approve the ",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "Awaiting permission to write to the vfkb knowledge base file...",
+          "t3": "DONE — appended the fact `\"SMOKE TRIAL NOTE 3-unwired\"` as a new entry (id `b1a2c8d7e3f4`)",
           "err": ""
         }
       ]
