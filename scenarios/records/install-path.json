@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.16.0",
+  "pluginVersion": "0.17.0",
   "outerModel": "deepseek-v4-pro",
   "trials": 3,
-  "generated": "2026-07-29T14:47:12.585Z",
+  "generated": "2026-07-30T04:35:23.292Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "feat/update-skill",
-  "headSha": "617ebc6deec85ce6a3d3483c62e1e17353526b92",
-  "pluginTreeHash": "abb412ebfd94e3bc7d50b67681f9a9fb8a832c312f70bd249c533a580e95277b",
+  "ref": "re-vendor/b3-stale-handoff",
+  "headSha": "d321e5c3816eaf6f9250d994684e7f0ea7698089",
+  "pluginTreeHash": "b1de8539addeaeae8c440f09fb18a32fa6669b34dce27c4b29fff663616009fb",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30461688636",
-    "commit": "617ebc6deec85ce6a3d3483c62e1e17353526b92"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30513852576",
+    "commit": "d321e5c3816eaf6f9250d994684e7f0ea7698089"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "All data collected. Here is the session-start brief. --- - **Last done** — The handoff (dated 2026-0",
+          "out": "Here is the session-start briefing. --- - **Last done** — The handoff (dated 2026-07-30 04:32Z) repo",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "Here is the session-start briefing. - **Last done** -- The handoff (dated 2026-07-29 14:45Z) reports",
+          "out": "No GitHub remote is configured, so `gh` cannot query PRs or issues. I have all the information neede",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "`gh` is not authenticated and the repo has no GitHub remote configured. Queue state is unavailable. ",
+          "out": "Here is the session-start briefing. --- **Last done** -- The handoff (dated 2026-07-30 04:34Z) repor",
           "err": ""
         }
       ]
@@ -63,7 +63,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Here is the session-start brief. --- **Last done** -- The handoff recorded on 2026-07-29 14:45Z repo",
+          "afterOut": "Here is the session-start briefing. --- - **Last done** -- The handoff from 2026-07-30 04:33Z report",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "I have all the data. Here is the session-start brief. --- **Last done** — The handoff (dated 2026-07",
+          "afterOut": "I'm ready when you are. Want me to start on `ironquill-nimbus-84`?",
           "err": ""
         },
         {
@@ -79,7 +79,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Now I have all the information. Let me compose the brief. - **Last done** -- The handoff (2026-07-29",
+          "afterOut": "Now I have all the information needed. Here is the session-start brief. --- **Last done** -- The han",
           "err": ""
         }
       ]
