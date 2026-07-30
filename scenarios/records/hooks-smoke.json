@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.16.0",
-  "pluginTreeHash": "abb412ebfd94e3bc7d50b67681f9a9fb8a832c312f70bd249c533a580e95277b",
+  "pluginVersion": "0.17.0",
+  "pluginTreeHash": "b1de8539addeaeae8c440f09fb18a32fa6669b34dce27c4b29fff663616009fb",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30461688636",
-    "commit": "617ebc6deec85ce6a3d3483c62e1e17353526b92"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30513852576",
+    "commit": "d321e5c3816eaf6f9250d994684e7f0ea7698089"
   },
   "trials": 3,
-  "generated": "2026-07-29T14:43:57.853Z",
+  "generated": "2026-07-30T04:32:06.457Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — `kb_add` MCP tool is not available (ToolSearch is also unavailable to load it), a",
+          "t3": "The edit is pending approval. I'm appending a new entry to the `.vfkb/entries.jsonl` file ",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "**FAILED** — All write attempts to `/tmp/vfkb-hs-MaYXXI/proj/.vfkb/entries.jsonl` were blo",
+          "t3": "DONE",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "Both the direct file edit and the bash append are awaiting permission approval. Once eithe",
+          "t3": "The edit to `.vfkb/entries.jsonl` is pending your approval. Once you grant the write permi",
           "err": ""
         }
       ]

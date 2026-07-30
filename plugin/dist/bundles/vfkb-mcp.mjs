@@ -31152,9 +31152,41 @@ function storageBackend() {
 }
 
 // src/journal.ts
+import { execFileSync } from "node:child_process";
 import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname, join as join3, relative, sep } from "node:path";
 var walPath = (brain) => join3(brain, ".journal", "wal.jsonl");
+var suppressedPath = (brain) => join3(brain, ".journal", "suppressed");
+function rewriteWal(wal, keep) {
+  const tmp = `${wal}.tmp`;
+  writeFileSync2(tmp, keep.length > 0 ? keep.map((l) => l.raw).join("\n") + "\n" : "", "utf8");
+  renameSync(tmp, wal);
+}
+var pairOf = (r) => `${String(r.id)}\0${String(r.updated ?? "")}`;
+function parseLines(text2) {
+  const out = [];
+  for (const raw of text2.split("\n")) {
+    if (raw.trim().length === 0) continue;
+    try {
+      const rec = JSON.parse(raw);
+      if (typeof rec.id !== "string") continue;
+      out.push({ raw, pair: pairOf(rec), id: rec.id });
+    } catch {
+    }
+  }
+  return out;
+}
+function pairsOfFile(path) {
+  if (!existsSync2(path)) return /* @__PURE__ */ new Set();
+  return new Set(parseLines(readFileSync3(path, "utf8")).map((l) => l.pair));
+}
+function suppressedPairs(brain) {
+  const p = suppressedPath(brain);
+  if (!existsSync2(p)) return /* @__PURE__ */ new Set();
+  return new Set(
+    readFileSync3(p, "utf8").split("\n").filter((l) => l.includes("	")).map((l) => l.replace("	", "\0"))
+  );
+}
 function journalAppend(brain, rec) {
   if (process.env.VFKB_NO_JOURNAL) return;
   try {
@@ -31166,6 +31198,62 @@ function journalAppend(brain, rec) {
 `
     );
   }
+}
+function pairsAtHead(brain) {
+  const repoDir = dirname(brain);
+  const git = (...a) => execFileSync("git", ["-C", repoDir, ...a], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  }).trim();
+  try {
+    if (git("rev-parse", "--is-inside-work-tree") !== "true") return "not-git";
+  } catch {
+    return "not-git";
+  }
+  try {
+    const top = git("rev-parse", "--show-toplevel");
+    const rel = relative(top, join3(brain, "entries.jsonl")).split(sep).join("/");
+    const head = execFileSync("git", ["-C", repoDir, "cat-file", "-p", `HEAD:${rel}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    return new Set(parseLines(head).map((l) => l.pair));
+  } catch {
+    return "unknown";
+  }
+}
+function recoverFromJournal(brain) {
+  if (process.env.VFKB_NO_JOURNAL) return { restored: 0, pruned: 0 };
+  const wal = walPath(brain);
+  if (!existsSync2(wal)) return { restored: 0, pruned: 0 };
+  const walLines = parseLines(readFileSync3(wal, "utf8"));
+  if (walLines.length === 0) return { restored: 0, pruned: 0 };
+  const entriesPath = join3(brain, "entries.jsonl");
+  const present = pairsOfFile(entriesPath);
+  const suppressed = suppressedPairs(brain);
+  const toRestore = walLines.filter((l) => !present.has(l.pair) && !suppressed.has(l.pair));
+  if (toRestore.length > 0) {
+    let prefix = "";
+    if (existsSync2(entriesPath)) {
+      const cur = readFileSync3(entriesPath, "utf8");
+      if (cur.length > 0 && !cur.endsWith("\n")) prefix = "\n";
+    }
+    appendFileSync2(entriesPath, prefix + toRestore.map((l) => l.raw).join("\n") + "\n", "utf8");
+  }
+  const head = pairsAtHead(brain);
+  let keep;
+  if (head === "unknown") {
+    keep = walLines;
+  } else if (head === "not-git") {
+    keep = walLines.filter((l) => !suppressed.has(l.pair) && !present.has(l.pair) && !toRestore.includes(l));
+  } else {
+    keep = walLines.filter((l) => !suppressed.has(l.pair) && !head.has(l.pair));
+  }
+  const pruned = walLines.length - keep.length;
+  if (pruned > 0) {
+    rewriteWal(wal, keep);
+  }
+  return { restored: toRestore.length, pruned };
 }
 
 // src/validate.ts
@@ -31428,6 +31516,9 @@ function tally(entryId, signals = readSignals()) {
 import { spawnSync } from "node:child_process";
 function now() {
   return (/* @__PURE__ */ new Date()).toISOString();
+}
+function effectiveSessionId(payloadId) {
+  return process.env.KB_SESSION_ID || payloadId || void 0;
 }
 function currentBranch() {
   try {
@@ -31950,6 +32041,61 @@ ${digest}
 ${bundle}`;
 }
 
+// src/heal.ts
+import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname4, join as join7 } from "node:path";
+var healedThisProcess = false;
+var MARKER_DEBOUNCE_MS = Number(process.env.VFKB_HEAL_DEBOUNCE_MS ?? 15 * 60 * 1e3);
+var markerPath = (brain) => join7(brain, ".journal", ".healed");
+function alreadyHealed(brain, sid, debounce) {
+  try {
+    const raw = readFileSync5(markerPath(brain), "utf8");
+    const m = JSON.parse(raw);
+    if (sid) return m.sessionId === sid;
+    if (!debounce) return false;
+    return typeof m.at === "number" && Date.now() - m.at < MARKER_DEBOUNCE_MS;
+  } catch {
+    return false;
+  }
+}
+function stampHealed(brain, sid) {
+  try {
+    const p = markerPath(brain);
+    mkdirSync5(dirname4(p), { recursive: true });
+    writeFileSync3(p, JSON.stringify({ sessionId: sid, at: Date.now() }), "utf8");
+  } catch {
+  }
+}
+function healBrain(opts = {}) {
+  if (healedThisProcess) return "";
+  const brain = brainDir();
+  const sid = opts.sessionId ?? effectiveSessionId();
+  if (alreadyHealed(brain, sid, opts.debounce === true)) {
+    healedThisProcess = true;
+    return "";
+  }
+  try {
+    const rec = withExclusive(() => recoverFromJournal(brain));
+    healedThisProcess = true;
+    stampHealed(brain, sid);
+    if (rec.restored <= 0) return "";
+    const note = `\u26A0 vfkb restored ${rec.restored} journaled entr${rec.restored === 1 ? "y" : "ies"} lost from entries.jsonl \u2014 likely a destructive git operation on uncommitted brain state (ADR-0064). Verify with kb_list and commit the brain on your next topic branch.
+
+`;
+    try {
+      writeMeta();
+    } catch {
+    }
+    return note;
+  } catch {
+    return "";
+  }
+}
+function resumePayload(project, session, opts = {}) {
+  const note = healBrain(opts);
+  return note + renderResume(project, session);
+}
+
 // src/read.ts
 var DEFAULT_MIN_TERM_RATIO = 1 / 3;
 function arr(v) {
@@ -32015,7 +32161,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.7.0" : ownPackageVersion();
+var ENGINE_VERSION = true ? "0.7.1" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;
@@ -32224,7 +32370,14 @@ server.registerTool(
     description: "Session-continuity resume (ADR-0020): the prior session\u2019s derived digest (what was added/superseded/injected/captured \u2014 recomputed from the brain, so never stale) + the live knowledge bundle. Pull this to see where the last session left off.",
     inputSchema: {}
   },
-  async () => text(renderResume(projectName()))
+  // Heals before rendering (issue #205): kb_resume is a session's first read of
+  // the brain on harnesses that never run the CLI session-start hook, so it is
+  // the other place ADR-0064 §2 recovery has to happen. A shared helper, not a
+  // local expression, so it is behaviourally testable without booting a server.
+  // debounce: this server is spawned FRESH PER CALL by pi's MCP bridge, so the
+  // process latch cannot bind and an unbounded re-restore loop is possible here
+  // and nowhere else. Every other face heals unconditionally.
+  async () => text(resumePayload(projectName(), void 0, { debounce: true }))
 );
 async function main() {
   const transport = new StdioServerTransport();
