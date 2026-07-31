@@ -15139,6 +15139,14 @@ function currentBranch() {
     return void 0;
   }
 }
+function sanitizeNudgedAtTurn(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return void 0;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : void 0;
+}
 var SessionState = class _SessionState {
   data;
   injected = /* @__PURE__ */ new Set();
@@ -15180,7 +15188,8 @@ var SessionState = class _SessionState {
           agentRole: loaded.agentRole,
           agentLabel: loaded.agentLabel,
           branch: loaded.branch,
-          pid: loaded.pid
+          pid: loaded.pid,
+          nudgedAtTurn: sanitizeNudgedAtTurn(loaded.nudgedAtTurn)
         };
         this.injected = new Set(this.data.injectedIds);
         this.captured = new Set(this.data.capturedIds);
@@ -15233,6 +15242,17 @@ var SessionState = class _SessionState {
   }
   get turnCount() {
     return this.data.turnCount;
+  }
+  /** Turn at which the given Stop-hook nudge last fired (undefined = never). */
+  lastNudgedAt(key) {
+    return this.data.nudgedAtTurn?.[key];
+  }
+  get nudgedAtTurn() {
+    return this.data.nudgedAtTurn;
+  }
+  /** Record that a Stop-hook nudge fired at the CURRENT turn (starts its cooldown). */
+  markNudged(key) {
+    (this.data.nudgedAtTurn ??= {})[key] = this.data.turnCount;
   }
   get startedAt() {
     return this.data.startedAt;
@@ -16171,8 +16191,8 @@ import { dirname as dirname6, join as join9 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.7.1" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "ad972ce" : "dev";
+var ENGINE_VERSION = true ? "0.8.0" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "5b9fa61" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16534,19 +16554,33 @@ var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing
 import { execFileSync as execFileSync3 } from "node:child_process";
 import { readFileSync as readFileSync9 } from "node:fs";
 import { join as join11, relative as relative2 } from "node:path";
+var NUDGE_COOLDOWN_TURNS = 10;
 var STOP_REMINDER = 'vfkb decision-capture check: this turn changed code/docs but no `decision` was recorded to the brain. If a load-bearing decision was made, capture it now via `mcp__vfkb__kb_add` (type=decision, why=<rationale>, role=human) \u2014 or `vfkb add decision "\u2026" --why "\u2026" --role human` \u2014 and add an ADR under docs/adr/ for anything architectural. If NO decision was made this turn, just finish normally.';
 var HANDOFF_MIN_ENTRIES = 3;
 var HANDOFF_REMINDER = 'vfkb handoff check: this session has recorded knowledge but no `handoff`/`next` entry. If you are WRAPPING UP, record a durable handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human) naming what the NEXT session should pick up (a real "next:", not just a summary). If you are still mid-session, ignore this and finish normally \u2014 the SessionEnd floor will leave a fallback if you never do.';
-var STALE_HANDOFF_REMINDER = 'vfkb stale-handoff check: the currently pinned handoff/next entry predates a commit that landed since it was written (e.g. a merged PR, possibly from another session or an autonomous merge) \u2014 a fresh session would start from an out-of-date "what happened" pointer. If you are WRAPPING UP, record a fresh handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human), or /vfkb:handoff if available \u2014 naming what actually changed and what is next now. If you are still mid-session and plan to record one before you finish, it is fine to ignore this for now \u2014 but unlike the other nudges, this one has no SessionEnd fallback for a STALE (as opposed to missing) pin, so it will keep reminding you each turn until a fresh handoff/next entry actually exists.';
+var STALE_HANDOFF_REMINDER = 'vfkb stale-handoff check: the currently pinned handoff/next entry predates a commit that landed since it was written (e.g. a merged PR, possibly from another session or an autonomous merge) \u2014 a fresh session would start from an out-of-date "what happened" pointer. If you are WRAPPING UP, record a fresh handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human), or /vfkb:handoff if available \u2014 naming what actually changed and what is next now. If you are still mid-session and plan to record one before you finish, it is fine to ignore this for now \u2014 but note that unlike the other nudges, this one has no SessionEnd fallback for a STALE (as opposed to missing) pin, so a fresh handoff/next entry must be recorded before the session ends.';
 function decideStop(input, ctx) {
   if (input?.stop_hook_active) return { block: false };
+  const turnValid = typeof ctx.turn === "number" && Number.isFinite(ctx.turn);
+  const cooling = (key) => {
+    if (!turnValid) return false;
+    const last = ctx.lastNudged?.[key];
+    if (typeof last !== "number" || !Number.isFinite(last) || last < 0 || last > ctx.turn) return false;
+    return ctx.turn - last < NUDGE_COOLDOWN_TURNS;
+  };
   const reminders = [];
-  if (ctx.uncommittedWork && ctx.newDecisions === 0) reminders.push(STOP_REMINDER);
+  const fired = [];
+  const nudge = (key, text) => {
+    if (cooling(key)) return;
+    reminders.push(text);
+    fired.push(key);
+  };
+  if (ctx.uncommittedWork && ctx.newDecisions === 0) nudge("decision", STOP_REMINDER);
   if (ctx.uncommittedWork && (ctx.newEntries ?? 0) >= HANDOFF_MIN_ENTRIES && (ctx.newHandoffs ?? 0) === 0)
-    reminders.push(HANDOFF_REMINDER);
-  if (ctx.handoffStale) reminders.push(STALE_HANDOFF_REMINDER);
+    nudge("handoff", HANDOFF_REMINDER);
+  if (ctx.handoffStale) nudge("staleHandoff", STALE_HANDOFF_REMINDER);
   if (reminders.length === 0) return { block: false };
-  return { block: true, reminder: reminders.join("\n\n") };
+  return { block: true, reminder: reminders.join("\n\n"), fired };
 }
 function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
   let out;
@@ -18326,15 +18360,27 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
         process.stdout.write("{}");
         return;
       }
+      let session;
+      let turn;
+      let lastNudged;
       try {
-        const session = SessionState.load(
+        session = SessionState.load(
           effectiveSessionId(typeof input.session_id === "string" ? input.session_id : void 0)
         );
         session.bumpTurn();
         session.save();
+        turn = session.turnCount;
+        lastNudged = session.nudgedAtTurn;
       } catch {
       }
-      const d = decideStop({ stop_hook_active: false }, gatherStopContext());
+      const d = decideStop({ stop_hook_active: false }, { ...gatherStopContext(), turn, lastNudged });
+      try {
+        if (d.block && session) {
+          for (const key of d.fired) session.markNudged(key);
+          session.save();
+        }
+      } catch {
+      }
       process.stdout.write(
         d.block ? JSON.stringify({
           hookSpecificOutput: {

@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.17.0",
+  "pluginVersion": "0.18.0",
   "outerModel": "deepseek-v4-pro",
   "trials": 3,
-  "generated": "2026-07-30T04:35:23.292Z",
+  "generated": "2026-07-31T09:47:17.215Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "re-vendor/b3-stale-handoff",
-  "headSha": "d321e5c3816eaf6f9250d994684e7f0ea7698089",
-  "pluginTreeHash": "b1de8539addeaeae8c440f09fb18a32fa6669b34dce27c4b29fff663616009fb",
+  "ref": "re-vendor/v0.18.0-stop-nudge-cooldown",
+  "headSha": "958b34a337f42f3b2e407aaf56169a0d3160fb0f",
+  "pluginTreeHash": "1c680424d83551796199df753e731be12bfd58a9217f6a5a6d8afdfc2cef1b89",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30513852576",
-    "commit": "d321e5c3816eaf6f9250d994684e7f0ea7698089"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30620362198",
+    "commit": "958b34a337f42f3b2e407aaf56169a0d3160fb0f"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "Here is the session-start briefing. --- - **Last done** — The handoff (dated 2026-07-30 04:32Z) repo",
+          "out": "Brief compiled from the recorded continuity. --- **Last done** — Handoff dated 2026-07-31 09:44Z: th",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "No GitHub remote is configured, so `gh` cannot query PRs or issues. I have all the information neede",
+          "out": "- **Last done** — Per the handoff (dated 2026-07-31 09:45:42Z), the delivery refactor shipped and ve",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "Here is the session-start briefing. --- **Last done** -- The handoff (dated 2026-07-30 04:34Z) repor",
+          "out": "- **Last done** — The handoff (2026-07-31 09:46Z) states the delivery refactor shipped and was verif",
           "err": ""
         }
       ]
@@ -63,7 +63,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Here is the session-start briefing. --- - **Last done** -- The handoff from 2026-07-30 04:33Z report",
+          "afterOut": "**Last done** — Per the handoff (dated 2026-07-31 09:45Z): the delivery refactor shipped and verifie",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "I'm ready when you are. Want me to start on `ironquill-nimbus-84`?",
+          "afterOut": "Brief follows from the recorded continuity. - **Last done** — The delivery refactor shipped and veri",
           "err": ""
         },
         {
@@ -79,7 +79,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Now I have all the information needed. Here is the session-start brief. --- **Last done** -- The han",
+          "afterOut": "Brief follows, from `.vfkb/entries.jsonl` in `/tmp/vfkb-ip-JzlZaJ/proj`. - **Last done** — The hando",
           "err": ""
         }
       ]
