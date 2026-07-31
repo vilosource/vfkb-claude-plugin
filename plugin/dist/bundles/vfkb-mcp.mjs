@@ -31532,6 +31532,14 @@ function currentBranch() {
     return void 0;
   }
 }
+function sanitizeNudgedAtTurn(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return void 0;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : void 0;
+}
 var SessionState = class _SessionState {
   data;
   injected = /* @__PURE__ */ new Set();
@@ -31573,7 +31581,8 @@ var SessionState = class _SessionState {
           agentRole: loaded.agentRole,
           agentLabel: loaded.agentLabel,
           branch: loaded.branch,
-          pid: loaded.pid
+          pid: loaded.pid,
+          nudgedAtTurn: sanitizeNudgedAtTurn(loaded.nudgedAtTurn)
         };
         this.injected = new Set(this.data.injectedIds);
         this.captured = new Set(this.data.capturedIds);
@@ -31626,6 +31635,17 @@ var SessionState = class _SessionState {
   }
   get turnCount() {
     return this.data.turnCount;
+  }
+  /** Turn at which the given Stop-hook nudge last fired (undefined = never). */
+  lastNudgedAt(key) {
+    return this.data.nudgedAtTurn?.[key];
+  }
+  get nudgedAtTurn() {
+    return this.data.nudgedAtTurn;
+  }
+  /** Record that a Stop-hook nudge fired at the CURRENT turn (starts its cooldown). */
+  markNudged(key) {
+    (this.data.nudgedAtTurn ??= {})[key] = this.data.turnCount;
   }
   get startedAt() {
     return this.data.startedAt;
@@ -32161,7 +32181,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.7.1" : ownPackageVersion();
+var ENGINE_VERSION = true ? "0.8.0" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;
