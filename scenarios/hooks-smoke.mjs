@@ -53,7 +53,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
-import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady, sandboxEnv } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -102,9 +102,9 @@ function buildSandbox(wired) {
   if (wired) {
     // The real resolution path: directory-source marketplace over THIS checkout.
     sh('claude', ['plugin', 'marketplace', 'add', REPO],
-      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
+      { env: authEnv(sandboxEnv(process.env, home)), stdio: 'ignore', timeout: 60000 });
     sh('claude', ['plugin', 'install', 'vfkb@vfkb', '--scope', 'user'],
-      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
+      { env: authEnv(sandboxEnv(process.env, home)), stdio: 'ignore', timeout: 60000 });
   }
   return { root, home, proj };
 }
@@ -119,7 +119,7 @@ function turn(sb, prompt, allowedTools) {
   try {
     raw = sh('claude', args, {
       cwd: sb.proj,
-      env: authEnv({ ...process.env, HOME: sb.home }),
+      env: authEnv(sandboxEnv(process.env, sb.home)),
       timeout: TIMEOUT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

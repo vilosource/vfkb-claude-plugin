@@ -64,6 +64,28 @@ export function stageAuth(homeDir) {
 }
 
 /**
+ * Pin a child to a SANDBOX home — both halves of it.
+ *
+ * Setting HOME alone is not isolation. Claude Code reads its config from
+ * $CLAUDE_CONFIG_DIR when that is set, and only falls back to $HOME/.claude when
+ * it is not — so a scenario launched from a wrapper-launched session (cldp/cldw/
+ * cldo all export it) inherited the HOST's config dir straight through
+ * `{ ...process.env, HOME: home }`. Two consequences, both silent:
+ *   - `claude plugin install` in an arm wrote to the OPERATOR'S real registry
+ *     instead of the sandbox;
+ *   - the ADR-0059 guard (which resolves the same variable since vfkb ADR-0072)
+ *     answered about the host, so inactive-signal's arms stopped being causal.
+ *
+ * Note the interaction with authEnv(): in deepseek mode it strips every
+ * CLAUDE-prefixed key, which removes this pin — harmless, because the value it
+ * removes is exactly the `$HOME/.claude` the fallback then computes. In oauth
+ * mode (passthrough) the pin is what does the work.
+ */
+export function sandboxEnv(baseEnv, home) {
+  return { ...baseEnv, HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude') };
+}
+
+/**
  * The env a `claude` child runs under. oauth: passthrough (laptop behaviour
  * byte-identical). deepseek-env: strip every ANTHROPIC- and CLAUDE-prefixed
  * var the caller inherited (nothing may leak from the invoking session), then
