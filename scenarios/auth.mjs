@@ -32,6 +32,47 @@ if (!['oauth', 'deepseek-env'].includes(AUTH_MODE)) {
   throw new Error(`VFKB_L4_AUTH=${AUTH_MODE} is not a mode (oauth | deepseek-env)`);
 }
 
+/**
+ * Read the operator's real credentials, from wherever Claude Code actually keeps
+ * them. Two lookups, in order, because BOTH assumptions in the original one-liner
+ * were wrong on this machine (observed 2026-09-13, which is why the L4s could not
+ * be run at all):
+ *
+ *   1. `$CLAUDE_CONFIG_DIR/.credentials.json`, else `~/.claude/.credentials.json`.
+ *      Claude Code relocates its ENTIRE config dir via that variable and the wrapper
+ *      launchers here all set it; hardcoding `~/.claude` looked in a directory the
+ *      session does not use. (Same defect class as the guard this branch fixes.)
+ *   2. The macOS login Keychain, service "Claude Code-credentials". On macOS there
+ *      is NO credentials file at all by default — the token lives in the Keychain,
+ *      and the payload is already the exact `{ claudeAiOauth: … }` shape the sandbox
+ *      wants. Without this, oauth mode is unrunnable on a stock macOS install.
+ *
+ * Returns the parsed object, or throws naming every place it looked — a credential
+ * lookup that fails vaguely costs a metered run to diagnose.
+ */
+function readRealCredentials() {
+  const tried = [];
+  const cfg = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const file = join(cfg, '.credentials.json');
+  tried.push(file);
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch { /* fall through to the Keychain */ }
+
+  if (process.platform === 'darwin') {
+    tried.push('macOS Keychain service "Claude Code-credentials"');
+    try {
+      const out = execFileSync(
+        'security',
+        ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      );
+      return JSON.parse(out.trim());
+    } catch { /* fall through to the throw */ }
+  }
+  throw new Error(`no readable Claude Code credentials — looked in: ${tried.join(' ; ')}`);
+}
+
 // Fail BEFORE anything metered runs, and name the missing thing. An empty
 // token does not error fast — observed in the spike: a bad token makes
 // `claude -p` HANG to the timeout, which a trial would score as a model miss.
@@ -43,19 +84,18 @@ export function assertAuthReady() {
     }
     return;
   }
-  const src = join(homedir(), '.claude', '.credentials.json');
   let all;
-  try { all = JSON.parse(readFileSync(src, 'utf8')); } catch (e) {
-    throw new Error(`oauth mode but ${src} is unreadable: ${e.message}`);
+  try { all = readRealCredentials(); } catch (e) {
+    throw new Error(`oauth mode but no credentials could be read: ${e.message}`);
   }
-  if (!all.claudeAiOauth) throw new Error(`no claudeAiOauth block in ${src}`);
+  if (!all.claudeAiOauth) throw new Error('credentials found, but they carry no claudeAiOauth block');
 }
 
 /** Stage credentials into a sandbox HOME. deepseek-env stages nothing — auth is env-only. */
 export function stageAuth(homeDir) {
   if (AUTH_MODE === 'deepseek-env') return;
-  const all = JSON.parse(readFileSync(join(homedir(), '.claude', '.credentials.json'), 'utf8'));
-  if (!all.claudeAiOauth) throw new Error('no claudeAiOauth block in ~/.claude/.credentials.json');
+  const all = readRealCredentials();
+  if (!all.claudeAiOauth) throw new Error('credentials found, but they carry no claudeAiOauth block');
   const dir = join(homeDir, '.claude');
   mkdirSync(dir, { recursive: true });
   const dst = join(dir, '.credentials.json');
