@@ -77,7 +77,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
-import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady, sandboxEnv } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const PLUGIN = join(REPO, 'plugin');
@@ -92,7 +92,7 @@ const SETUP_TIMEOUT = parseInt(process.env.VFKB_IP_SETUP_TIMEOUT || '120000', 10
 
 const SENTINEL = 'ironquill-nimbus-84';
 const sh = (c, a, o = {}) => execFileSync(c, a, { encoding: 'utf8', ...o });
-const homeEnv = (home) => authEnv({ ...process.env, HOME: home });
+const homeEnv = (home) => authEnv(sandboxEnv(process.env, home));
 
 // --- resolve "the newest release that predates /vfkb:brief" as a durable tag --
 // (ADR-0060 tags make this stable; a hardcoded SHA would rot at the next release.)

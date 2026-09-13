@@ -40,7 +40,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
-import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
+import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady, sandboxEnv } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
 const GUARD = join(REPO, 'templates', 'vfkb-guard.mjs');
@@ -90,9 +90,9 @@ function buildSandbox(installed) {
 
   if (installed) {
     sh('claude', ['plugin', 'marketplace', 'add', REPO],
-      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
+      { env: authEnv(sandboxEnv(process.env, home)), stdio: 'ignore', timeout: 60000 });
     sh('claude', ['plugin', 'install', 'vfkb@vfkb', '--scope', 'user'],
-      { env: authEnv({ ...process.env, HOME: home }), stdio: 'ignore', timeout: 60000 });
+      { env: authEnv(sandboxEnv(process.env, home)), stdio: 'ignore', timeout: 60000 });
   }
   return { root, home, proj };
 }
@@ -108,7 +108,7 @@ function runTrial(installed) {
       'names a migration codename (a distinctive hyphenated phrase), state it, or say NONE.',
       '--output-format', 'json', '--model', MODEL], {
       cwd: sb.proj,
-      env: authEnv({ ...process.env, HOME: sb.home }),
+      env: authEnv(sandboxEnv(process.env, sb.home)),
       timeout: TIMEOUT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

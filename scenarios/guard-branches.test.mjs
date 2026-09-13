@@ -4,9 +4,19 @@
 // ----------------------------------------------------------------------------
 // The inner gate under the inactive-signal L4: the L4 proves the end-to-end
 // agent-observable banner, but the guard's structural invariants — scope
-// matching, wrong-path, fail-open on malformed input, missing env, symlinks —
-// belong in a deterministic backstop (project testing pyramid; deterministic
-// backstop over probabilistic gate). No LLM, no network. Runs in CI.
+// matching, wrong-path, fail-open on malformed input, missing env, symlinks,
+// CONFIG-DIR RESOLUTION — belong in a deterministic backstop (project testing
+// pyramid; deterministic backstop over probabilistic gate). No LLM, no network.
+// Runs in CI.
+//
+// ENV HYGIENE IS LOAD-BEARING (vfkb ADR-0072). The guard resolves the SESSION's
+// config dir: $CLAUDE_CONFIG_DIR when set, else $HOME/.claude. This harness used
+// to build its env as `{ ...process.env, HOME: home }`, which LEAKS the host's
+// CLAUDE_CONFIG_DIR into the sandbox — so the guard read the developer's real
+// registry instead of the fixture and 4 of these cases flipped. It passed in CI
+// only because CI sets no CLAUDE_CONFIG_DIR: green there, broken on any wrapper-
+// launched machine. Every case now states its config dir explicitly; `childEnv`
+// DELETES the variable unless a case sets it.
 //
 //   node scenarios/guard-branches.test.mjs
 // ============================================================================
@@ -17,9 +27,21 @@ import { join, resolve } from 'node:path';
 
 const GUARD = resolve(process.argv[1], '..', '..', 'templates', 'vfkb-guard.mjs');
 
+// Build a child env with NO inherited CLAUDE_CONFIG_DIR. Pass one explicitly to
+// exercise a relocated config dir; omit it to exercise the $HOME/.claude fallback.
+function childEnv(base, configDir) {
+  const env = { ...process.env, ...base };
+  delete env.CLAUDE_CONFIG_DIR;
+  if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
+  return env;
+}
+
 // Run the guard with a given project settings + installed_plugins state.
 // Returns true iff it printed the INACTIVE banner. Asserts it always exits 0.
-function runGuard({ settings, installed, projectDirOverride, cwd } = {}) {
+//
+// `installed` writes into $HOME/.claude (the fallback location). `configDir`
+// names a SEPARATE relocated dir; `configInstalled` writes the registry there.
+function runGuard({ settings, installed, projectDirOverride, cwd, configDir, configInstalled } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'guard-bt-'));
   const home = join(root, 'home');
   const proj = join(root, 'proj');
@@ -34,7 +56,17 @@ function runGuard({ settings, installed, projectDirOverride, cwd } = {}) {
     writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'),
       typeof inst === 'string' ? inst : JSON.stringify(inst));
   }
-  const env = { ...process.env, HOME: home };
+  let cfgDir;
+  if (configDir) {
+    cfgDir = typeof configDir === 'function' ? configDir(root, proj) : join(root, 'relocated');
+    if (configInstalled !== undefined) {
+      mkdirSync(join(cfgDir, 'plugins'), { recursive: true });
+      const ci = typeof configInstalled === 'function' ? configInstalled(root, proj) : configInstalled;
+      writeFileSync(join(cfgDir, 'plugins', 'installed_plugins.json'),
+        typeof ci === 'string' ? ci : JSON.stringify(ci));
+    }
+  }
+  const env = childEnv({ HOME: home }, cfgDir);
   const projectDir = projectDirOverride ? projectDirOverride(root, proj) : proj;
   if (projectDir !== null) env.CLAUDE_PROJECT_DIR = projectDir;
   let out = '';
@@ -74,6 +106,25 @@ const cases = [
     { settings: decl, installed: 'NOT JSON' }, true],
   ['missing CLAUDE_PROJECT_DIR, cwd is the project → resolves to cwd → silent when user-scope',
     { settings: decl, installed: { plugins: { 'vfkb@vfkb': [{ scope: 'user' }] } }, projectDirOverride: () => null }, false],
+
+  // --- config-dir resolution (vfkb ADR-0072) -------------------------------
+  // Wrapper launchers (cldp/cldw/cldo) relocate the WHOLE config dir. Reading
+  // ~/.claude unconditionally bannered a genuinely-installed plugin: the guard
+  // crying wolf over the healthy state it exists to distinguish.
+  ['CLAUDE_CONFIG_DIR set + installed THERE (HOME/.claude empty) → silent',
+    { settings: decl, installed: { plugins: {} },
+      configDir: true, configInstalled: { plugins: { 'vfkb@vfkb': [{ scope: 'user' }] } } }, false],
+  ['CLAUDE_CONFIG_DIR set + installed only in HOME/.claude → BANNER (must NOT read the fallback)',
+    { settings: decl, installed: { plugins: { 'vfkb@vfkb': [{ scope: 'user' }] } },
+      configDir: true, configInstalled: { plugins: {} } }, true],
+  ['CLAUDE_CONFIG_DIR set to a nonexistent dir + declared → BANNER (fail open, unprovable)',
+    { settings: decl, installed: { plugins: { 'vfkb@vfkb': [{ scope: 'user' }] } },
+      configDir: (root) => join(root, 'no-such-config-dir') }, true],
+  ['CLAUDE_CONFIG_DIR set + project-scope THERE matching this path → silent',
+    { settings: decl, installed: { plugins: {} }, configDir: true,
+      configInstalled: (root, p) => ({ plugins: { 'vfkb@vfkb': [{ scope: 'project', projectPath: p }] } }) }, false],
+  ['CLAUDE_CONFIG_DIR UNSET → falls back to HOME/.claude → silent when installed there',
+    { settings: decl, installed: { plugins: { 'vfkb@vfkb': [{ scope: 'user' }] } } }, false],
 ];
 
 let failed = 0;
@@ -100,7 +151,7 @@ for (const [name, spec, expectBanner] of cases) {
   let code = 0;
   try {
     out = execFileSync('node', [GUARD], {
-      encoding: 'utf8', env: { ...process.env, HOME: home, CLAUDE_PROJECT_DIR: link }, cwd: link,
+      encoding: 'utf8', env: childEnv({ HOME: home, CLAUDE_PROJECT_DIR: link }), cwd: link,
     });
   } catch (e) { code = e.status ?? 1; out = String(e.stdout || ''); }
   rmSync(root, { recursive: true, force: true });
