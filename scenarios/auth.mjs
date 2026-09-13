@@ -21,15 +21,41 @@
 // (the RFC-036 D3 lesson). redactSecrets() is applied at every capture point.
 // ============================================================================
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 export const AUTH_MODE = process.env.VFKB_L4_AUTH || 'oauth';
 const DEEPSEEK_BASE = 'https://api.deepseek.com/anthropic';
 
 if (!['oauth', 'deepseek-env'].includes(AUTH_MODE)) {
   throw new Error(`VFKB_L4_AUTH=${AUTH_MODE} is not a mode (oauth | deepseek-env)`);
+}
+
+/**
+ * The Keychain service holding THIS profile's credentials.
+ *
+ * Claude Code keys its Keychain entry by config dir: the default `~/.claude`
+ * profile uses the bare service name, and every relocated profile appends the
+ * first 8 hex of sha256($CLAUDE_CONFIG_DIR). Reading the bare name from a
+ * wrapper-launched session therefore returns ANOTHER profile's token — which is
+ * how a run staged a stale `team` credential while `claude auth status` in the
+ * same shell reported a live `max` one, and then failed all six trials with
+ * "401 OAuth access token has been revoked".
+ *
+ * DERIVED, NOT DOCUMENTED (observed 2026-09-13). sha256(path)[:8] reproduced all
+ * three suffixed entries on this machine exactly — .claude-cldp -> 7993e3dd,
+ * .claude-cldw -> 77ec0b16, .claude-oneio -> a4edfbef — so it is a 3/3 match on
+ * independent inputs rather than a guess. If Claude Code ever changes the scheme
+ * this lookup simply misses and readRealCredentials() throws naming what it tried,
+ * which is the safe direction: a loud miss, never a silently wrong account.
+ */
+function keychainService() {
+  const base = 'Claude Code-credentials';
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (!cfg || resolve(cfg) === resolve(join(homedir(), '.claude'))) return base;
+  return `${base}-${createHash('sha256').update(cfg).digest('hex').slice(0, 8)}`;
 }
 
 /**
@@ -60,11 +86,12 @@ function readRealCredentials() {
   } catch { /* fall through to the Keychain */ }
 
   if (process.platform === 'darwin') {
-    tried.push('macOS Keychain service "Claude Code-credentials"');
+    const svc = keychainService();
+    tried.push(`macOS Keychain service "${svc}"`);
     try {
       const out = execFileSync(
         'security',
-        ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+        ['find-generic-password', '-s', svc, '-w'],
         { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
       );
       return JSON.parse(out.trim());
