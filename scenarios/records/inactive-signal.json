@@ -1,18 +1,18 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.18.0",
-  "pluginTreeHash": "1c680424d83551796199df753e731be12bfd58a9217f6a5a6d8afdfc2cef1b89",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.18.1",
+  "pluginTreeHash": "9fb83b62b2b47086e88c6e7718647bd343cc622650cbee7f3bddbe43ce7c42a5",
+  "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30620362198",
-    "commit": "958b34a337f42f3b2e407aaf56169a0d3160fb0f"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "84cca997050e22b384b91f8c45c15c3f1f5091de"
   },
   "trials": 3,
-  "generated": "2026-07-31T09:44:47.989Z",
+  "generated": "2026-09-13T09:08:54.856Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) **NOBANNER** — well, to be precise: > vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) bu",
+          "out": "(1) \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) VERBATIM: > SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb",
+          "out": "(1) **VERBATIM first line:** \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfk",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "**(1)** VERBATIM first line: > SessionStart:startup hook success: vfkb INACTIVE — this project declares the vf",
+          "out": "**1. vfkb warning:** \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin",
           "err": ""
         }
       ]
@@ -49,19 +49,19 @@
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "(1) **NOBANNER** — no warning banner about vfkb being inactive or not installed appears in the session-start c",
+          "out": "**NOBANNER** **plumcanyon-verdigris-73**",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "(1) **NOBANNER** — no warning banner about vfkb being inactive or not installed appears in the session-start c",
+          "out": "(1) NOBANNER (2) plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "(1) **NOBANNER** (2) **plumcanyon-verdigris-73**",
+          "out": "I see the stale-handoff warning. The pinned handoff (`plumcanyon-verdigris-73`) was written before commits tha",
           "err": ""
         }
       ]

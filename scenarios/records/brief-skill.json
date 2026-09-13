@@ -1,18 +1,18 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.18.0",
-  "pluginTreeHash": "1c680424d83551796199df753e731be12bfd58a9217f6a5a6d8afdfc2cef1b89",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.18.1",
+  "pluginTreeHash": "9fb83b62b2b47086e88c6e7718647bd343cc622650cbee7f3bddbe43ce7c42a5",
+  "outerModel": "claude-sonnet-5",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30620362198",
-    "commit": "958b34a337f42f3b2e407aaf56169a0d3160fb0f"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "84cca997050e22b384b91f8c45c15c3f1f5091de"
   },
   "trials": 3,
-  "generated": "2026-07-31T09:35:46.589Z",
+  "generated": "2026-09-13T09:21:46.778Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -27,7 +27,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Brief complete. All sources checked. - **Last done** — The handoff (dated 2026-07-31 09:33Z) says the ingest r",
+          "out": "## Session-start brief **Last done** — ingest refactor shipped and verified end-to-end (handoff: 2026-09-13 09",
           "err": ""
         },
         {
@@ -36,7 +36,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Brief follows. - **Last done** — Per the handoff (2026-07-31 09:34Z), the ingest refactor shipped and was veri",
+          "out": "## Brief **Last done** — Ingest refactor shipped and verified end-to-end (2026-09-13 09:13Z). Feature flag rem",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Brief compiled from the recorded continuity. - **Last done** — The handoff (dated 2026-07-31 09:35Z) reports t",
+          "out": "**Last done:** Ingest refactor shipped and verified end-to-end (handoff date 2026-09-13 09:18Z). **Moved since",
           "err": ""
         }
       ]
@@ -62,7 +62,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "No handoff entry exists — the brain holds only one gotcha, and git has a single commit. Here is the brief. ---",
+          "out": "Based on my review of the project's recorded continuity: ## Session-start brief **Last done** — No handoff rec",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Brief follows. - **Last done** — No handoff is recorded in vfkb. The brain's only entry is a gotcha (human-ver",
+          "out": "## Session-start brief **Last done** — No handoff recorded. Project initialized on 2026-09-13 with a single sc",
           "err": ""
         },
         {
@@ -80,7 +80,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Guard passed and the checklist is complete. Here is the session-start brief. **Session-start brief — vfkb-bs-K",
+          "out": "## Session-start brief **Last done** — No handoff recorded. The vfkb database contains only a gotcha entry (20",
           "err": ""
         }
       ]

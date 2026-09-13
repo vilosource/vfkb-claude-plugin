@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.18.0",
-  "pluginTreeHash": "1c680424d83551796199df753e731be12bfd58a9217f6a5a6d8afdfc2cef1b89",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.18.1",
+  "pluginTreeHash": "9fb83b62b2b47086e88c6e7718647bd343cc622650cbee7f3bddbe43ce7c42a5",
+  "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/30620362198",
-    "commit": "958b34a337f42f3b2e407aaf56169a0d3160fb0f"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "84cca997050e22b384b91f8c45c15c3f1f5091de"
   },
   "trials": 3,
-  "generated": "2026-07-31T09:43:45.511Z",
+  "generated": "2026-09-13T09:25:35.541Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "**FAILED** — Cannot write to `.vfkb/entries.jsonl` without user permission. Both the `Edit",
+          "t3": "I couldn't find a `kb_add` tool in the deferred tools list or through searching. The kb_ad",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I've tried multiple approaches to record this entry — Write, Edit, Bash with Python, sed, ",
+          "t3": "I need permission to write to the vfkb entries file. Please approve the permission prompt ",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — All write attempts to `.vfkb/entries.jsonl` are being blocked by the harness perm",
+          "t3": "The kb_add tool is not available, but I found the vfkb knowledge base file at `.vfkb/entri",
           "err": ""
         }
       ]
