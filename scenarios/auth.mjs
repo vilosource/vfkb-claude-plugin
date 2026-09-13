@@ -89,6 +89,30 @@ export function assertAuthReady() {
     throw new Error(`oauth mode but no credentials could be read: ${e.message}`);
   }
   if (!all.claudeAiOauth) throw new Error('credentials found, but they carry no claudeAiOauth block');
+
+  // PRESENT is not the same as VALID, and the difference costs real money. The
+  // scenarios copy the STORED token into the sandbox verbatim; they never refresh
+  // it. A live Claude Code session keeps working off an in-memory refresh, so the
+  // snapshot on disk can be long expired while everything looks healthy — observed
+  // 2026-09-13, when a token that expired two days earlier let this check pass and
+  // then failed all six trials with "401 OAuth access token has been revoked",
+  // burning the metered runs AND writing a 0/3 NOT-DEMONSTRATED record that blamed
+  // the capability for an auth failure. That record is worse than the wasted spend:
+  // it is false evidence in the DoD chain.
+  //
+  // This is the same reasoning as the empty-token check above ("a missing token
+  // hangs the turn and would be scored as a model miss") — applied to the failure
+  // mode that actually happened.
+  const expiresAt = all.claudeAiOauth.expiresAt;
+  if (typeof expiresAt === 'number' && expiresAt <= Date.now()) {
+    const when = new Date(expiresAt).toISOString();
+    throw new Error(
+      `the stored claudeAiOauth token EXPIRED at ${when} — refusing before anything metered runs. ` +
+        'A live session refreshes in memory without rewriting the store, so this can be stale while ' +
+        'Claude Code still works. Re-authenticate (run `claude` and complete /login) so the refreshed ' +
+        'token is written back, then re-run this scenario.',
+    );
+  }
 }
 
 /** Stage credentials into a sandbox HOME. deepseek-env stages nothing — auth is env-only. */
