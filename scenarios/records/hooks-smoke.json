@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.18.1",
-  "pluginTreeHash": "9fb83b62b2b47086e88c6e7718647bd343cc622650cbee7f3bddbe43ce7c42a5",
+  "pluginVersion": "0.19.0",
+  "pluginTreeHash": "3a89a439e77337d301ed2e25c6c6e7301c69a6b9aba7b85f2bf6295fac43cd34",
   "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "84cca997050e22b384b91f8c45c15c3f1f5091de"
+    "commit": "79f94fa3ade45fb9341eb5a38e7f21eca7311625"
   },
   "trials": 3,
-  "generated": "2026-09-13T09:25:35.541Z",
+  "generated": "2026-09-14T07:15:36.518Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I couldn't find a `kb_add` tool in the deferred tools list or through searching. The kb_ad",
+          "t3": "Permission required to write to the knowledge base file. Awaiting approval to record the f",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I need permission to write to the vfkb entries file. Please approve the permission prompt ",
+          "t3": "FAILED — The kb_add MCP tool is not available, and I need write permission to append the f",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "The kb_add tool is not available, but I found the vfkb knowledge base file at `.vfkb/entri",
+          "t3": "I'm ready to add the fact to the knowledge base. I found the `.vfkb/entries.jsonl` file an",
           "err": ""
         }
       ]
