@@ -1,18 +1,18 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.18.1",
-  "pluginTreeHash": "9fb83b62b2b47086e88c6e7718647bd343cc622650cbee7f3bddbe43ce7c42a5",
+  "pluginVersion": "0.19.0",
+  "pluginTreeHash": "3a89a439e77337d301ed2e25c6c6e7301c69a6b9aba7b85f2bf6295fac43cd34",
   "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "84cca997050e22b384b91f8c45c15c3f1f5091de"
+    "commit": "79f94fa3ade45fb9341eb5a38e7f21eca7311625"
   },
   "trials": 3,
-  "generated": "2026-09-13T09:08:54.856Z",
+  "generated": "2026-09-14T07:08:19.637Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "out": "(1) SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) **VERBATIM first line:** \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfk",
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "**1. vfkb warning:** \"SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin",
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         }
       ]
@@ -49,19 +49,19 @@
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "**NOBANNER** **plumcanyon-verdigris-73**",
+          "out": "NOBANNER plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "(1) NOBANNER (2) plumcanyon-verdigris-73",
+          "out": "NOBANNER plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "I see the stale-handoff warning. The pinned handoff (`plumcanyon-verdigris-73`) was written before commits tha",
+          "out": "NOBANNER Migration codename: **plumcanyon-verdigris-73**",
           "err": ""
         }
       ]
