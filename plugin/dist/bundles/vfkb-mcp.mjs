@@ -35558,22 +35558,29 @@ var entrySchema = external_exports.looseObject({
   text: external_exports.string().catch(""),
   tags: external_exports.array(external_exports.string()).catch([]),
   zone: external_exports.enum(["incoming", "established", "archive"]).catch("incoming"),
-  author: external_exports.looseObject({ role: ROLE.catch("executor"), id: external_exports.string().optional() }).catch({ role: "executor" }),
+  author: external_exports.looseObject({ role: ROLE.catch("executor"), id: external_exports.string().optional().catch(void 0) }).catch({ role: "executor" }),
+  // EVERY declared field inside a composite carries its OWN .catch(). The
+  // object-level .catch() below is a LAST RESORT for a non-object value, not the
+  // first line of defence: zod discards the WHOLE object when a declared field
+  // fails, so without per-field catches one bad field destroys its valid siblings
+  // (#303 — a bad provenance.date reset a `stale` entry to `unverified`, and a bad
+  // refs.supersedes erased an ADR-0004 supersession edge). Guarded by
+  // test/catch-blast-radius.test.ts, which walks .shape so a field added later is
+  // covered the day it is declared.
   refs: external_exports.looseObject({
-    supersedes: external_exports.string().optional(),
+    supersedes: external_exports.string().optional().catch(void 0),
     contradicts: external_exports.array(external_exports.string()).optional().catch(void 0)
   }).optional().catch(void 0),
   provenance: external_exports.looseObject({
     status: PROV_STATUS.catch("unverified"),
-    date: external_exports.string().optional(),
-    source: external_exports.string().optional(),
-    detail: external_exports.string().optional(),
+    date: external_exports.string().optional().catch(void 0),
+    source: external_exports.string().optional().catch(void 0),
+    detail: external_exports.string().optional().catch(void 0),
     origin: external_exports.unknown().optional()
   }).catch({ status: "unverified" }),
   validity: external_exports.looseObject({
-    valid_from: external_exports.string().optional(),
-    valid_until: external_exports.string().optional(),
-    recorded_invalid_at: external_exports.string().optional()
+    valid_from: external_exports.string().optional().catch(void 0),
+    valid_until: external_exports.string().optional().catch(void 0)
   }).catch({}),
   status: external_exports.enum(["proposed", "accepted", "deprecated", "superseded"]).optional().catch(void 0),
   why: external_exports.string().optional().catch(void 0),
@@ -36474,7 +36481,7 @@ function queryExplained(opts = {}) {
 }
 
 // src/version.ts
-var ENGINE_VERSION = true ? "0.8.0" : ownPackageVersion();
+var ENGINE_VERSION = true ? "0.8.1" : ownPackageVersion();
 
 // src/mcp-server.ts
 var SEARCH_DEFAULT_LIMIT = 25;
