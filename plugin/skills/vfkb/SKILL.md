@@ -13,8 +13,12 @@ same session).
 
 ## Orient first
 
-Before doing anything else, check whether `.vfkb/entries.jsonl` exists in the current project. If
-it doesn't, this project isn't using vfkb yet — say so plainly rather than fabricating context.
+Before doing anything else, check whether the `.vfkb/` **directory** exists in the current project
+— the directory, not `entries.jsonl` (#321). If `.vfkb/` is absent, this project isn't using vfkb
+yet; say so plainly rather than fabricating context. If `.vfkb/` exists but `entries.jsonl` is
+absent or empty, the project **is** wired and simply has nothing recorded yet: say there is no
+recorded knowledge yet and carry on — recording is available, and this is the state every project
+starts in.
 
 ## Resuming a session
 

@@ -12,8 +12,20 @@ checklist in order; report **UNKNOWN** where a source is silent rather than inve
 
 ## 1. Guard
 
-Check that `.vfkb/entries.jsonl` exists in the project root. If it doesn't, reply that this
-project isn't using vfkb and stop — do not fabricate a brief.
+Check for the `.vfkb/` **directory** in the project root, and distinguish two different states.
+They are not the same thing and the wrong answer to the second one is a bug (#321):
+
+- **`.vfkb/` is absent** — this project genuinely isn't using vfkb. Say so and stop; do not
+  fabricate a brief.
+- **`.vfkb/` exists but `entries.jsonl` is absent or empty** — the project **is** wired; nothing
+  has been recorded yet. This is **every project's first session**. Brief normally: say plainly
+  that there is no prior continuity, then brief from git and the GitHub queue alone (§3, §4).
+  **Do not say the project isn't using vfkb** — the wiring is there, only the history is empty,
+  and the SessionStart hook has already told the operator "first recorded session" in the same
+  session. Contradicting it is how this guard was reported.
+
+Test the directory, not the file. `entries.jsonl` is created by the first write, so keying the
+"not using vfkb" answer on it reports every correctly-wired new project as unwired.
 
 ## 2. The handoff (primary source)
 

@@ -1,18 +1,18 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.19.0",
-  "pluginTreeHash": "3a89a439e77337d301ed2e25c6c6e7301c69a6b9aba7b85f2bf6295fac43cd34",
+  "pluginVersion": "0.20.0",
+  "pluginTreeHash": "ba6d4943c37978af1b6ccbf19d0b13731449503638dddbdfcfe3604c116a3127",
   "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "79f94fa3ade45fb9341eb5a38e7f21eca7311625"
+    "commit": "d11f479de6d5f8373709ed0120ce8710a3a82f1f"
   },
   "trials": 3,
-  "generated": "2026-09-14T07:08:19.637Z",
+  "generated": "2026-09-30T09:57:16.162Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
+          "out": "**vfkb banner:** SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfk",
+          "err": ""
+        },
+        {
+          "bannerShown": true,
+          "vfkbLive": false,
+          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "err": ""
+        },
+        {
+          "bannerShown": true,
+          "vfkbLive": false,
           "out": "(1) SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
-          "err": ""
-        },
-        {
-          "bannerShown": true,
-          "vfkbLive": false,
-          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
-          "err": ""
-        },
-        {
-          "bannerShown": true,
-          "vfkbLive": false,
-          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
           "err": ""
         }
       ]
@@ -49,19 +49,19 @@
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "NOBANNER plumcanyon-verdigris-73",
+          "out": "**1.** NOBANNER **2.** plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "NOBANNER plumcanyon-verdigris-73",
+          "out": "(1) NOBANNER (2) plumcanyon-verdigris-73",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "NOBANNER Migration codename: **plumcanyon-verdigris-73**",
+          "out": "(1) NOBANNER (2) plumcanyon-verdigris-73",
           "err": ""
         }
       ]

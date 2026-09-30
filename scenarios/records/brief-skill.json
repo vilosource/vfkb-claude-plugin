@@ -1,18 +1,19 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.19.0",
-  "pluginTreeHash": "3a89a439e77337d301ed2e25c6c6e7301c69a6b9aba7b85f2bf6295fac43cd34",
+  "pluginVersion": "0.20.0",
+  "pluginTreeHash": "ba6d4943c37978af1b6ccbf19d0b13731449503638dddbdfcfe3604c116a3127",
   "outerModel": "claude-sonnet-5",
+  "predicatesSha256": "4e15beca54e305b6a292d504f947de800bacbea3f3e6036c290cd4dcc432fd4f",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "79f94fa3ade45fb9341eb5a38e7f21eca7311625"
+    "commit": "7945c3e843fd9da7f7f85a22415cf2f7c5f9a275"
   },
   "trials": 3,
-  "generated": "2026-09-14T07:10:49.262Z",
+  "generated": "2026-09-30T11:04:17.249Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -24,28 +25,67 @@
         {
           "sentinel": true,
           "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": false,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Step 4 note:** No git remote — queue state unavailable. Compiling brief. --- ## Session-start brief **Last d",
+          "out": "Based on the vfkb handoff and project state: **Last done** Ingest refactor shipped and verified end-to-end (2026-09-30 11:00Z). **Moved since** Commit 5e25659 chore: scaffold (2026-09-30 14:00:37 +0300) — contemporaneous with handoff. **What's next** 1. copperlark-echo-31 (migration codename); keep ",
           "err": ""
         },
         {
           "sentinel": true,
           "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": false,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (2026-09-14 07:09Z). **",
+          "out": "**Last done** — ingest refactor shipped and verified end-to-end (2026-09-30 11:01Z). **Moved since** — 5527f53 chore: scaffold (2026-09-30 14:01:49 +0300). **What's next** — copperlark-echo-31; keep the feature flag off until the backfill verifier reports clean. Everything else blocked behind it. **",
           "err": ""
         },
         {
           "sentinel": true,
           "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": false,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Step 4 ✓ — Queue state unavailable (no git remote). Now compiling the brief. --- ## Session-start brief **Last",
+          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (handoff dated 2026-09-30 11:02Z). **Moved since** — fca9c32 chore: scaffold (added src/main.ts, committed 2026-09-30 14:02:57). **What's next** — copperlark-echo-31 (migration); keep feature flag off until backfi",
           "err": ""
         }
       ]
@@ -59,28 +99,147 @@
         {
           "sentinel": false,
           "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [
+            "vfkb-not-state"
+          ],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**No handoff recorded in this project.** The vfkb knowledge base contains only one gotcha entry (shard worker ",
+          "refusalContext": "vfkb-not-state: … **Last done** No prior handoff recorded. This project has vfkb wired (as of 2026-09-30 11:01Z) with one recorded gotcha entry ab…",
+          "out": "--- ## Session-start brief **Last done** No prior handoff recorded. This project has vfkb wired (as of 2026-09-30 11:01Z) with one recorded gotcha entry about shard workers draining before schema lock release, but no handed-off work state yet. **Moved since** Single commit on record: `583e2be chore:",
           "err": ""
         },
         {
           "sentinel": false,
           "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done:** No handoff recorded. Only one vfkb entry exists (a gotcha: \"shard worker",
+          "out": "**Last done** No handoff has been recorded. The only entry in the knowledge base is a gotcha about shard workers needing to drain before schema lock release. The most recent session note is from 2026-09-30 11:02Z. **Moved since** 5239292 chore: scaffold (2026-09-30 14:02:11 UTC). **What's next** UNK",
           "err": ""
         },
         {
           "sentinel": false,
           "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Based on the checklist, here is your session-start brief: --- **Last done** No handoff recorded in vfkb. Proje",
+          "out": "## Session-start brief **Last done** No prior handoff recorded — this is the project's first recorded session. The vfkb system is wired but contains only a gotcha: \"shard workers must drain before the schema lock is released.\" **Moved since** bd7c43d chore: scaffold **What's next** No handoff availa",
+          "err": ""
+        }
+      ]
+    },
+    "freshlyWired": {
+      "role": "positive",
+      "predicate": [
+        "briefed",
+        "produced",
+        "acknowledgedEmpty",
+        "noRefusalVeto"
+      ],
+      "trials": [
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "## Session-start brief **Last done**: No prior continuity recorded. This is the first session with the vfkb briefing system active; no handoff exists. **Moved since**: One commit since project initialization: `7d0b851 chore: scaffold the thornwick-ledger-58 parser`. **What's next**: No handoff recor",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "## Session-start brief **Last done** No prior handoff recorded; this is the project's first recorded session (wired 2026-09-30 11:02Z, 0 entries in knowledge base). **Moved since** No prior handoff baseline to compare. Current state: one commit visible — `fec9064 chore: scaffold the thornwick-ledger",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "**Last done** No prior continuity recorded. This is the first recorded session for this project; the `.vfkb/` directory is wired but `entries.jsonl` is empty. **Moved since** One commit: 1904130 chore: scaffold the thornwick-ledger-58 parser (2026-09-30). **What's next** UNKNOWN — no handoff recorde",
           "err": ""
         }
       ]
