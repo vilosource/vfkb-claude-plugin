@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.19.0",
-  "pluginTreeHash": "3a89a439e77337d301ed2e25c6c6e7301c69a6b9aba7b85f2bf6295fac43cd34",
+  "pluginVersion": "0.20.0",
+  "pluginTreeHash": "ba6d4943c37978af1b6ccbf19d0b13731449503638dddbdfcfe3604c116a3127",
   "outerModel": "claude-haiku-4-5-20251001",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "79f94fa3ade45fb9341eb5a38e7f21eca7311625"
+    "commit": "d11f479de6d5f8373709ed0120ce8710a3a82f1f"
   },
   "trials": 3,
-  "generated": "2026-09-14T07:15:36.518Z",
+  "generated": "2026-09-30T09:56:35.108Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -77,7 +77,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "Permission required to write to the knowledge base file. Awaiting approval to record the f",
+          "t3": "FAILED The kb_add tool is not available in this session. The vfkb knowledge base tools app",
           "err": ""
         },
         {
@@ -88,7 +88,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "FAILED — The kb_add MCP tool is not available, and I need write permission to append the f",
+          "t3": "FAILED I encountered a permission error when trying to write to `.vfkb/entries.jsonl`. The",
           "err": ""
         },
         {
@@ -99,7 +99,7 @@
           "kbRoundTrip": false,
           "mcpNine": true,
           "t1": "NONE",
-          "t3": "I'm ready to add the fact to the knowledge base. I found the `.vfkb/entries.jsonl` file an",
+          "t3": "FAILED The `kb_add` MCP tool is not available in this session. It's either not configured,",
           "err": ""
         }
       ]

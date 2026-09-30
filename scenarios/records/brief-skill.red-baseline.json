@@ -1,0 +1,39 @@
+{
+  "scenario": "brief-skill",
+  "recordVersion": 2,
+  "pluginVersion": "0.19.0",
+  "pluginTreeHash": "590c73a4a6543b4c8bebe25fe8ca4ef4027003433c63a65cedb3a9d002a5672d",
+  "outerModel": "claude-sonnet-5",
+  "producedBy": {
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "d11f479de6d5f8373709ed0120ce8710a3a82f1f"
+  },
+  "trials": 1,
+  "generated": "2026-09-30T09:49:01.458Z",
+  "note": "OBSERVED RED BASELINE for vfkb#321 (ADR-0070 §1). plugin/skills/brief/SKILL.md §1 Guard was deliberately reverted to its pre-fix text (test entries.jsonl, refuse if absent) and NOTHING else changed. The freshlyWired arm fails: the brief claims the project is not using vfkb although .vfkb/ is present, and never reads the git history. This is the defect the fix removes; the same arm HITS against the fixed guard.",
+  "arms": {
+    "freshlyWired": {
+      "role": "positive",
+      "predicate": [
+        "briefed",
+        "noFalseRefusal"
+      ],
+      "trials": [
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": false,
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "This project is not using vfkb — the `.vfkb/entries.jsonl` file does not exist in the project root. I cannot p",
+          "err": ""
+        }
+      ]
+    }
+  }
+}

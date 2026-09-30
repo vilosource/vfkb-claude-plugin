@@ -1,18 +1,18 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.19.0",
-  "pluginTreeHash": "3a89a439e77337d301ed2e25c6c6e7301c69a6b9aba7b85f2bf6295fac43cd34",
+  "pluginVersion": "0.20.0",
+  "pluginTreeHash": "ba6d4943c37978af1b6ccbf19d0b13731449503638dddbdfcfe3604c116a3127",
   "outerModel": "claude-sonnet-5",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "79f94fa3ade45fb9341eb5a38e7f21eca7311625"
+    "commit": "d11f479de6d5f8373709ed0120ce8710a3a82f1f"
   },
   "trials": 3,
-  "generated": "2026-09-14T07:10:49.262Z",
+  "generated": "2026-09-30T09:52:53.448Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -24,28 +24,34 @@
         {
           "sentinel": true,
           "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": true,
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Step 4 note:** No git remote — queue state unavailable. Compiling brief. --- ## Session-start brief **Last d",
+          "out": "No GitHub remote configured. I have enough for the brief now. --- ## SESSION-START BRIEF **Last done** — Inges",
           "err": ""
         },
         {
           "sentinel": true,
           "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": true,
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (2026-09-14 07:09Z). **",
+          "out": "## Session-start Brief **Last done** — The handoff (2026-09-30 09:50Z) reports the ingest refactor shipped and",
           "err": ""
         },
         {
           "sentinel": true,
           "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": true,
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Step 4 ✓ — Queue state unavailable (no git remote). Now compiling the brief. --- ## Session-start brief **Last",
+          "out": "**Last done** — The handoff (2026-09-30 09:51Z) recorded the ingest refactor shipped and verified end-to-end. ",
           "err": ""
         }
       ]
@@ -59,28 +65,76 @@
         {
           "sentinel": false,
           "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": true,
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**No handoff recorded in this project.** The vfkb knowledge base contains only one gotcha entry (shard worker ",
+          "out": "**Final brief:** This project is wired for vfkb but has no prior handoff recorded. This is the first recorded ",
           "err": ""
         },
         {
           "sentinel": false,
           "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": true,
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done:** No handoff recorded. Only one vfkb entry exists (a gotcha: \"shard worker",
+          "out": "**Last done** No handoff recorded. The project is wired (`.vfkb/` present with `entries.jsonl`) and contains o",
           "err": ""
         },
         {
           "sentinel": false,
           "haiku": true,
+          "briefed": false,
+          "noFalseRefusal": true,
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Based on the checklist, here is your session-start brief: --- **Last done** No handoff recorded in vfkb. Proje",
+          "out": "**Last done** — No prior handoff recorded; this is the project's first recorded session. One gotcha captured: ",
+          "err": ""
+        }
+      ]
+    },
+    "freshlyWired": {
+      "role": "positive",
+      "predicate": [
+        "briefed",
+        "noFalseRefusal"
+      ],
+      "trials": [
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "noFalseRefusal": true,
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "**Step 5: The brief** --- **Last done:** This is the project's first recorded session; no prior handoff exists",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "noFalseRefusal": true,
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "## Step 5: The brief **Last done**: No prior continuity recorded. This is the first recorded session for this ",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "noFalseRefusal": true,
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "## Session-start brief **Last done** This is the project's first recorded session. No prior continuity exists ",
           "err": ""
         }
       ]

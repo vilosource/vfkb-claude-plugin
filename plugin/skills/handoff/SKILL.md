@@ -12,8 +12,14 @@ left open) lives in this session's context, not in any file a fresh agent could 
 
 ## 1. Guard
 
-Check that `.vfkb/entries.jsonl` exists in the project root. If it doesn't, say this project isn't
-using vfkb and stop.
+Check for the `.vfkb/` **directory** in the project root, not for `entries.jsonl` (#321):
+
+- **`.vfkb/` is absent** — this project isn't using vfkb. Say so and stop.
+- **`.vfkb/` exists but `entries.jsonl` is absent or empty** — the project is wired and nothing
+  has been recorded yet. **Continue.** Writing the first handoff is exactly what this skill is
+  for, and it is the single most valuable thing to record in a project's first session; refusing
+  here is worse than refusing to brief, because the continuity is lost rather than merely
+  unreported. Skip §2's baseline (there is none) and say so in the handoff.
 
 ## 2. Find the baseline — what's already on record
 
