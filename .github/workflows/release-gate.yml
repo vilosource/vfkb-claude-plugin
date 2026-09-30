@@ -30,6 +30,9 @@ jobs:
       - name: The version Brake is connected — negative checks go red
         run: node scenarios/version-bump.selftest.mjs
 
+      - name: brief-skill output predicates (the freshlyWired arm's Brake)
+        run: node scenarios/brief-predicates.selftest.mjs
+
       # ADR-0061: a shipped version is immutable. If the consumer-facing surface
       # differs from what vfkb--v{version} already shipped, the version is stale
       # and must be bumped. This is the half of "bump-and-tag" that prose could

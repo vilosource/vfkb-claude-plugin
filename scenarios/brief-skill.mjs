@@ -42,6 +42,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verdict, hashTree } from './release-gate.mjs';
 import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
+// The freshlyWired arm's output predicates live in their own module because they
+// decide a required gate arm, and the first version of them was broken in both
+// directions (review of #60: fired on the affirmative, missed 14/18 refusal
+// wordings). They are pinned by brief-predicates.selftest.mjs, which runs in CI.
+import { refusesAsUnwired, refusalShapes, acknowledgesEmptyState } from './brief-predicates.mjs';
 assertAuthReady();
 
 const REPO = resolve(process.argv[1], '../..');
@@ -56,9 +61,8 @@ const SENTINEL = 'copperlark-echo-31';
 // #321's arm needs a sentinel the agent can only have got from GIT, since the
 // brain is empty by construction. It goes in a commit subject.
 const GIT_SENTINEL = 'thornwick-ledger-58';
-// The bug's signature, as the skill's own §1 Guard words it. Matched loosely
-// because a model paraphrases: any claim that this project is not using vfkb.
-const NOT_USING = /\b(is|isn't|is not|are not|aren't)\s+(?:\w+\s+){0,3}using vfkb|not\s+using\s+vfkb|doesn't\s+(?:appear\s+to\s+)?use\s+vfkb|no[t]?\s+a\s+vfkb\s+project/i;
+// The bug's signature is decided by ./brief-predicates.mjs — see its header for
+// why this is not an inline regex any more.
 const sh = (c, a, o = {}) => execFileSync(c, a, { encoding: 'utf8', ...o });
 
 /**
@@ -129,8 +133,14 @@ function runArm(dir) {
   // run that errored and printed nothing would satisfy "no false refusal" while
   // proving nothing, so the arm requires evidence it actually read the project.
   const briefed = text.toLowerCase().includes(GIT_SENTINEL);
-  const noFalseRefusal = !NOT_USING.test(text);
-  return { sentinel, haiku, briefed, noFalseRefusal, models,
+  const noFalseRefusal = !refusesAsUnwired(text);
+  // M3: removing the refusal moved the failure mode from refusing to
+  // FABRICATING — the skill now proceeds and must still fill a five-section
+  // template, "what's next" included, from a silent source. Without this the arm
+  // would score an invented next step as a clean hit.
+  const honest = acknowledgesEmptyState(text);
+  return { sentinel, haiku, briefed, noFalseRefusal, honest,
+    refusalShapes: refusalShapes(text), models,
     out: text.replace(/\s+/g, ' ').slice(0, 110), err };
 }
 
@@ -146,10 +156,17 @@ const arms = {
   contrast: { role: 'contrast', predicate: ['sentinel'], trials: [] },
   // #321. A second POSITIVE arm, so the gate holds it to the same >=2/3 bar as
   // `wired` and a regression cannot be waved through.
-  freshlyWired: { role: 'positive', predicate: ['briefed', 'noFalseRefusal'], trials: [] },
+  freshlyWired: { role: 'positive', predicate: ['briefed', 'noFalseRefusal', 'honest'], trials: [] },
 };
 const MODE = { wired: 'handoff', contrast: 'noHandoff', freshlyWired: 'freshlyWired' };
-const ARMS = (process.env.VFKB_BS_ARMS || 'wired,contrast,freshlyWired').split(',').map((a) => a.trim());
+const ARMS = (process.env.VFKB_BS_ARMS || Object.keys(MODE).join(',')).split(',').map((a) => a.trim()).filter(Boolean);
+// m3: validate BEFORE anything metered. A typo ('freshlywired') used to delete
+// the real arm, spend a live `claude -p`, and only then throw on the push.
+const unknown = ARMS.filter((a) => !(a in MODE));
+if (unknown.length) {
+  console.error(`unknown arm(s) ${unknown.join(', ')} — choices: ${Object.keys(MODE).join(', ')}`);
+  process.exit(2);
+}
 for (const a of Object.keys(arms)) if (!ARMS.includes(a)) delete arms[a];
 for (let t = 1; t <= TRIALS; t++) {
   for (const arm of ARMS) {
@@ -161,7 +178,10 @@ for (let t = 1; t <= TRIALS; t++) {
     const tag = arm === 'wired'
       ? (r.sentinel && r.haiku ? 'HIT' : `miss (sentinel=${r.sentinel} haiku=${r.haiku})`)
       : arm === 'freshlyWired'
-        ? (r.briefed && r.noFalseRefusal ? 'HIT' : `miss (briefed=${r.briefed} noFalseRefusal=${r.noFalseRefusal})`)
+        ? (r.briefed && r.noFalseRefusal && r.honest
+          ? 'HIT'
+          : `miss (briefed=${r.briefed} noFalseRefusal=${r.noFalseRefusal} honest=${r.honest}` +
+            `${r.refusalShapes?.length ? ` refused-as:${r.refusalShapes.join('/')}` : ''})`)
         : (r.sentinel ? 'LEAK' : 'clean');
     console.log(`${tag}  models=[${r.models}]  — "${r.out}"${r.err ? '  ERR:' + r.err : ''}`);
   }
@@ -192,9 +212,9 @@ const { ok: demonstrated, reasons } = verdict(record);
 const count = (a, p) => (arms[a]?.trials ?? []).filter((r) => p.every((k) => r[k])).length;
 const wiredN = count('wired', ['sentinel', 'haiku']);
 const contrastN = count('contrast', ['sentinel']);
-const freshN = count('freshlyWired', ['briefed', 'noFalseRefusal']);
+const freshN = count('freshlyWired', ['briefed', 'noFalseRefusal', 'honest']);
 console.log(`\nwired: ${wiredN}/${TRIALS} (sentinel+haiku)   |   contrast leaks: ${contrastN}/${TRIALS}` +
-  `${arms.freshlyWired ? `   |   freshlyWired: ${freshN}/${TRIALS} (briefed+noFalseRefusal)` : ''}`);
+  `${arms.freshlyWired ? `   |   freshlyWired: ${freshN}/${TRIALS} (briefed+noFalseRefusal+honest)` : ''}`);
 console.log(demonstrated
   ? `DEMONSTRATED — /vfkb:brief briefs from the handoff on the pinned haiku fork (ADR-0022, recomputed)`
   : `NOT demonstrated — ${reasons.join('; ')}`);
@@ -203,7 +223,7 @@ mkdirSync(join(REPO, 'scenarios/records'), { recursive: true });
 // A partial run must never overwrite the version-bound record the gate reads.
 // VFKB_BS_RECORD lets a baseline run write beside the release record instead of
 // over it. The gate reads records by exact slug, so an extra file is inert.
-const partial = ARMS.length !== 3;
+const partial = ARMS.length !== Object.keys(MODE).length;
 const outName = process.env.VFKB_BS_RECORD
   || (partial ? 'brief-skill.partial.json' : 'brief-skill.json');
 writeFileSync(join(REPO, 'scenarios/records', outName), JSON.stringify(record, null, 2) + '\n');
