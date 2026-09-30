@@ -37,6 +37,7 @@
 //   VFKB_BS_TRIALS=1 node scenarios/brief-skill.mjs
 // ============================================================================
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -46,7 +47,7 @@ import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from '
 // decide a required gate arm, and the first version of them was broken in both
 // directions (review of #60: fired on the affirmative, missed 14/18 refusal
 // wordings). They are pinned by brief-predicates.selftest.mjs, which runs in CI.
-import { refusesAsUnwired, refusalShapes, acknowledgesEmptyState } from './brief-predicates.mjs';
+import { producedBrief, briefSections, refusalShapes, REFUSAL_SHAPES, acknowledgesEmptyState } from './brief-predicates.mjs';
 assertAuthReady();
 
 const REPO = resolve(process.argv[1], '../..');
@@ -101,6 +102,23 @@ function buildSandbox(mode) {
   return dir;
 }
 
+/**
+ * The text around the first refusal-diagnostic match, so a fired diagnostic on
+ * an otherwise-passing trial is judgeable from the record rather than requiring
+ * a re-run. Pure, and exercised by the selftest.
+ */
+function refusalContext(text) {
+  const t = String(text);
+  for (const [name, re] of REFUSAL_SHAPES) {
+    const m = re.exec(t);
+    if (m) {
+      const from = Math.max(0, m.index - 60);
+      return `${name}: …${t.slice(from, m.index + m[0].length + 60).replace(/\s+/g, ' ')}…`;
+    }
+  }
+  return null;
+}
+
 function runArm(dir) {
   let raw = '';
   let err = '';
@@ -133,15 +151,28 @@ function runArm(dir) {
   // run that errored and printed nothing would satisfy "no false refusal" while
   // proving nothing, so the arm requires evidence it actually read the project.
   const briefed = text.toLowerCase().includes(GIT_SENTINEL);
-  const noFalseRefusal = !refusesAsUnwired(text);
-  // M3: removing the refusal moved the failure mode from refusing to
-  // FABRICATING — the skill now proceeds and must still fill a five-section
-  // template, "what's next" included, from a silent source. Without this the arm
-  // would score an invented next step as a clean hit.
-  const honest = acknowledgesEmptyState(text);
-  return { sentinel, haiku, briefed, noFalseRefusal, honest,
-    refusalShapes: refusalShapes(text), models,
-    out: text.replace(/\s+/g, ' ').slice(0, 110), err };
+  // THE GATING PREDICATE IS STRUCTURAL. Two rounds of review showed that deciding
+  // "did it refuse?" by enumerating refusal phrasings cannot be known complete —
+  // the second attempt missed 16/18 on a fresh table, and five realistic refusals
+  // scored clean HITs. So the arm asks the bounded question the skill's own §5
+  // contract answers: did the five-section brief get produced? A refusal emits
+  // none of them. See brief-predicates.mjs for the full argument.
+  const produced = producedBrief(text);
+  // Removing the refusal moved the failure mode from refusing to FABRICATING, so
+  // the arm also requires the brief to say the state is empty. Named for what it
+  // observes: it sees the ACKNOWLEDGEMENT, not honesty itself.
+  const acknowledgedEmpty = acknowledgesEmptyState(text);
+  const shapes = refusalShapes(text);
+  return { sentinel, haiku, briefed, produced, acknowledgedEmpty,
+    // Diagnostic, never gating — so a regression is legible in the record.
+    sections: briefSections(text), refusalShapes: shapes, models,
+    // When the diagnostic fires on a HIT, the record must be able to say WHY.
+    // It fired on one trial at 110 chars of stored output and the match was past
+    // the cutoff, so "did a refusal slip through?" was unanswerable from the
+    // committed evidence. The excerpt is wider now, and a fired diagnostic also
+    // stores the text around its match.
+    ...(shapes.length ? { refusalContext: refusalContext(text) } : {}),
+    out: text.replace(/\s+/g, ' ').slice(0, 300), err };
 }
 
 console.log(`vfkb-claude-plugin brief-skill L4  (outer=${OUTER_MODEL}, trials=${TRIALS})`);
@@ -156,7 +187,7 @@ const arms = {
   contrast: { role: 'contrast', predicate: ['sentinel'], trials: [] },
   // #321. A second POSITIVE arm, so the gate holds it to the same >=2/3 bar as
   // `wired` and a regression cannot be waved through.
-  freshlyWired: { role: 'positive', predicate: ['briefed', 'noFalseRefusal', 'honest'], trials: [] },
+  freshlyWired: { role: 'positive', predicate: ['briefed', 'produced', 'acknowledgedEmpty'], trials: [] },
 };
 const MODE = { wired: 'handoff', contrast: 'noHandoff', freshlyWired: 'freshlyWired' };
 const ARMS = (process.env.VFKB_BS_ARMS || Object.keys(MODE).join(',')).split(',').map((a) => a.trim()).filter(Boolean);
@@ -178,9 +209,10 @@ for (let t = 1; t <= TRIALS; t++) {
     const tag = arm === 'wired'
       ? (r.sentinel && r.haiku ? 'HIT' : `miss (sentinel=${r.sentinel} haiku=${r.haiku})`)
       : arm === 'freshlyWired'
-        ? (r.briefed && r.noFalseRefusal && r.honest
-          ? 'HIT'
-          : `miss (briefed=${r.briefed} noFalseRefusal=${r.noFalseRefusal} honest=${r.honest}` +
+        ? (r.briefed && r.produced && r.acknowledgedEmpty
+          ? `HIT${r.refusalShapes?.length ? ` [diagnostic: ${r.refusalShapes.join('/')} — check refusalContext]` : ''}`
+          : `miss (briefed=${r.briefed} produced=${r.produced} ack=${r.acknowledgedEmpty}` +
+            ` sections=${r.sections?.length ?? 0}` +
             `${r.refusalShapes?.length ? ` refused-as:${r.refusalShapes.join('/')}` : ''})`)
         : (r.sentinel ? 'LEAK' : 'clean');
     console.log(`${tag}  models=[${r.models}]  — "${r.out}"${r.err ? '  ERR:' + r.err : ''}`);
@@ -197,6 +229,12 @@ const record = {
   // this record prove an EARLIER plugin/ tree while every gate stayed green —
   // the dishonesty #22 closed for the delivery record only.
   pluginTreeHash: hashTree(join(REPO, 'plugin')), outerModel: OUTER_MODEL,
+  // pluginTreeHash covers plugin/ only, so the code that SCORED these trials is
+  // outside it. verdict() recomputes from the stored booleans, which means the
+  // predicates could be weakened afterwards with the gate still green on this
+  // record (round-2 MINOR 2). Pin them too.
+  predicatesSha256: createHash('sha256')
+    .update(readFileSync(join(REPO, 'scenarios', 'brief-predicates.mjs'))).digest('hex'),
   producedBy: producedBy(REPO),
   trials: TRIALS, generated: new Date().toISOString(),
   // Set on a deliberately-reverted run so a baseline record SAYS what it is
@@ -212,9 +250,9 @@ const { ok: demonstrated, reasons } = verdict(record);
 const count = (a, p) => (arms[a]?.trials ?? []).filter((r) => p.every((k) => r[k])).length;
 const wiredN = count('wired', ['sentinel', 'haiku']);
 const contrastN = count('contrast', ['sentinel']);
-const freshN = count('freshlyWired', ['briefed', 'noFalseRefusal', 'honest']);
+const freshN = count('freshlyWired', ['briefed', 'produced', 'acknowledgedEmpty']);
 console.log(`\nwired: ${wiredN}/${TRIALS} (sentinel+haiku)   |   contrast leaks: ${contrastN}/${TRIALS}` +
-  `${arms.freshlyWired ? `   |   freshlyWired: ${freshN}/${TRIALS} (briefed+noFalseRefusal+honest)` : ''}`);
+  `${arms.freshlyWired ? `   |   freshlyWired: ${freshN}/${TRIALS} (briefed+produced+acknowledgedEmpty)` : ''}`);
 console.log(demonstrated
   ? `DEMONSTRATED — /vfkb:brief briefs from the handoff on the pinned haiku fork (ADR-0022, recomputed)`
   : `NOT demonstrated — ${reasons.join('; ')}`);
@@ -223,7 +261,11 @@ mkdirSync(join(REPO, 'scenarios/records'), { recursive: true });
 // A partial run must never overwrite the version-bound record the gate reads.
 // VFKB_BS_RECORD lets a baseline run write beside the release record instead of
 // over it. The gate reads records by exact slug, so an extra file is inert.
-const partial = ARMS.length !== Object.keys(MODE).length;
+// Compare the arm SET, not its size: `VFKB_BS_ARMS=wired,wired,wired` has the
+// same length as a full run and would have overwritten the release record with a
+// one-arm result (round-2 MINOR 3 — the same length-based mistake it replaced).
+const armSet = new Set(ARMS);
+const partial = Object.keys(MODE).some((a) => !armSet.has(a));
 const outName = process.env.VFKB_BS_RECORD
   || (partial ? 'brief-skill.partial.json' : 'brief-skill.json');
 writeFileSync(join(REPO, 'scenarios/records', outName), JSON.stringify(record, null, 2) + '\n');
