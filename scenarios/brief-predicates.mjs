@@ -35,7 +35,7 @@
 export const BRIEF_SECTIONS = [
   ['last-done', /\bLast\s+done\b/i],
   ['moved-since', /\bMoved\s+since\b/i],
-  ['whats-next', /\bWhat'?s\s+next\b/i],
+  ['whats-next', /\bWhat['’]?s\s+next\b/i],
   ['open-queue', /\bOpen\s+queue\b/i],
   ['discrepancies', /\bDiscrepanc(?:y|ies)\b/i],
 ];
@@ -120,7 +120,36 @@ export const REFUSAL_SHAPES = [
   ['cannot-brief', /\b(?:cannot|can'?t|unable\s+to)\s+(?:produce|generate|create|provide)\s+(?:a\s+)?brief/i],
 ];
 
-/** Which refusal shapes matched — recorded per trial, never gating. */
+/** Which refusal shapes matched — recorded per trial. */
 export const refusalShapes = (text) =>
   REFUSAL_SHAPES.filter(([, re]) => re.test(String(text))).map(([name]) => name);
 export const refusesAsUnwired = (text) => refusalShapes(text).length > 0;
+
+/**
+ * ── THE VETO: the narrow, high-precision subset that DOES gate ──────────────
+ * `producedBrief` alone is not sound. Round 3 demonstrated the gap: a model that
+ * REFUSES AND emits the template anyway scores a clean arm HIT —
+ *
+ *   "**Last done** — nothing recorded; this doesn't appear to be a vfkb project.
+ *    **Moved since** — … **What's next** — UNKNOWN **Open queue** — … **Discrepancies** — …"
+ *
+ * — and that mixed message is not a hypothetical: vfkb#321's reported symptom was
+ * exactly a self-contradicting session, the hook saying "first recorded session"
+ * while the skill said "not using vfkb". Worse, the trial record CARRIED the
+ * disproof (`refusalShapes: ["not-appear-vfkb-project"]`) while the gate printed
+ * HIT and a comment asked a human to go and look. A manual step is not a gate.
+ *
+ * Why a subset and not all of REFUSAL_SHAPES: the broad set false-positives on
+ * honest briefs — "There are no vfkb entries yet" trips `no-vfkb-thing`,
+ * "entries.jsonl is missing, so this is the first session" trips
+ * `entries-missing`. ANDing the whole set would fail correct output, which is the
+ * flakiness this design is trying to leave behind. These eight each assert that
+ * the PROJECT is not a vfkb project, which an honest empty-brain brief never
+ * says. Measured: 0 false positives over 16 honest phrasings including a full
+ * realistic brief; catches both round-3 mixed-message cases.
+ */
+export const VETO_SHAPES = [
+  'not-using', 'isnt-using', 'does-not-use', 'not-a-vfkb-project',
+  'not-appear-vfkb-project', 'not-set-up-for-with', 'cannot-brief', 'lacks-vfkb',
+];
+export const refusalVetoes = (text) => refusalShapes(text).filter((n) => VETO_SHAPES.includes(n));

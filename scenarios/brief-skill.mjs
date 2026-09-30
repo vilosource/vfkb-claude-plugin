@@ -47,7 +47,7 @@ import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady } from '
 // decide a required gate arm, and the first version of them was broken in both
 // directions (review of #60: fired on the affirmative, missed 14/18 refusal
 // wordings). They are pinned by brief-predicates.selftest.mjs, which runs in CI.
-import { producedBrief, briefSections, refusalShapes, REFUSAL_SHAPES, acknowledgesEmptyState } from './brief-predicates.mjs';
+import { producedBrief, briefSections, refusalShapes, refusalVetoes, REFUSAL_SHAPES, acknowledgesEmptyState } from './brief-predicates.mjs';
 assertAuthReady();
 
 const REPO = resolve(process.argv[1], '../..');
@@ -105,7 +105,10 @@ function buildSandbox(mode) {
 /**
  * The text around the first refusal-diagnostic match, so a fired diagnostic on
  * an otherwise-passing trial is judgeable from the record rather than requiring
- * a re-run. Pure, and exercised by the selftest.
+ * a re-run. Pure, but NOT exercised by any selftest: it is unexported and lives
+ * here rather than in brief-predicates.mjs, so nothing imports it. Stated
+ * because the commit body says so and a comment claiming otherwise would be the
+ * asserted-not-observed defect this whole arc has been about.
  */
 function refusalContext(text) {
   const t = String(text);
@@ -163,8 +166,13 @@ function runArm(dir) {
   // observes: it sees the ACKNOWLEDGEMENT, not honesty itself.
   const acknowledgedEmpty = acknowledgesEmptyState(text);
   const shapes = refusalShapes(text);
+  // The veto is GATING, unlike the broad diagnostic above: a brief that emits the
+  // template AND tells the operator this is not a vfkb project must not pass.
+  const vetoes = refusalVetoes(text);
+  const noRefusalVeto = vetoes.length === 0;
   return { sentinel, haiku, briefed, produced, acknowledgedEmpty,
     // Diagnostic, never gating — so a regression is legible in the record.
+    noRefusalVeto, vetoes,
     sections: briefSections(text), refusalShapes: shapes, models,
     // When the diagnostic fires on a HIT, the record must be able to say WHY.
     // It fired on one trial at 110 chars of stored output and the match was past
@@ -187,7 +195,11 @@ const arms = {
   contrast: { role: 'contrast', predicate: ['sentinel'], trials: [] },
   // #321. A second POSITIVE arm, so the gate holds it to the same >=2/3 bar as
   // `wired` and a regression cannot be waved through.
-  freshlyWired: { role: 'positive', predicate: ['briefed', 'produced', 'acknowledgedEmpty'], trials: [] },
+  freshlyWired: {
+    role: 'positive',
+    predicate: ['briefed', 'produced', 'acknowledgedEmpty', 'noRefusalVeto'],
+    trials: [],
+  },
 };
 const MODE = { wired: 'handoff', contrast: 'noHandoff', freshlyWired: 'freshlyWired' };
 const ARMS = (process.env.VFKB_BS_ARMS || Object.keys(MODE).join(',')).split(',').map((a) => a.trim()).filter(Boolean);
@@ -209,9 +221,10 @@ for (let t = 1; t <= TRIALS; t++) {
     const tag = arm === 'wired'
       ? (r.sentinel && r.haiku ? 'HIT' : `miss (sentinel=${r.sentinel} haiku=${r.haiku})`)
       : arm === 'freshlyWired'
-        ? (r.briefed && r.produced && r.acknowledgedEmpty
-          ? `HIT${r.refusalShapes?.length ? ` [diagnostic: ${r.refusalShapes.join('/')} — check refusalContext]` : ''}`
+        ? (r.briefed && r.produced && r.acknowledgedEmpty && r.noRefusalVeto
+          ? `HIT${r.refusalShapes?.length ? ` [diagnostic: ${r.refusalShapes.join('/')}]` : ''}`
           : `miss (briefed=${r.briefed} produced=${r.produced} ack=${r.acknowledgedEmpty}` +
+            `${r.vetoes?.length ? ` VETOED:${r.vetoes.join('/')}` : ''}` +
             ` sections=${r.sections?.length ?? 0}` +
             `${r.refusalShapes?.length ? ` refused-as:${r.refusalShapes.join('/')}` : ''})`)
         : (r.sentinel ? 'LEAK' : 'clean');
@@ -250,9 +263,9 @@ const { ok: demonstrated, reasons } = verdict(record);
 const count = (a, p) => (arms[a]?.trials ?? []).filter((r) => p.every((k) => r[k])).length;
 const wiredN = count('wired', ['sentinel', 'haiku']);
 const contrastN = count('contrast', ['sentinel']);
-const freshN = count('freshlyWired', ['briefed', 'produced', 'acknowledgedEmpty']);
+const freshN = count('freshlyWired', ['briefed', 'produced', 'acknowledgedEmpty', 'noRefusalVeto']);
 console.log(`\nwired: ${wiredN}/${TRIALS} (sentinel+haiku)   |   contrast leaks: ${contrastN}/${TRIALS}` +
-  `${arms.freshlyWired ? `   |   freshlyWired: ${freshN}/${TRIALS} (briefed+produced+acknowledgedEmpty)` : ''}`);
+  `${arms.freshlyWired ? `   |   freshlyWired: ${freshN}/${TRIALS} (briefed+produced+ack+noVeto)` : ''}`);
 console.log(demonstrated
   ? `DEMONSTRATED — /vfkb:brief briefs from the handoff on the pinned haiku fork (ADR-0022, recomputed)`
   : `NOT demonstrated — ${reasons.join('; ')}`);

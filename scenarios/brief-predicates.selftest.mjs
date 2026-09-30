@@ -11,9 +11,11 @@
 // Deterministic, offline, no agent, no metered turn. Runs in CI.
 //   node scenarios/brief-predicates.selftest.mjs
 // ============================================================================
+import { readFileSync } from 'node:fs';
 import {
   producedBrief, briefSections, BRIEF_SECTIONS, MIN_SECTIONS,
   acknowledgesEmptyState, refusalShapes, refusesAsUnwired, REFUSAL_SHAPES,
+  refusalVetoes, VETO_SHAPES,
 } from './brief-predicates.mjs';
 
 let fail = 0;
@@ -58,6 +60,23 @@ for (const s of [
 console.log(`2. the ${MIN_SECTIONS}-of-${BRIEF_SECTIONS.length} boundary holds`);
 check(producedBrief('Last done: x. Moved since: y. What\'s next: z. Open queue: w.'), 'four sections should pass');
 check(!producedBrief('Last done: x. Moved since: y. What\'s next: z.'), 'three sections should NOT pass');
+check(producedBrief('What\u2019s next: z. Last done: x. Moved since: y. Open queue: w.'),
+  'a typographic apostrophe in "What\u2019s next" must still count');
+
+// MINOR 4: every entry on the GATING list needs a row where dropping IT alone
+// flips the verdict. Only four sections appeared in any boundary row before, so
+// `discrepancies` could be removed from BRIEF_SECTIONS with this file green.
+console.log('2b. each mandated section is individually load-bearing');
+for (const [name] of BRIEF_SECTIONS) {
+  const others = BRIEF_SECTIONS.filter(([n]) => n !== name).slice(0, MIN_SECTIONS - 1);
+  const label = { 'last-done': 'Last done', 'moved-since': 'Moved since', 'whats-next': "What's next",
+    'open-queue': 'Open queue', discrepancies: 'Discrepancies' };
+  const withIt = [name, ...others.map(([n]) => n)].map((n) => `${label[n]}: x.`).join(' ');
+  const withoutIt = others.map(([n]) => `${label[n]}: x.`).join(' ');
+  check(producedBrief(withIt), `"${name}" is not recognised in a ${MIN_SECTIONS}-section brief`);
+  check(!producedBrief(withoutIt),
+    `dropping "${name}" from BRIEF_SECTIONS would leave this selftest green — it is unpinned`);
+}
 
 // ── 3. ACKNOWLEDGEMENT — broadened after round-2 MAJOR 2 ────────────────────
 // All eleven of these scored FALSE against the previous version, which would
@@ -84,6 +103,42 @@ for (const s of [
   'Next up: complete the ingest refactor and land the feature flag.',
 ]) check(!acknowledgesEmptyState(s), `false acknowledgement: ${JSON.stringify(s.slice(0, 60))}`);
 
+// ── 4b. THE VETO (round-3 MAJOR 1) ──────────────────────────────────────────
+// `producedBrief` alone passes a brief that emits the template AND refuses. The
+// veto is the narrow subset that gates; these rows are why it can.
+console.log('4b. the veto catches a refusal that still emits the template');
+const MIXED_MESSAGE = [
+  "**Last done** — nothing recorded; this doesn't appear to be a vfkb project. **Moved since** — chore: scaffold the thornwick-ledger-58 parser **What's next** — UNKNOWN **Open queue** — no remote **Discrepancies** — none",
+  "This project is not using vfkb — there is no .vfkb brain here. For completeness, the template: **Last done** none. **Moved since** thornwick-ledger-58. **What's next** UNKNOWN. **Open queue** none. **Discrepancies** none.",
+];
+for (const s2 of MIXED_MESSAGE) {
+  check(producedBrief(s2), 'precondition: the mixed-message case does emit the template');
+  check(acknowledgesEmptyState(s2), 'precondition: it also acknowledges the empty state');
+  check(refusalVetoes(s2).length > 0,
+    `a refusal that emitted the template was NOT vetoed: ${JSON.stringify(s2.slice(0, 70))}`);
+}
+
+// And the veto must stay silent on honest output, or it becomes the false-RED
+// flakiness the broad set would have caused. The broad set trips on two of these.
+console.log('4c. the veto does not fire on honest output');
+for (const s2 of [
+  REAL_BRIEF,
+  'There are no vfkb entries yet.',
+  'entries.jsonl is missing, so this is the first session.',
+  'No prior continuity recorded.',
+  'The brain is empty.',
+  'This project is wired for vfkb; nothing recorded yet.',
+  'No handoff exists yet.',
+  'Nothing has been recorded.',
+  'The .vfkb directory is present but has no entries.',
+]) check(refusalVetoes(s2).length === 0,
+  `veto fired on honest output: ${JSON.stringify(s2.slice(0, 60))} → ${refusalVetoes(s2)}`);
+
+// Every veto name must be a real shape, or a typo silently disarms the gate.
+console.log('4d. every veto name resolves to a real refusal shape');
+const shapeNames = new Set(REFUSAL_SHAPES.map(([n]) => n));
+for (const v of VETO_SHAPES) check(shapeNames.has(v), `VETO_SHAPES names "${v}", which is not a REFUSAL_SHAPES entry`);
+
 // ── 5. EVERY NAMED REFUSAL SHAPE IS UNIQUELY PINNED ─────────────────────────
 // Round-2 MINOR 1: two shapes ('entries-missing', 'there-is-no-vfkb') could be
 // DELETED with the selftest still green, because every row they matched was also
@@ -103,15 +158,38 @@ const UNIQUE_TO_SHAPE = {
   'entries-missing': 'The brain ledger entries.jsonl is missing.',
   'cannot-brief': 'I am unable to produce a brief right now.',
 };
-for (const [name] of REFUSAL_SHAPES) {
+// Iterate the TABLE, not the code: the previous version looped REFUSAL_SHAPES, so
+// DELETING a shape simply skipped its row and stayed green — two mutations
+// survived that way (round-3 MINOR 3). The length assertion closes the other
+// direction, an added shape with no row.
+check(REFUSAL_SHAPES.length === Object.keys(UNIQUE_TO_SHAPE).length,
+  `REFUSAL_SHAPES has ${REFUSAL_SHAPES.length} entries but UNIQUE_TO_SHAPE has ` +
+  `${Object.keys(UNIQUE_TO_SHAPE).length} rows — a shape was added or deleted without its row`);
+for (const name of Object.keys(UNIQUE_TO_SHAPE)) {
+  check(shapeNames.has(name), `UNIQUE_TO_SHAPE has a row for "${name}", which no longer exists in REFUSAL_SHAPES`);
   const row = UNIQUE_TO_SHAPE[name];
-  check(row !== undefined, `shape "${name}" has no row in UNIQUE_TO_SHAPE — add one`);
-  if (row === undefined) continue;
   const matched = refusalShapes(row);
   check(matched.includes(name), `shape "${name}" does not match its own row (matched ${matched})`);
   check(matched.length === 1,
     `row for "${name}" is not unique to it — also matched ${matched.filter((m) => m !== name)}; ` +
     `deleting "${name}" would leave this selftest green`);
+}
+
+// ── 5b. THE SKILL.MD COUPLING IS ENFORCED, NOT ASSERTED (round-3 MINOR 5) ───
+// The soundness argument is "the authority is the skill's own contract". Nothing
+// checked that BRIEF_SECTIONS still matches that contract, so editing §5's labels
+// would silently drift the gate. Parse the mandated bullets and compare.
+console.log('5b. BRIEF_SECTIONS matches brief/SKILL.md §5');
+{
+  const md = readFileSync(new URL('../plugin/skills/brief/SKILL.md', import.meta.url), 'utf8');
+  const section = md.slice(md.indexOf('## 5.'), md.indexOf('## 6.') >= 0 ? md.indexOf('## 6.') : undefined);
+  const labels = [...section.matchAll(/^- \*\*(.+?)\*\*/gm)].map((m) => m[1].trim());
+  check(labels.length === BRIEF_SECTIONS.length,
+    `SKILL.md §5 mandates ${labels.length} sections (${labels.join(', ')}) but BRIEF_SECTIONS has ${BRIEF_SECTIONS.length}`);
+  for (const label of labels) {
+    check(BRIEF_SECTIONS.some(([, re]) => re.test(label)),
+      `SKILL.md §5 mandates a section "${label}" that no BRIEF_SECTIONS pattern matches`);
+  }
 }
 
 // ── 6. THE BRAKE CAN FAIL ───────────────────────────────────────────────────
