@@ -57,9 +57,11 @@ jobs:
         with:
           node-version: 20
 
-      # Never tag a tree that would not have shipped. These are the same
-      # deterministic gates the PR ran; re-running them here costs seconds and
-      # means the tag job cannot be the thing that blesses a red main.
+      # Never tag a tree that would not have shipped. These are the core
+      # deterministic gates the PR ran (not all of them: the wiring Brake needs
+      # the Claude Code CLI, which this job deliberately does not install);
+      # re-running them costs seconds and means the tag job cannot be the
+      # thing that blesses a red main.
       - name: Re-verify the deterministic gates before tagging
         run: |
           node scenarios/release-gate.selftest.mjs

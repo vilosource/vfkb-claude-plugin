@@ -79,11 +79,16 @@ check('unknown event name (a typo)', editHooks((h) => {
 
 check('invalid hook type', editHooks((h) => {
   firstHook(h).type = 'shell';
-}), { expect: 'red' });
+}), { expect: 'red', mentions: 'Unknown hook type' });
 
 check('command hook missing its command', editHooks((h) => {
   delete firstHook(h).command;
-}), { expect: 'red' });
+}), { expect: 'red', mentions: 'Invalid command hook' });
+
+check('marketplace source moved away from the validated dir', (root) => {
+  const p = join(root, '.claude-plugin/marketplace.json');
+  writeFileSync(p, readFileSync(p, 'utf8').replace('"./plugin"', '"./elsewhere"'));
+}, { expect: 'red' });
 
 // --- the defect this Brake found in the shipped wiring ------------------------
 check('unquoted ${CLAUDE_PLUGIN_ROOT} (the 0.20.0 defect)', editHooks((h) => {

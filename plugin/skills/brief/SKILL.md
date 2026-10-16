@@ -31,13 +31,13 @@ Test the directory, not the file. `entries.jsonl` is created by the first write,
 
 Run from the project root:
 
-    VFKB_DATA_DIR="$PWD/.vfkb" node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs resume
+    VFKB_DATA_DIR="$PWD/.vfkb" node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" resume
 
 Read the `## Last handoff` section — the engine pins the newest handoff/next-tagged entry there
 (engine ≥ 0.4.0). Note the handoff's **date** and its **named next steps** (codenames, PR/issue
 numbers) exactly. If the section is absent (older engine or no handoff recorded), fall back to:
 
-    VFKB_DATA_DIR="$PWD/.vfkb" node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs search "handoff next"
+    VFKB_DATA_DIR="$PWD/.vfkb" node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" search "handoff next"
 
 and use the newest handoff-looking fact; if none exists, say so and brief from git alone.
 

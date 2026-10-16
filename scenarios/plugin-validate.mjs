@@ -19,7 +19,7 @@
 //   CLAUDE_BIN=/path/to/claude node scenarios/plugin-validate.mjs
 // ============================================================================
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,13 +51,31 @@ function findings(report) {
 }
 
 /**
- * Validate `root`'s plugin (`plugin/`) and marketplace (`.`).
+ * The plugin dir the marketplace actually ships. Validating a hardcoded
+ * `plugin/` would go stale silently if marketplace.json's `source` moved,
+ * and `validate <marketplace>` does not descend into the source itself.
+ */
+function pluginDir(root) {
+  const market = JSON.parse(readFileSync(join(root, '.claude-plugin', 'marketplace.json'), 'utf8'));
+  const entry = (market.plugins || []).find((p) => p.name === 'vfkb');
+  if (!entry || typeof entry.source !== 'string') throw new Error('marketplace.json has no local `source` for vfkb');
+  return join(root, entry.source);
+}
+
+/**
+ * Validate the plugin the marketplace points at, and the marketplace itself.
  * @returns {{ ok: boolean, reasons: string[] }}
  */
 export function checkPluginValidate(root) {
   const reasons = [];
+  let plugin;
+  try {
+    plugin = pluginDir(root);
+  } catch (e) {
+    return { ok: false, reasons: [`marketplace: ${e.message}`] };
+  }
   for (const [label, target, needsHooks] of [
-    ['plugin', join(root, 'plugin'), true],
+    ['plugin', plugin, true],
     ['marketplace', root, false],
   ]) {
     const { status, report, raw } = validate(target);

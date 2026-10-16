@@ -99,16 +99,18 @@ visibly does not merge.
      `Unknown command`). ~12 metered sessions; needs the real `~/.ssh` github key. **Re-pin every
      release** to keep `DELIVERY-STATUS.json` `proven` — skipping it (or changing any `plugin/`
      byte after pinning) reverts the gate to `unproven` (cost is not a reason to skip it).
-4. **Deterministic gates green locally** — the same six CI runs, so a red is a local red first:
+4. **Deterministic gates green locally** — the core of what CI runs, so a red is a local red first:
    ```sh
    node scenarios/release-gate.selftest.mjs && node scenarios/version-bump.selftest.mjs \
      && node scenarios/plugin-validate.selftest.mjs && node scenarios/plugin-validate.mjs \
      && node scenarios/release-gate.mjs && node scenarios/version-bump.mjs
    ```
    `plugin-validate.mjs` is the wiring Brake (vfkb ADR-0048): `claude plugin validate --strict` over
-   `plugin/` and the marketplace manifest, read from its `--json` report. **`--strict` is the point** —
-   plain `validate` passes an unknown event name, a bad hook `type` and a `command` hook with no
-   command. CI pins the CLI version; bumping the pin is a Brake change and gets its own PR.
+   the plugin dir `marketplace.json` points at and the marketplace manifest, read from its `--json`
+   report. The verdict fails on **any** warning, so the defects plain `validate` lets through (an
+   unknown event name, a bad hook `type`, a `command` hook with no command — all warnings there)
+   still go red; `--strict` is asserted so the report's verdict and exit status agree. CI pins the
+   CLI version; bumping the pin is a Brake change and gets its own PR.
    `version-bump.mjs` compares your **working tree** against the release tag, so it answers "does
    this still need a bump?" before you commit.
 5. Commit the records with the bump; open the PR. CI re-runs the deterministic gates; the live
