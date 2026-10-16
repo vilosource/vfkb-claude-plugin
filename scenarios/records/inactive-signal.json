@@ -1,18 +1,18 @@
 {
   "scenario": "inactive-signal",
   "recordVersion": 2,
-  "pluginVersion": "0.20.0",
-  "pluginTreeHash": "ba6d4943c37978af1b6ccbf19d0b13731449503638dddbdfcfe3604c116a3127",
-  "outerModel": "claude-haiku-4-5-20251001",
+  "pluginVersion": "0.20.1",
+  "pluginTreeHash": "a84fe3fb24a4c9b56cc0af8248adc8dd273678c5e350b850ec93e3778c38edd7",
+  "outerModel": "deepseek-v4-pro",
   "producedBy": {
-    "ranOn": "laptop",
-    "credentialKind": "claude-oauth",
-    "authBase": "anthropic-production",
-    "runUrl": null,
-    "commit": "d11f479de6d5f8373709ed0120ce8710a3a82f1f"
+    "ranOn": "github-runner",
+    "credentialKind": "deepseek-env",
+    "authBase": "https://api.deepseek.com/anthropic",
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/38896152873",
+    "commit": "508973309dd327635ecf11142954cb2df6da41db"
   },
   "trials": 3,
-  "generated": "2026-09-30T09:57:16.162Z",
+  "generated": "2026-10-16T12:04:36.632Z",
   "arms": {
     "absent": {
       "role": "positive",
@@ -23,19 +23,19 @@
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "**vfkb banner:** SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfk",
+          "out": "(1) VERBATIM first line of the banner: > SessionStart:startup hook success: vfkb INACTIVE — this project decla",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but ",
+          "out": "(1) VERBATIM first line of the warning banner: > SessionStart:startup hook success: vfkb INACTIVE — this proje",
           "err": ""
         },
         {
           "bannerShown": true,
           "vfkbLive": false,
-          "out": "(1) SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
+          "out": "1. `SessionStart:startup hook success: vfkb INACTIVE — this project declares the vfkb plugin (vfkb@vfkb) but i",
           "err": ""
         }
       ]
@@ -49,13 +49,13 @@
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "**1.** NOBANNER **2.** plumcanyon-verdigris-73",
+          "out": "NOBANNER Migration codename: **plumcanyon-verdigris-73**",
           "err": ""
         },
         {
           "bannerShown": false,
           "vfkbLive": true,
-          "out": "(1) NOBANNER (2) plumcanyon-verdigris-73",
+          "out": "1. NOBANNER 2. plumcanyon-verdigris-73",
           "err": ""
         },
         {
