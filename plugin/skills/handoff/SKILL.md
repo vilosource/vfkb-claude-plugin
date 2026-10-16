@@ -25,7 +25,7 @@ Check for the `.vfkb/` **directory** in the project root, not for `entries.jsonl
 
 Run:
 
-    VFKB_DATA_DIR="$PWD/.vfkb" node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs resume
+    VFKB_DATA_DIR="$PWD/.vfkb" node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" resume
 
 to see the previous handoff (its date, its named next steps) and the current knowledge bundle.
 Then identify what this session already captured deliberately — `kb_list`/`kb_search` for recent
@@ -63,7 +63,7 @@ the next session knows the true state of the branch.
 
 One entry, `type: fact`, tagged `handoff,next` (not `auto` — that tag is reserved for the
 SessionEnd floor, ADR-0033), via `mcp__vfkb__kb_add` (CLI fallback: `VFKB_DATA_DIR="$PWD/.vfkb"
-node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs add fact "…" --tag handoff,next`). Structure the
+node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" add fact "…" --tag handoff,next`). Structure the
 text in four short labeled sections so a cold-start reader gets full context, not a summary
 sentence:
 

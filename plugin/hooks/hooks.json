@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook session-start"
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node \"${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs\" hook session-start"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook pre-tool-use"
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node \"${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs\" hook pre-tool-use"
           }
         ]
       },
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/git-compound-guard.mjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/git-compound-guard.mjs\""
           }
         ]
       },
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/durable-claim-check.mjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/durable-claim-check.mjs\""
           }
         ]
       }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook stop"
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node \"${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs\" hook stop"
           }
         ]
       }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs hook session-end"
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node \"${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs\" hook session-end"
           }
         ]
       }

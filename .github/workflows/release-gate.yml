@@ -30,6 +30,19 @@ jobs:
       - name: The version Brake is connected — negative checks go red
         run: node scenarios/version-bump.selftest.mjs
 
+      # The wiring Brake (vfkb ADR-0048, v3 PRD R6). Pinned: the validator's
+      # rules ARE the Brake, so a CLI upgrade is a Brake change and lands as a
+      # PR that bumps this pin — the selftest then re-proves it on the new CLI.
+      # `validate` needs no credential (observed with an empty HOME).
+      - name: Install the pinned Claude Code CLI (validator only, no auth)
+        run: npm install -g @anthropic-ai/claude-code@2.1.286
+
+      - name: The wiring Brake is connected — negative checks go red
+        run: node scenarios/plugin-validate.selftest.mjs
+
+      - name: Plugin + marketplace validate --strict (ADR-0048)
+        run: node scenarios/plugin-validate.mjs
+
       - name: brief-skill output predicates (the freshlyWired arm's Brake)
         run: node scenarios/brief-predicates.selftest.mjs
 

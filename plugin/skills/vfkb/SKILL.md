@@ -22,7 +22,7 @@ starts in.
 
 ## Resuming a session
 
-Call `mcp__vfkb__kb_resume` (or `node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs resume` from the
+Call `mcp__vfkb__kb_resume` (or `node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" resume` from the
 project root) to get the handoff digest: what the last session left as "next," and the current
 knowledge bundle. Lead with this when a session starts if the user asks "what's the state of
 things" or "where did we leave off."
@@ -51,7 +51,7 @@ already settled — search first when a question smells like "haven't we already
 ## Checking wiring health
 
 If vfkb seems inactive (no resume digest at session start, tools erroring), suggest running
-`node ${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs doctor` from the project root and relay its
+`node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" doctor` from the project root and relay its
 output plainly — don't guess at what's wrong.
 
 ## What this skill does not do
