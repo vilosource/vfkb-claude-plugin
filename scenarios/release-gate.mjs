@@ -70,6 +70,9 @@ const DECLARED = { skills: ['vfkb', 'brief', 'handoff', 'update'], agents: ['bri
 // The scenario whose committed record — and only that record — flips delivery
 // from `unproven` to `proven` (RFC-024 §4; the L4 is specified and gated).
 const DELIVERY_PROOF = 'install-path';
+/** Every record the gate judges. Anything else in records/ (a RED baseline, an
+ * N=1 observation) is auxiliary evidence and is not held to the ≥2/3 rule. */
+export const EVIDENCE_RECORDS = [...REQUIRED, DELIVERY_PROOF];
 
 // ---------------------------------------------------------------------------
 // Deterministic content hash of a shipped tree (issue #22 — tree-binding).

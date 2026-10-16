@@ -109,7 +109,7 @@ visibly does not merge.
    the plugin dir `marketplace.json` points at and the marketplace manifest, read from its `--json`
    report. The verdict fails on **any** warning, so the defects plain `validate` lets through (an
    unknown event name, a bad hook `type`, a `command` hook with no command — all warnings there)
-   still go red; `--strict` is asserted so the report's verdict and exit status agree. CI pins the
+   still go red; the report must also say it was a `--strict` run. CI pins the
    CLI version; bumping the pin is a Brake change and gets its own PR.
    `version-bump.mjs` compares your **working tree** against the release tag, so it answers "does
    this still need a bump?" before you commit.

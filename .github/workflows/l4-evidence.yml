@@ -117,13 +117,17 @@ jobs:
             fi
             echo "::endgroup::"
           done
+      # Only the records the gate judges — the gate's own list, so this cannot
+      # drift from it. Sweeping the whole dir refused every dispatch from #60 on:
+      # brief-skill.red-baseline.json is a deliberate N=1 RED baseline, auxiliary
+      # evidence that is not (and must not be) DEMONSTRATED.
       - name: Recompute every produced verdict (records do not assert their own)
         run: |
           node --input-type=module -e '
-            const { verdict } = await import("./scenarios/release-gate.mjs");
-            const { readFileSync, readdirSync } = await import("node:fs");
+            const { verdict, EVIDENCE_RECORDS } = await import("./scenarios/release-gate.mjs");
+            const { readFileSync } = await import("node:fs");
             let bad = 0;
-            for (const f of readdirSync("scenarios/records").filter((f) => f.endsWith(".json"))) {
+            for (const f of EVIDENCE_RECORDS.map((s) => `${s}.json`)) {
               const rec = JSON.parse(readFileSync(`scenarios/records/${f}`, "utf8"));
               const v = verdict(rec);
               console.log(`${f}: ${v.ok ? "DEMONSTRATED (recomputed)" : "NOT demonstrated: " + v.reasons.join("; ")}`);
