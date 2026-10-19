@@ -116,8 +116,11 @@ visibly does not merge.
    fire on `source:"compact"`, or the Constitution and handoff pin do not survive a compaction.
    It allowlists matcher shapes and fails closed. **A CLI pin bump must re-run
    `node scenarios/matcher-probe.mjs` on the new CLI** (metered, a few cents) and commit
-   `scenarios/records/matcher-semantics.json`. The Brake goes red on a `cliVersion` mismatch, so
-   this step cannot be skipped.
+   `scenarios/records/matcher-semantics.json`. The Brake goes red on a `cliVersion` mismatch, or
+   on a record that does not list exactly the probed matchers. **It cannot prove the probe ran:**
+   a hand-written record with a matching `cliVersion` passes, and catching that rests on review.
+   It also cannot see a session-start command that checks `source` itself; only the
+   compaction-survival L4 can.
    `version-bump.mjs` compares your **working tree** against the release tag, so it answers "does
    this still need a bump?" before you commit.
 5. Commit the records with the bump; open the PR. CI re-runs the deterministic gates; the live

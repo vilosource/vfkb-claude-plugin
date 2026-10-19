@@ -112,6 +112,50 @@ check('record whose probe never ran (absent matcher did not fire)', editJson(REC
 
 check('record missing', (root) => rmSync(join(root, RECORD)), { expect: 'red', mentions: 'missing' });
 
+// --- the PR #63 review's attacks: each was a false green before round 1 ------------
+check('null matcher (the CLI drops the entry)', matcher(null), { expect: 'red', mentions: 'not allowlisted' });
+
+check('session-start hook whose type is not "command" (never runs)', editJson(HOOKS, (doc) => {
+  for (const h of ours(doc).hooks) h.type = 'prompt';
+}), { expect: 'red', mentions: 'no SessionStart entry' });
+
+check('decoy entry that only echoes the text, real call renamed and matched to startup', editJson(HOOKS, (doc) => {
+  const real = ours(doc);
+  real.matcher = 'startup';
+  for (const h of real.hooks) h.command = h.command.replace('hook session-start', "hook 'session-start'");
+  doc.hooks.SessionStart.unshift({ matcher: '*', hooks: [{ type: 'command', command: 'echo "vfkb.mjs hook session-start"' }] });
+}), { expect: 'red', mentions: 'not allowlisted' });
+
+check('second hooks file named by plugin.json carries a startup-only SessionStart', (root) => {
+  const dir = join(root, 'plugin');
+  writeFileSync(join(dir, 'hooks', 'extra.json'), JSON.stringify({ hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'true' }] }] } }));
+  editJson('plugin/.claude-plugin/plugin.json', (m) => { m.hooks = './hooks/extra.json'; })(root);
+}, { expect: 'red', mentions: 'extra.json' });
+
+check('inline hooks object in plugin.json carries a startup-only SessionStart', editJson('plugin/.claude-plugin/plugin.json', (m) => {
+  m.hooks = { hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'true' }] }] } };
+}), { expect: 'red', mentions: 'inline hooks' });
+
+check('plugin.json names a hooks file that does not exist', editJson('plugin/.claude-plugin/plugin.json', (m) => {
+  m.hooks = './hooks/nope.json';
+}), { expect: 'red', mentions: 'failing closed' });
+
+check('record trimmed to the absent matcher only', editJson(RECORD, (rec) => {
+  rec.matchers = rec.matchers.slice(0, 1);
+  rec.raw = `startup: ${rec.matchers[0].tag}\ncompact: ${rec.matchers[0].tag}`;
+}), { expect: 'red', mentions: 'exactly the matchers' });
+
+check('a commented-out pin above a different real install', (root) => {
+  const p = join(root, WF);
+  const wf = readFileSync(p, 'utf8');
+  writeFileSync(p, wf.replace(/(\n\s*)(run: npm install -g @anthropic-ai\/claude-code@)(\d+\.\d+\.\d+)/, (_, ws, pre, v) => `${ws}# ${pre}${v}${ws}${pre}9.9.9`));
+}, { expect: 'red', mentions: 'release-gate.yml pins 9.9.9' });
+
+check('two real CLI pins in release-gate.yml', (root) => {
+  const p = join(root, WF);
+  writeFileSync(p, readFileSync(p, 'utf8') + '\n      - run: npm install -g @anthropic-ai/claude-code@2.1.286\n');
+}, { expect: 'red', mentions: 'exactly one' });
+
 for (const r of roots) rmSync(r, { recursive: true, force: true });
 
 if (failed) {
