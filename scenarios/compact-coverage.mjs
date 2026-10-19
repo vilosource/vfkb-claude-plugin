@@ -23,10 +23,17 @@
 // identified as the engine's session-start, a `command` hook running
 // vfkb.mjs, so that a wrapper or a renamed command fails closed.
 //
-// RESIDUALS (stated, not closed): the record is self-reported, so a hand-written
-// matcher-semantics.json with a matching cliVersion passes; that rests on review.
-// A SessionStart command that checks `source` inside itself (an inline `case`, or
-// a wrapper script) is invisible here; only the compaction-survival L4 sees it.
+// RESIDUALS (stated, not closed; each needs a deliberate edit, and rests on review
+// or on the compaction-survival L4):
+//   - the record is self-reported, so a hand-written matcher-semantics.json with a
+//     matching cliVersion passes;
+//   - identification is a TEXT match, not proof that the engine runs: a no-op
+//     `echo vfkb.mjs hook session-start` with the real call removed is identified;
+//   - a SessionStart command that checks `source` inside itself (an inline `case`,
+//     or a wrapper script) is invisible here;
+//   - only the canonical pin line is read; a second install hidden inside another
+//     step (`run: npm i -g …@X && …`) is not;
+//   - a hook `timeout` short enough to kill the engine is out of scope.
 //
 // The allowlist's assumption — that every accepted shape fires on compact — is
 // checked against scenarios/records/matcher-semantics.json, the raw output of
@@ -41,7 +48,7 @@ import { fileURLToPath } from 'node:url';
 import { pluginDir } from './plugin-validate.mjs';
 import { PROBED } from './matcher-probe.mjs';
 
-const RULE = 'vfkb ADR-0077: every session-start SessionStart entry must fire on source "compact"';
+const RULE = 'vfkb ADR-0077: every SessionStart entry this plugin declares must fire on source "compact" (fail-closed: non-vfkb entries included)';
 const ALLOW = 'allowed: matcher absent, "" or "*", or only [A-Za-z0-9_|] with "compact" as an exact |-item';
 
 /** Does this matcher pass the allowlist? Only `undefined` is absent, never `null`. */
@@ -54,7 +61,7 @@ export function allowlisted(m) {
 /** A SessionStart group that runs the engine's session-start hook: a `command` hook invoking vfkb.mjs. */
 const runsSessionStart = (group) =>
   (group.hooks || []).some(
-    (h) => h.type === 'command' && typeof h.command === 'string' && /vfkb\.mjs"?\s+hook\s+session-start\b/.test(h.command),
+    (h) => h.type === 'command' && typeof h.command === 'string' && /vfkb\.mjs"?\s+hook\s+session-start(?=["'\s;]|$)/.test(h.command),
   );
 
 /** The CLI version release-gate.yml installs — the version the Brake is valid for. */
@@ -125,7 +132,11 @@ function sessionStartGroups(dir, reasons) {
       const f = join(dir, h);
       if (!existsSync(f)) reasons.push(`plugin.json hooks file ${h} is missing — cannot check it, failing closed`);
       else sources.push([f, JSON.parse(readFileSync(f, 'utf8'))]);
-    } else if (h && typeof h === 'object') sources.push(['plugin.json (inline hooks)', h]);
+    } else if (h && typeof h === 'object') {
+      // The CLI's inline form puts event names at the top level: {"SessionStart": [...]}.
+      // A nested {"hooks": {...}} is ignored at runtime, but it is read too (fail closed).
+      sources.push(['plugin.json (inline hooks)', { hooks: { SessionStart: [...(h.SessionStart || []), ...(h.hooks?.SessionStart || [])] } }]);
+    }
     else reasons.push(`plugin.json hooks entry ${JSON.stringify(h)} is not a path or an object — failing closed`);
   }
   if (sources.length === 0) reasons.push(`no hooks file found in ${dir} — ${RULE}`);

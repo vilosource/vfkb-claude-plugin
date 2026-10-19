@@ -132,9 +132,27 @@ check('second hooks file named by plugin.json carries a startup-only SessionStar
   editJson('plugin/.claude-plugin/plugin.json', (m) => { m.hooks = './hooks/extra.json'; })(root);
 }, { expect: 'red', mentions: 'extra.json' });
 
-check('inline hooks object in plugin.json carries a startup-only SessionStart', editJson('plugin/.claude-plugin/plugin.json', (m) => {
-  m.hooks = { hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'true' }] }] } };
+// The CLI's real inline shape: event names at the top level (observed loading and
+// firing on CLI 2.1.286 by the #63 round-2 review). Round 1 read only the nested
+// shape, which the CLI ignores, so this real shape was a false green.
+check('inline hooks object in plugin.json (real shape) carries a startup-only SessionStart', editJson('plugin/.claude-plugin/plugin.json', (m) => {
+  m.hooks = { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'true' }] }] };
 }), { expect: 'red', mentions: 'inline hooks' });
+
+check('decoy in hooks.json, real engine call inline in plugin.json matched to startup', (root) => {
+  editJson(HOOKS, (doc) => {
+    const real = ours(doc);
+    const cmd = real.hooks[0].command;
+    doc.hooks.SessionStart = [{ hooks: [{ type: 'command', command: 'echo "vfkb.mjs hook session-start"' }] }];
+    editJson('plugin/.claude-plugin/plugin.json', (m) => {
+      m.hooks = { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: cmd }] }] };
+    })(root);
+  })(root);
+}, { expect: 'red', mentions: 'not allowlisted' });
+
+check('engine call renamed to a different subcommand is not identified', editJson(HOOKS, (doc) => {
+  for (const h of ours(doc).hooks) h.command = h.command.replace('hook session-start', 'hook session-start-noop');
+}), { expect: 'red', mentions: 'no SessionStart entry' });
 
 check('plugin.json names a hooks file that does not exist', editJson('plugin/.claude-plugin/plugin.json', (m) => {
   m.hooks = './hooks/nope.json';

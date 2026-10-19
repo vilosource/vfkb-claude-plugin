@@ -114,7 +114,12 @@ visibly does not merge.
    CLI version; bumping the pin is a Brake change and gets its own PR.
    `compact-coverage.mjs` is the compaction Brake (vfkb ADR-0077). The session-start hook must
    fire on `source:"compact"`, or the Constitution and handoff pin do not survive a compaction.
-   It allowlists matcher shapes and fails closed. **A CLI pin bump must re-run
+   It allowlists matcher shapes and fails closed. It checks **every** SessionStart entry the
+   plugin declares, including any non-vfkb entry added later, which then needs an allowlisted
+   matcher too. It reads `hooks/hooks.json` plus any hooks file or inline object named by
+   `plugin.json`. The CLI pin must be exactly one uncommented line of the form
+   `run: npm install -g @anthropic-ai/claude-code@X.Y.Z`; a multi-line `run: |`, a trailing
+   comment or a quoted command goes red. **A CLI pin bump must re-run
    `node scenarios/matcher-probe.mjs` on the new CLI** (metered, a few cents) and commit
    `scenarios/records/matcher-semantics.json`. The Brake goes red on a `cliVersion` mismatch, or
    on a record that does not list exactly the probed matchers. **It cannot prove the probe ran:**
