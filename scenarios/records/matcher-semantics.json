@@ -1,0 +1,76 @@
+{
+  "scenario": "matcher-semantics",
+  "cliVersion": "2.1.286",
+  "generated": "2026-10-19T11:52:19.483Z",
+  "matchers": [
+    {
+      "tag": "m0",
+      "matcher": null
+    },
+    {
+      "tag": "m1",
+      "matcher": ""
+    },
+    {
+      "tag": "m2",
+      "matcher": "*"
+    },
+    {
+      "tag": "m3",
+      "matcher": "compact"
+    },
+    {
+      "tag": "m4",
+      "matcher": "startup|compact"
+    },
+    {
+      "tag": "m5",
+      "matcher": "compact|resume"
+    },
+    {
+      "tag": "m6",
+      "matcher": "compact|"
+    },
+    {
+      "tag": "m7",
+      "matcher": "startup|resume|compact"
+    },
+    {
+      "tag": "m8",
+      "matcher": "startup"
+    },
+    {
+      "tag": "m9",
+      "matcher": "startup|resume"
+    },
+    {
+      "tag": "m10",
+      "matcher": "resume"
+    },
+    {
+      "tag": "m11",
+      "matcher": "compa"
+    },
+    {
+      "tag": "m12",
+      "matcher": "Compact"
+    },
+    {
+      "tag": "m13",
+      "matcher": "startup|compa"
+    },
+    {
+      "tag": "m14",
+      "matcher": "startup, compact"
+    },
+    {
+      "tag": "m15",
+      "matcher": "c.mpact"
+    },
+    {
+      "tag": "m16",
+      "matcher": "omp.ct"
+    }
+  ],
+  "raw": "startup: m0 m1 m2 m4 m7 m8 m9 m13 m14\ncompact: m0 m1 m2 m3 m4 m5 m6 m7 m14 m15 m16"
+}

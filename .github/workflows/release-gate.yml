@@ -43,6 +43,15 @@ jobs:
       - name: Plugin + marketplace validate --strict (ADR-0048)
         run: node scenarios/plugin-validate.mjs
 
+      # vfkb ADR-0077: the session-start hook must fire on source "compact", or
+      # the Constitution and handoff pin do not survive a compaction. Allowlist,
+      # fail closed; backed by a matcher probe run on the CLI pinned above.
+      - name: The compaction-coverage Brake is connected — negative checks go red
+        run: node scenarios/compact-coverage.selftest.mjs
+
+      - name: Session-start fires on compact (ADR-0077)
+        run: node scenarios/compact-coverage.mjs
+
       - name: brief-skill output predicates (the freshlyWired arm's Brake)
         run: node scenarios/brief-predicates.selftest.mjs
 
