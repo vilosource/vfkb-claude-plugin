@@ -61,7 +61,7 @@ export function allowlisted(m) {
 /** A SessionStart group that runs the engine's session-start hook: a `command` hook invoking vfkb.mjs. */
 const runsSessionStart = (group) =>
   (group.hooks || []).some(
-    (h) => h.type === 'command' && typeof h.command === 'string' && /vfkb\.mjs"?\s+hook\s+session-start(?=["'\s;]|$)/.test(h.command),
+    (h) => h.type === 'command' && typeof h.command === 'string' && /vfkb\.mjs"?\s+hook\s+session-start(?=["'\s;|&>]|$)/.test(h.command),
   );
 
 /** The CLI version release-gate.yml installs — the version the Brake is valid for. */
@@ -132,6 +132,8 @@ function sessionStartGroups(dir, reasons) {
       const f = join(dir, h);
       if (!existsSync(f)) reasons.push(`plugin.json hooks file ${h} is missing — cannot check it, failing closed`);
       else sources.push([f, JSON.parse(readFileSync(f, 'utf8'))]);
+    } else if (Array.isArray(h)) {
+      reasons.push('plugin.json hooks contains a nested array — not a path or an object, failing closed');
     } else if (h && typeof h === 'object') {
       // The CLI's inline form puts event names at the top level: {"SessionStart": [...]}.
       // A nested {"hooks": {...}} is ignored at runtime, but it is read too (fail closed).
@@ -171,5 +173,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     for (const r of reasons) console.error(`  - ${r}`);
     process.exit(1);
   }
-  console.log('compaction-coverage ok: every session-start entry fires on compact (allowlisted), backed by the pinned-CLI matcher record');
+  console.log('compaction-coverage ok: every SessionStart entry the plugin declares is allowlisted to fire on compact, the engine entry is identified, and the pinned-CLI matcher record backs the allowlist');
 }

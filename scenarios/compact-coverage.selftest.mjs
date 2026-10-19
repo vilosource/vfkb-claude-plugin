@@ -150,6 +150,14 @@ check('decoy in hooks.json, real engine call inline in plugin.json matched to st
   })(root);
 }, { expect: 'red', mentions: 'not allowlisted' });
 
+check('plugin.json hooks with a nested array fails closed', editJson('plugin/.claude-plugin/plugin.json', (m) => {
+  m.hooks = [[{ SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'true' }] }] }]];
+}), { expect: 'red', mentions: 'nested array' });
+
+check('engine call followed directly by a shell operator is still identified', editJson(HOOKS, (doc) => {
+  for (const h of ours(doc).hooks) h.command = h.command.replace('hook session-start', 'hook session-start|| true');
+}), { expect: 'green' });
+
 check('engine call renamed to a different subcommand is not identified', editJson(HOOKS, (doc) => {
   for (const h of ours(doc).hooks) h.command = h.command.replace('hook session-start', 'hook session-start-noop');
 }), { expect: 'red', mentions: 'no SessionStart entry' });
