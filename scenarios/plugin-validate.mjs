@@ -55,7 +55,7 @@ function findings(report) {
  * `plugin/` would go stale silently if marketplace.json's `source` moved,
  * and `validate <marketplace>` does not descend into the source itself.
  */
-function pluginDir(root) {
+export function pluginDir(root) {
   const market = JSON.parse(readFileSync(join(root, '.claude-plugin', 'marketplace.json'), 'utf8'));
   const entry = (market.plugins || []).find((p) => p.name === 'vfkb');
   if (!entry || typeof entry.source !== 'string') throw new Error('marketplace.json has no local `source` for vfkb');

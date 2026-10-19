@@ -103,6 +103,7 @@ visibly does not merge.
    ```sh
    node scenarios/release-gate.selftest.mjs && node scenarios/version-bump.selftest.mjs \
      && node scenarios/plugin-validate.selftest.mjs && node scenarios/plugin-validate.mjs \
+     && node scenarios/compact-coverage.selftest.mjs && node scenarios/compact-coverage.mjs \
      && node scenarios/release-gate.mjs && node scenarios/version-bump.mjs
    ```
    `plugin-validate.mjs` is the wiring Brake (vfkb ADR-0048): `claude plugin validate --strict` over
@@ -111,6 +112,12 @@ visibly does not merge.
    unknown event name, a bad hook `type`, a `command` hook with no command — all warnings there)
    still go red; the report must also say it was a `--strict` run. CI pins the
    CLI version; bumping the pin is a Brake change and gets its own PR.
+   `compact-coverage.mjs` is the compaction Brake (vfkb ADR-0077). The session-start hook must
+   fire on `source:"compact"`, or the Constitution and handoff pin do not survive a compaction.
+   It allowlists matcher shapes and fails closed. **A CLI pin bump must re-run
+   `node scenarios/matcher-probe.mjs` on the new CLI** (metered, a few cents) and commit
+   `scenarios/records/matcher-semantics.json`. The Brake goes red on a `cliVersion` mismatch, so
+   this step cannot be skipped.
    `version-bump.mjs` compares your **working tree** against the release tag, so it answers "does
    this still need a bump?" before you commit.
 5. Commit the records with the bump; open the PR. CI re-runs the deterministic gates; the live
