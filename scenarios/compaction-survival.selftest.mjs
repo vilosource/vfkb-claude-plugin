@@ -65,6 +65,7 @@ check('baseline trial is a compacted-arm hit', compactedHit(base), true);
 const broken = {
   noLeak: trial({ summary: `remember ${A}` }),
   'noLeak (numeric half)': trial({ summary: 'the code ended in 7391' }),
+  'noLeak (compact_summary missing)': trial({ hookLog: [{ ev: 'PreCompact', payload: {} }, { ev: 'PostCompact', payload: {} }] }),
   noToolUse: trial({ toolUse: true }),
   compacted: trial({ noBoundary: true }),
   'compacted (auto trigger)': trial({ trigger: 'auto' }),

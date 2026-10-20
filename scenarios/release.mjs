@@ -53,7 +53,7 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const VFKB_SRC = process.env.VFKB_SRC || resolve(REPO, '..', 'vfkb');
 const REMOTE = 'vilosource/vfkb-claude-plugin';
 
-// The four records the release needs. `install-path` is the delivery proof and
+// The records the release needs. `install-path` is the delivery proof and
 // is the only tree-bound one (issues #22/#28) — see treeBindingReasons.
 const SCENARIOS = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'install-path', 'compaction-survival'];
 const TREE_BOUND = new Set(['install-path']);
@@ -179,7 +179,7 @@ function vendor() {
     // DRY-RUN HONESTY. Dry-run does not copy, so plugin/ is untouched and every
     // downstream check would cheerfully report "nothing to do" — a plan that
     // under-reports the work it is planning. Drift here means the real run WILL
-    // rewrite plugin/, which bumps the version and invalidates all four records
+    // rewrite plugin/, which bumps the version and invalidates every record
     // (the tree-bound one by hash, the rest by pluginVersion). Say so.
     info('bundle-drift reports DRIFT — the real run WILL rewrite plugin/');
     return { willChange: true };
@@ -265,7 +265,7 @@ function recordSatisfies(slug, ver) {
   let rec;
   try { rec = readJson(p); } catch (e) { return { valid: false, why: `unparseable: ${e.message}` }; }
   if (rec.pluginVersion !== ver) return { valid: false, why: `pinned to ${rec.pluginVersion}, need ${ver}` };
-  const v = recordVerdict(rec);
+  const v = recordVerdict(rec, slug);
   if (!v.ok) return { valid: false, why: `not DEMONSTRATED: ${v.reasons.join('; ')}` };
   if (TREE_BOUND.has(slug)) {
     const tb = treeBindingReasons(REPO, rec, slug);

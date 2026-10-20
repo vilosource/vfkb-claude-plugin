@@ -132,23 +132,32 @@ const hits = (arm) =>
   arm.trials.filter((t) => arm.predicate.every((p) => t[p] === true)).length;
 
 /**
- * Recompute a record's verdict from its per-trial observations.
- * Returns { ok, reasons } — never reads rec.demonstrated / arm.passed.
+ * The verdict for ANY evidence record, read from scenarios/records/<slug>.json.
+ * compaction-survival has its own rule (vfkb ADR-0077/0078: validity recomputed
+ * from every attempt, contrast hits = 0); every other scenario uses the generic
+ * v2 verdict. The rule is chosen by the FILE's slug, and the record must name the
+ * same scenario: otherwise a generic record saved under compaction-survival.json
+ * would be judged by the generic rule and skip the compaction one (#64 review).
+ * All consumers (gate loop, l4-evidence produce + vouch, release.mjs) call this.
  */
-/**
- * The verdict for ANY evidence record. compaction-survival has its own rule
- * (vfkb ADR-0077/0078: validity recomputed from every attempt, contrast hits = 0);
- * every other scenario uses the generic v2 verdict. All consumers (gate loop,
- * l4-evidence produce + vouch, release.mjs) must call this, not verdict().
- */
-export function recordVerdict(rec) {
-  if (rec?.scenario === 'compaction-survival') {
+export function recordVerdict(rec, slug) {
+  if (typeof slug !== 'string' || !slug) {
+    return { ok: false, reasons: ['recordVerdict called without the record\'s slug — cannot check which rule applies'] };
+  }
+  if (rec?.scenario !== slug) {
+    return { ok: false, reasons: [`record names scenario ${JSON.stringify(rec?.scenario)} but is filed as ${slug}.json — judged by the wrong rule otherwise`] };
+  }
+  if (slug === 'compaction-survival') {
     const reasons = compactionSurvivalReasons(rec);
     return { ok: reasons.length === 0, reasons };
   }
   return verdict(rec);
 }
 
+/**
+ * Recompute a record's verdict from its per-trial observations.
+ * Returns { ok, reasons } — never reads rec.demonstrated / arm.passed.
+ */
 export function verdict(rec) {
   const reasons = [];
   if (rec.recordVersion !== 2) {
@@ -240,7 +249,7 @@ function checkRecord(repo, slug, version) {
   } catch (e) {
     return { ok: false, reasons: [`record scenarios/records/${slug}.json is not valid JSON: ${e.message}`] };
   }
-  const { ok, reasons } = recordVerdict(rec);
+  const { ok, reasons } = recordVerdict(rec, slug);
   if (rec.pluginVersion !== version) {
     reasons.push(
       `record was produced against plugin ${rec.pluginVersion}, but plugin.json is ${version} ` +
@@ -785,7 +794,7 @@ export function runGate(repo) {
       }
     }
     if (!failures.some((f) => f.startsWith('[provenance]'))) {
-      notes.push('provenance ok: all four records say who produced them (ADR-0067 D5)');
+      notes.push(`provenance ok: all ${REQUIRED.length + 1} records say who produced them (ADR-0067 D5)`);
     }
   }
 

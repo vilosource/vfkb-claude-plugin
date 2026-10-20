@@ -128,9 +128,10 @@ jobs:
             const { recordVerdict, EVIDENCE_RECORDS } = await import("./scenarios/release-gate.mjs");
             const { readFileSync } = await import("node:fs");
             let bad = 0;
-            for (const f of EVIDENCE_RECORDS.map((s) => `${s}.json`)) {
+            for (const slug of EVIDENCE_RECORDS) {
+              const f = `${slug}.json`;
               const rec = JSON.parse(readFileSync(`scenarios/records/${f}`, "utf8"));
-              const v = recordVerdict(rec);
+              const v = recordVerdict(rec, slug);
               console.log(`${f}: ${v.ok ? "DEMONSTRATED (recomputed)" : "NOT demonstrated: " + v.reasons.join("; ")}`);
               if (!v.ok) bad++;
             }
@@ -195,7 +196,7 @@ jobs:
               const slug = path.replace(/^scenarios\/records\//, "").replace(/\.json$/, "");
               const rec = JSON.parse(readFileSync(path, "utf8"));
               const reasons = [
-                ...recordVerdict(rec).reasons,
+                ...recordVerdict(rec, slug).reasons,
                 ...treeBindingReasons(".", rec, slug),
                 ...provenanceReasons(rec),
               ];

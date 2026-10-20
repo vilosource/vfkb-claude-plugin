@@ -85,7 +85,10 @@ export function scoreTrial(o) {
   const finalAnswer = answered ? String(results.at(-1).result ?? '') : '';
   const { engaged, received, receivedAny } = classifyAnswer(finalAnswer, sentinels);
   const post = (hookLog || []).filter((h) => h.ev === 'PostCompact').at(-1);
-  const noLeak = post ? !summaryLeaks(post.payload?.compact_summary, sentinels) : false;
+  // A missing or non-string compact_summary is NOT a clean summary: it means the
+  // observation failed, so the trial is invalid (#64 review; ADR-0051 §3).
+  const summary = post?.payload?.compact_summary;
+  const noLeak = typeof summary === 'string' && !summaryLeaks(summary, sentinels);
   let toolUse = 0;
   if (compacted) {
     for (const e of events.slice(boundary)) {

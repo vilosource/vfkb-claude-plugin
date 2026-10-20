@@ -142,6 +142,14 @@ const CASES = [
     break: (r) => rmSync(join(r, 'scenarios/records/brief-skill.json')),
   },
   {
+    name: 'a generic record filed as compaction-survival.json (skips the compaction rule)',
+    expect: /\[evidence\].*compaction-survival.*filed as compaction-survival\.json/s,
+    break: (r) => {
+      const rec = JSON.parse(readFileSync(join(r, 'scenarios/records/hooks-smoke.json'), 'utf8'));
+      write(r, 'scenarios/records/compaction-survival.json', rec);
+    },
+  },
+  {
     name: 'compaction-survival record dropped (vfkb ADR-0077, now REQUIRED)',
     expect: /\[evidence\].*missing record.*compaction-survival/s,
     break: (r) => rmSync(join(r, 'scenarios/records/compaction-survival.json')),
