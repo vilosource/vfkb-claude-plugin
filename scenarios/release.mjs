@@ -46,7 +46,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { verdict, treeBindingReasons, runGate } from './release-gate.mjs';
+import { recordVerdict, treeBindingReasons, runGate } from './release-gate.mjs';
 import { checkVersionBump, tagFor } from './version-bump.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,7 +55,7 @@ const REMOTE = 'vilosource/vfkb-claude-plugin';
 
 // The four records the release needs. `install-path` is the delivery proof and
 // is the only tree-bound one (issues #22/#28) — see treeBindingReasons.
-const SCENARIOS = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'install-path'];
+const SCENARIOS = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'install-path', 'compaction-survival'];
 const TREE_BOUND = new Set(['install-path']);
 // Vendored engine bundles — the plugin ships this subset (the pi package ships more).
 const BUNDLES = ['vfkb.mjs', 'vfkb-mcp.mjs'];
@@ -265,7 +265,7 @@ function recordSatisfies(slug, ver) {
   let rec;
   try { rec = readJson(p); } catch (e) { return { valid: false, why: `unparseable: ${e.message}` }; }
   if (rec.pluginVersion !== ver) return { valid: false, why: `pinned to ${rec.pluginVersion}, need ${ver}` };
-  const v = verdict(rec);
+  const v = recordVerdict(rec);
   if (!v.ok) return { valid: false, why: `not DEMONSTRATED: ${v.reasons.join('; ')}` };
   if (TREE_BOUND.has(slug)) {
     const tb = treeBindingReasons(REPO, rec, slug);

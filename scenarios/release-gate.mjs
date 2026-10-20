@@ -47,6 +47,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compactionSurvivalReasons } from './compaction-survival-score.mjs';
 import { marked } from './vendor/marked.esm.mjs';
 
 // The gate's single dependency, vendored verbatim (scenarios/vendor/PROVENANCE.md).
@@ -54,7 +55,9 @@ import { marked } from './vendor/marked.esm.mjs';
 const MARKED_SHA256 = '35398f546525d5e79a8f2f8738635d3ecbd277618cba2ada874e9d27dc9e88f0';
 
 // Scenario records the gate requires, and the arm roles it recomputes against.
-const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal'];
+// compaction-survival joined in the PR that committed its first DEMONSTRATED record
+// (vfkb ADR-0077 Q1, enforced by checkCompactionSurvival).
+const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'compaction-survival'];
 
 // ADR-0022 §5 — "Each scenario runs N=3 trials".
 const MIN_TRIALS = 3;
@@ -132,6 +135,20 @@ const hits = (arm) =>
  * Recompute a record's verdict from its per-trial observations.
  * Returns { ok, reasons } — never reads rec.demonstrated / arm.passed.
  */
+/**
+ * The verdict for ANY evidence record. compaction-survival has its own rule
+ * (vfkb ADR-0077/0078: validity recomputed from every attempt, contrast hits = 0);
+ * every other scenario uses the generic v2 verdict. All consumers (gate loop,
+ * l4-evidence produce + vouch, release.mjs) must call this, not verdict().
+ */
+export function recordVerdict(rec) {
+  if (rec?.scenario === 'compaction-survival') {
+    const reasons = compactionSurvivalReasons(rec);
+    return { ok: reasons.length === 0, reasons };
+  }
+  return verdict(rec);
+}
+
 export function verdict(rec) {
   const reasons = [];
   if (rec.recordVersion !== 2) {
@@ -223,7 +240,7 @@ function checkRecord(repo, slug, version) {
   } catch (e) {
     return { ok: false, reasons: [`record scenarios/records/${slug}.json is not valid JSON: ${e.message}`] };
   }
-  const { ok, reasons } = verdict(rec);
+  const { ok, reasons } = recordVerdict(rec);
   if (rec.pluginVersion !== version) {
     reasons.push(
       `record was produced against plugin ${rec.pluginVersion}, but plugin.json is ${version} ` +
@@ -643,6 +660,57 @@ export function provenanceReasons(rec) {
   return reasons;
 }
 
+/**
+ * vfkb ADR-0077 clause 3 (amended by ADR-0078): the compaction-survival record.
+ * PHASED (ADR-0077 Q1): until the scenario is in REQUIRED, a missing or
+ * undemonstrated record is a note, not a failure — but a DEMONSTRATED record
+ * that is NOT in REQUIRED is a failure, so the "join REQUIRED in the PR that
+ * commits the first DEMONSTRATED record" rule is enforced, not prose. Once
+ * required, the record must be DEMONSTRATED under the scenario's own rule
+ * (validity recomputed from every attempt, contrast hits = 0) and bound to this
+ * plugin version and tree like every other record.
+ */
+export function checkCompactionSurvival(repo, { required = REQUIRED.includes('compaction-survival') } = {}) {
+  const failures = [];
+  const notes = [];
+  const path = join(repo, 'scenarios', 'records', 'compaction-survival.json');
+  if (!existsSync(path)) {
+    if (required) failures.push('missing record scenarios/records/compaction-survival.json — run scenarios/compaction-survival.mjs');
+    else notes.push('compaction-survival: no record yet (phased in, ADR-0077 Q1)');
+    return { failures, notes };
+  }
+  let rec;
+  try {
+    rec = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    failures.push(`compaction-survival record is not valid JSON: ${e.message}`);
+    return { failures, notes };
+  }
+  const reasons = compactionSurvivalReasons(rec);
+  if (reasons.length) {
+    if (required) failures.push(...reasons.map((r) => `compaction-survival: ${r}`));
+    else notes.push(`compaction-survival: record present, not yet DEMONSTRATED (phased): ${reasons.join('; ')}`);
+    return { failures, notes };
+  }
+  if (!required) {
+    failures.push('compaction-survival is DEMONSTRATED but not in REQUIRED — add it in this PR (vfkb ADR-0077 Q1: the record joins REQUIRED in the PR that commits it)');
+    return { failures, notes };
+  }
+  let version;
+  try {
+    version = readJson(join(repo, 'plugin', '.claude-plugin', 'plugin.json')).version;
+  } catch (e) {
+    failures.push(`compaction-survival: cannot read plugin version: ${e.message}`);
+    return { failures, notes };
+  }
+  if (rec.pluginVersion !== version) {
+    failures.push(`compaction-survival: record was produced against plugin ${rec.pluginVersion}, but plugin.json is ${version} — re-run scenarios/compaction-survival.mjs`);
+  }
+  failures.push(...treeBindingReasons(repo, rec, 'compaction-survival').map((r) => `compaction-survival: ${r}`));
+  if (!failures.length) notes.push(`evidence ok: compaction-survival recomputed DEMONSTRATED @ v${version}`);
+  return { failures, notes };
+}
+
 export function runGate(repo) {
   const failures = [];
   const notes = [];
@@ -678,10 +746,19 @@ export function runGate(repo) {
     if (!r.ok) failures.push(...r.reasons.map((m) => `[evidence] ${slug}: ${m}`));
     else {
       const arms = Object.entries(r.rec.arms)
-        .map(([n, a]) => `${n} ${hits(a)}/${r.rec.trials}`)
+        .map(([n, a]) => (Array.isArray(a.attempts)
+          ? `${n} ${a.attempts.length} attempt(s)`
+          : `${n} ${hits(a)}/${r.rec.trials}`))
         .join(', ');
       notes.push(`evidence ok: ${slug} recomputed DEMONSTRATED (${arms}) @ v${version}`);
     }
+  }
+  // Once required, compaction-survival is judged in the REQUIRED loop above
+  // (recordVerdict + version + tree binding). Before that, only the phasing rule applies.
+  if (!REQUIRED.includes('compaction-survival')) {
+    const cs = checkCompactionSurvival(repo);
+    failures.push(...cs.failures.map((m) => `[evidence] ${m}`));
+    notes.push(...cs.notes);
   }
   failures.push(...checkPackaging(repo).map((m) => `[packaging] ${m}`));
   if (!failures.some((f) => f.startsWith('[packaging]'))) {

@@ -46,12 +46,28 @@ const goodRecord = (scenario, version, treeHash) => ({
   },
 });
 
-/** Re-pin the three capability records to the CURRENT plugin/ tree (#28). */
+/** A passing compaction-survival record (vfkb ADR-0077/0078): 3 valid hits vs 3 valid misses. */
+const csAttempt = (hit) => ({
+  noLeak: true, noToolUse: true, compacted: true, compactionOk: true, engaged: true, answered: true, awake: true,
+  emitted: hit, received: hit, receivedAny: hit, sentinels: ['quartzfixture1234', 'harborfixture5678'],
+});
+const goodCompactionRecord = (version, treeHash) => ({
+  scenario: 'compaction-survival', recordVersion: 2, pluginVersion: version,
+  ...(treeHash ? { pluginTreeHash: treeHash } : {}),
+  producedBy: { ranOn: 'laptop', credentialKind: 'claude-oauth', authBase: 'anthropic-production', runUrl: null, commit: 'fixture' },
+  arms: {
+    compacted: { role: 'positive', attempts: [csAttempt(true), csAttempt(true), csAttempt(true)] },
+    contrast: { role: 'contrast', attempts: [csAttempt(false), csAttempt(false), csAttempt(false)] },
+  },
+});
+
+/** Re-pin the capability records to the CURRENT plugin/ tree (#28). */
 function restampCapabilityRecords(root, version = '0.4.0') {
   const TREE = hashTree(join(root, 'plugin'));
   for (const slug of ['brief-skill', 'hooks-smoke', 'inactive-signal']) {
     write(root, `scenarios/records/${slug}.json`, goodRecord(slug, version, TREE));
   }
+  write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(version, TREE));
 }
 
 /** A complete, healthy plugin tree. Each case mutates one thing. */
@@ -74,6 +90,7 @@ function fixture() {
   write(root, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', V, TREE));
   write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V, TREE));
   write(root, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', V, TREE));
+  write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(V, TREE));
   write(root, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: DISCLOSURE });
   write(root, 'README.md', `# plugin\n\n> ${DISCLOSURE}\n`);
   return root;
@@ -123,6 +140,20 @@ const CASES = [
     name: 'record dropped entirely',
     expect: /\[evidence\].*missing record/s,
     break: (r) => rmSync(join(r, 'scenarios/records/brief-skill.json')),
+  },
+  {
+    name: 'compaction-survival record dropped (vfkb ADR-0077, now REQUIRED)',
+    expect: /\[evidence\].*missing record.*compaction-survival/s,
+    break: (r) => rmSync(join(r, 'scenarios/records/compaction-survival.json')),
+  },
+  {
+    name: 'compaction-survival contrast leaks in a valid trial (the proof could not fail)',
+    expect: /\[evidence\].*compaction-survival.*contrast arm/s,
+    break: (r) => {
+      const rec = JSON.parse(readFileSync(join(r, 'scenarios/records/compaction-survival.json'), 'utf8'));
+      rec.arms.contrast.attempts[0] = { ...rec.arms.contrast.attempts[0], receivedAny: true };
+      write(r, 'scenarios/records/compaction-survival.json', rec);
+    },
   },
   {
     name: 'hooks-smoke record dropped (issue #6 gate)',

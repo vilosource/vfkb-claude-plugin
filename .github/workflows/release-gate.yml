@@ -52,6 +52,12 @@ jobs:
       - name: Session-start fires on compact (ADR-0077)
         run: node scenarios/compact-coverage.mjs
 
+      # vfkb ADR-0077 clause 3 / ADR-0078: compaction-survival scoring and its
+      # gate rule (validity recomputed from every attempt, contrast hits = 0,
+      # the phasing rule) — every condition observed red on synthetic fixtures.
+      - name: compaction-survival scoring is connected — negative checks go red
+        run: node scenarios/compaction-survival.selftest.mjs
+
       - name: brief-skill output predicates (the freshlyWired arm's Brake)
         run: node scenarios/brief-predicates.selftest.mjs
 
