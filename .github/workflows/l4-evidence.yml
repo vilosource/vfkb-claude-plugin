@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Scenario to run (all | brief-skill | hooks-smoke | inactive-signal | install-path)'
+        description: 'Scenario to run (all | brief-skill | hooks-smoke | inactive-signal | install-path | compaction-survival)'
         type: string
         default: 'all'
       trials:
@@ -89,6 +89,7 @@ jobs:
           VFKB_IS_MODEL: deepseek-v4-pro
           VFKB_BS_OUTER_MODEL: deepseek-v4-pro
           VFKB_IP_OUTER_MODEL: deepseek-v4-pro
+          VFKB_CS_MODEL: deepseek-v4-pro
           VFKB_BS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_HS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_IS_TRIALS: ${{ github.event.inputs.trials }}
@@ -99,8 +100,8 @@ jobs:
         run: |
           set -uo pipefail
           case "$ONLY" in
-            all) scenarios="brief-skill hooks-smoke inactive-signal install-path" ;;
-            brief-skill|hooks-smoke|inactive-signal|install-path) scenarios="$ONLY" ;;
+            all) scenarios="brief-skill hooks-smoke inactive-signal install-path compaction-survival" ;;
+            brief-skill|hooks-smoke|inactive-signal|install-path|compaction-survival) scenarios="$ONLY" ;;
             *) echo "::error::unknown scenario '$ONLY'"; exit 1 ;;
           esac
           for s in $scenarios; do
@@ -124,12 +125,13 @@ jobs:
       - name: Recompute every produced verdict (records do not assert their own)
         run: |
           node --input-type=module -e '
-            const { verdict, EVIDENCE_RECORDS } = await import("./scenarios/release-gate.mjs");
+            const { recordVerdict, EVIDENCE_RECORDS } = await import("./scenarios/release-gate.mjs");
             const { readFileSync } = await import("node:fs");
             let bad = 0;
-            for (const f of EVIDENCE_RECORDS.map((s) => `${s}.json`)) {
+            for (const slug of EVIDENCE_RECORDS) {
+              const f = `${slug}.json`;
               const rec = JSON.parse(readFileSync(`scenarios/records/${f}`, "utf8"));
-              const v = verdict(rec);
+              const v = recordVerdict(rec, slug);
               console.log(`${f}: ${v.ok ? "DEMONSTRATED (recomputed)" : "NOT demonstrated: " + v.reasons.join("; ")}`);
               if (!v.ok) bad++;
             }
@@ -187,14 +189,14 @@ jobs:
           # checkout's plugin/ tree; provenanceReasons() enforces ADR-0067 D5 on
           # everything entering via this path, regardless of the phased flag.
           CHANGED="$changed" node --input-type=module -e '
-            const { verdict, treeBindingReasons, provenanceReasons } = await import("./scenarios/release-gate.mjs");
+            const { recordVerdict, treeBindingReasons, provenanceReasons } = await import("./scenarios/release-gate.mjs");
             const { readFileSync } = await import("node:fs");
             let bad = 0;
             for (const path of process.env.CHANGED.split("\n").filter(Boolean)) {
               const slug = path.replace(/^scenarios\/records\//, "").replace(/\.json$/, "");
               const rec = JSON.parse(readFileSync(path, "utf8"));
               const reasons = [
-                ...verdict(rec).reasons,
+                ...recordVerdict(rec, slug).reasons,
                 ...treeBindingReasons(".", rec, slug),
                 ...provenanceReasons(rec),
               ];

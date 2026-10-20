@@ -1,0 +1,155 @@
+{
+  "scenario": "compaction-survival",
+  "recordVersion": 2,
+  "pluginVersion": "0.20.1",
+  "pluginTreeHash": "a84fe3fb24a4c9b56cc0af8248adc8dd273678c5e350b850ec93e3778c38edd7",
+  "outerModel": "claude-haiku-4-5-20251001",
+  "cliVersion": "2.1.292",
+  "producedBy": {
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "24ff1a6597d033859f01023da260ecac93eb1e54"
+  },
+  "generated": "2026-10-20T11:40:40.759Z",
+  "trigger": "manual",
+  "arms": {
+    "compacted": {
+      "role": "positive",
+      "attempts": [
+        {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": true,
+          "received": true,
+          "receivedAny": true,
+          "finalAnswer": "quartzabf2785\nharbor5014",
+          "sentinels": [
+            "quartzabf2785",
+            "harbor5014"
+          ],
+          "timedOut": false,
+          "wallMs": 17330,
+          "monoMs": 17330,
+          "err": ""
+        },
+        {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": true,
+          "received": true,
+          "receivedAny": true,
+          "finalAnswer": "quartzfd8013\nharbord5432",
+          "sentinels": [
+            "quartzfd8013",
+            "harbord5432"
+          ],
+          "timedOut": false,
+          "wallMs": 19005,
+          "monoMs": 19006,
+          "err": ""
+        },
+        {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": true,
+          "received": true,
+          "receivedAny": true,
+          "finalAnswer": "quartzdf6034\nharbore8406",
+          "sentinels": [
+            "quartzdf6034",
+            "harbore8406"
+          ],
+          "timedOut": false,
+          "wallMs": 16719,
+          "monoMs": 16719,
+          "err": ""
+        }
+      ]
+    },
+    "contrast": {
+      "role": "contrast",
+      "attempts": [
+        {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": false,
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
+          "sentinels": [
+            "quartzdbc7230",
+            "harbordcb4846"
+          ],
+          "timedOut": false,
+          "wallMs": 21117,
+          "monoMs": 21117,
+          "err": ""
+        },
+        {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": false,
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
+          "sentinels": [
+            "quartzdd4043",
+            "harborbdf9331"
+          ],
+          "timedOut": false,
+          "wallMs": 14827,
+          "monoMs": 14827,
+          "err": ""
+        },
+        {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": false,
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
+          "sentinels": [
+            "quartzcfc9709",
+            "harborbf8262"
+          ],
+          "timedOut": false,
+          "wallMs": 23866,
+          "monoMs": 23866,
+          "err": ""
+        }
+      ]
+    }
+  }
+}

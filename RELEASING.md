@@ -91,6 +91,13 @@ visibly does not merge.
      a sandbox that declares the plugin + wires `templates/vfkb-guard.mjs` surfaces a
      `vfkb INACTIVE` banner when the plugin is NOT installed (absent arm) and stays silent when
      it IS (present/contrast arm — which also certifies the install path).
+   - `node scenarios/compaction-survival.mjs` — the **compaction** proof (vfkb ADR-0077, amended
+     by ADR-0078/0079). Real marketplace installs, no tools. A real manual `/compact` must leave
+     the Constitution and the handoff pin re-injected (`SessionStart` with `source: "compact"`),
+     and the agent must name both. The contrast arm, a temp copy matched to `startup`, must
+     name neither. Validity (compacted, no compaction error, engaged answer, answered in time,
+     host awake, no summary leak, no tool use) is recomputed by the gate from every attempt.
+     Run it **under `caffeinate -i`** on a laptop: host sleep invalidates trials. 6–12 sessions.
    - `node scenarios/install-path.mjs` — the **delivery** proof (ADR-0051 / RFC-024 §4): a real
      agent installs the **ref under test** (run it from the PUSHED release branch — every arm
      resolves `owner/repo@<branch>`, and the record is **tree-bound** to the exact `plugin/` tree,
