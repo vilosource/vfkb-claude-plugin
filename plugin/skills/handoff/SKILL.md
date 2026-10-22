@@ -28,6 +28,10 @@ Run:
     VFKB_DATA_DIR="$PWD/.vfkb" node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" resume
 
 to see the previous handoff (its date, its named next steps) and the current knowledge bundle.
+**Note the current pin's id now, before you write anything.** It is on the `## Last handoff` line,
+after the `·`, as in `- [fact ✓operator · 1a2b3c4d5e6f] HANDOFF …`. Once §5 writes the new handoff,
+the new one becomes the pin and the previous id is no longer shown, and §6 needs it. If there is
+no `## Last handoff` section, there is no previous pin: skip §6's question.
 Then identify what this session already captured deliberately — `kb_list`/`kb_search` for recent
 entries, or `git diff` on `.vfkb/entries.jsonl` since the previous handoff's commit. Don't restate
 these in full in the new handoff; reference them by id/type instead of duplicating their content.
@@ -73,11 +77,33 @@ sentence:
 - **Watch for** — gotchas, risks, or context the next session would otherwise waste time
   rediscovering.
 
-If a previous handoff-tagged entry is now stale and superseded by this one, note that explicitly
-(don't leave two live "Last handoff" candidates competing).
+Write it **without** `retires`. Retiring the previous handoff is the user's call, made in §6–§7
+(vfkb ADR-0082 §5), never part of the write.
 
-## 6. Report back
+## 6. Report back, then propose retiring the previous pin
 
 Tell the user the new entry's id and a one-line confirmation of what got written. Remind them this
 does not commit or push anything by itself — SessionEnd auto-commit (ADR-0033) or their own `git add
 .vfkb && git commit` still has to happen for the handoff to survive `/exit` on a fresh clone.
+
+Then, if §2 found a previous pin (a `fact`), ask in **plain text**, naming it:
+
+> The previous handoff `<old id>` ("<its first line>") is still live. Does this new handoff replace
+> it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore <old id>`
+> undoes it), or **no** to keep it live.
+
+**Then end your turn.** Do not use AskUserQuestion or any other blocking question tool (it may be
+unavailable, e.g. under `claude -p`), do not answer for the user, and do not retire anything in
+this turn. If nobody answers, the new handoff stands and nothing is retired, which is correct.
+
+## 7. Only on an explicit yes, in a later turn
+
+If the user's next message is an explicit yes to that question, run:
+
+    VFKB_DATA_DIR="$PWD/.vfkb" node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" curate retire <old id> --by <new id>
+
+and report its output line verbatim. It refuses, and writes nothing, if `<old id>` is not a live
+handoff fact or `<new id>` is older; report a refusal as it is, don't work around it.
+
+On **no**, on anything ambiguous, or on a message about something else: retire nothing. Say the
+previous handoff stays live, in one line, and carry on.

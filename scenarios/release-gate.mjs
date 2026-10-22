@@ -56,8 +56,9 @@ const MARKED_SHA256 = '35398f546525d5e79a8f2f8738635d3ecbd277618cba2ada874e9d27d
 
 // Scenario records the gate requires, and the arm roles it recomputes against.
 // compaction-survival joined in the PR that committed its first DEMONSTRATED record
-// (vfkb ADR-0077 Q1, enforced by checkCompactionSurvival).
-const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'compaction-survival'];
+// (vfkb ADR-0077 Q1, enforced by checkCompactionSurvival). handoff-retires joined
+// with its first record, in the release that ships the skill it proves (vfkb ADR-0082 §5).
+const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'compaction-survival', 'handoff-retires'];
 
 // ADR-0022 §5 — "Each scenario runs N=3 trials".
 const MIN_TRIALS = 3;
