@@ -1,0 +1,281 @@
+{
+  "scenario": "handoff-retires",
+  "recordVersion": 2,
+  "pluginVersion": "0.21.0",
+  "pluginTreeHash": "204bc0917f72013d4c4826fff7098b426bca1aa91380a0a1af4b01ef951bf8c3",
+  "outerModel": "claude-sonnet-5-5",
+  "contrastSkillSha256": "c60c4c89256212ecbefddb0ba220bf1d52d1eeafbaf859ac5bf05adbed759d84",
+  "producedBy": {
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "5daf61a0bae8a51be96d7ed4d88e093b40eaa21b"
+  },
+  "trials": 3,
+  "generated": "2026-10-22T13:17:25.410Z",
+  "arms": {
+    "positive": {
+      "role": "positive",
+      "predicate": [
+        "newPin",
+        "asked",
+        "turn1Clean",
+        "retiredByPin",
+        "textIdentical",
+        "othersUntouched",
+        "modelObserved"
+      ],
+      "trials": [
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": true,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": false,
+          "sentinelNotLive": true,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "t survive `/exit` on a fresh clone. The previous handoff `8f43ec203e7d` (\"the type checker landed and is verified…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 8f43ec203e7d` undoes it), or **no** to keep it live.",
+          "turn2": "retired 8f43ec203e7d (archived, retired-by:beb6e859ce62)",
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": true,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": false,
+          "sentinelNotLive": true,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore dae17705762e` undoes it), or **no** to keep it live.",
+          "turn2": "retired dae17705762e (archived, retired-by:a0e97b551bca)",
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": true,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": false,
+          "sentinelNotLive": true,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 630a31f8f8f8` undoes it), or **no** to keep it live.",
+          "turn2": "retired 630a31f8f8f8 (archived, retired-by:b4ae4f45376e)",
+          "err": "",
+          "modelObserved": true
+        }
+      ]
+    },
+    "negative": {
+      "role": "positive",
+      "predicate": [
+        "newPin",
+        "asked",
+        "turn1Clean",
+        "zonesUnchanged",
+        "modelObserved"
+      ],
+      "trials": [
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore d194a867a06f` undoes it), or **no** to keep it live.",
+          "turn2": "Understood. `d194a867a06f` stays live and I retired nothing. The new handoff `afcb65ef018b` is also live, so both are on record. The new one points back to the old one as still current.",
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 4af5ec8c0d67` undoes it), or **no** to keep it live.",
+          "turn2": "Understood. I retired nothing, so `4af5ec8c0d67` stays live next to the new entry `d4b7b30c6504`.",
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore ac06c116c0c5` undoes it), or **no** to keep it live.",
+          "turn2": "Understood. I retired nothing, so `ac06c116c0c5` stays live next to the new handoff `3392d9fbf3d8`. The new entry is marked `⚠agent` and sits in the incoming zone, not established. Its content matches the operator-verified one, so you may not need it.",
+          "err": "",
+          "modelObserved": true
+        }
+      ]
+    },
+    "noAnswer": {
+      "role": "positive",
+      "predicate": [
+        "newPin",
+        "asked",
+        "turn1Clean",
+        "zonesUnchanged",
+        "modelObserved"
+      ],
+      "trials": [
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": false,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 8b1e30ae4bcd` undoes it), or **no** to keep it live.",
+          "turn2": null,
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": false,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 3a5f520fc903` undoes it), or **no** to keep it live.",
+          "turn2": null,
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": false,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 46eef4a97442` undoes it), or **no** to keep it live.",
+          "turn2": null,
+          "err": "",
+          "modelObserved": true
+        }
+      ]
+    },
+    "contrast": {
+      "role": "contrast",
+      "predicate": [
+        "sentinelNotLive"
+      ],
+      "trials": [
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "ted:** only `.vfkb` files: `.journal/wal.jsonl` (modified), plus `.journal/.healed` and `.sessions/` (untracked). This doesn't commit or push anything. For the entry to survive `/exit` on a fresh clone, the SessionEnd auto-commit has to run, or you need to run `git add .vfkb && git commit` yourself.",
+          "turn2": "I'm not sure what \"yes\" is answering. I didn't ask a question. My last message only mentioned that the handoff isn't committed yet. If you want me to commit the `.vfkb` files, say so and I'll run `git add .vfkb && git commit`. That would include the new handoff entry `476fc8a21e1d`. I won't push, be",
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": false,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": ". These look like vfkb bookkeeping, and the SessionEnd auto-commit will probably pick them up. A new entry would only repeat `27275c4faa07` and leave two live \"last handoff\" candidates. If you did work I can't see, such as in another session, tell me what it was and I'll write the handoff from that.",
+          "turn2": "I need a bit more to go on. \"Yes\" could mean you did work I can't see, or it could mean you want a handoff written anyway. - **If you did work elsewhere:** tell me what was finished, what was decided, and what's next. I'll write it up as the handoff, so I'm not inventing anything. - **If you want an",
+          "err": "",
+          "modelObserved": true
+        },
+        {
+          "newPin": true,
+          "turn1Clean": true,
+          "retiredByPin": false,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "dn't mark `ad21c9b87777` as superseded, so it and the new entry are both live handoff candidates. They agree on the next step. This did not commit or push anything. To keep the entry on a fresh clone, either let the SessionEnd auto-commit run or commit it yourself with `git add .vfkb && git commit`.",
+          "turn2": "I took your \"yes\" to mean commit the handoff, since that was the only open offer. I ran `git add .vfkb` and committed as `4e3278b chore: brain handoff`. The working tree is clean now. I haven't pushed anything, and `main` has no upstream anyway. If you meant something else, tell me.",
+          "err": "",
+          "modelObserved": true
+        }
+      ]
+    }
+  }
+}
