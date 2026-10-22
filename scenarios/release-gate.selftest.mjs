@@ -186,6 +186,16 @@ const CASES = [
     },
   },
   {
+    name: 'handoff-retires contrast weakened by an extra AND-ed predicate (retired 3/3)',
+    expect: /\[evidence\].*arm "contrast" is judged on extra \[asked\]/s,
+    break: (r) => {
+      const rec = goodHandoffRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.contrast.predicate = ['sentinelNotLive', 'asked'];
+      rec.arms.contrast.trials = rec.arms.contrast.trials.map(() => ({ sentinelNotLive: true, asked: false }));
+      write(r, 'scenarios/records/handoff-retires.json', rec);
+    },
+  },
+  {
     name: 'handoff-retires positive arm no longer judged on turn1Clean',
     expect: /\[evidence\].*arm "positive" is not judged on \[turn1Clean\]/s,
     break: (r) => {

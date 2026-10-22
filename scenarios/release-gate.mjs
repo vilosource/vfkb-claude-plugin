@@ -164,8 +164,8 @@ export function recordVerdict(rec, slug) {
  * allows a contrast to hit 1/3 and checks no arm names, so a record with only
  * a positive and a contrast arm, or a contrast that retired once, would pass.
  * The DoD names four arms and requires the contrast at 0/N. Each arm must also
- * be judged on at least the predicates the DoD needs, so a scenario edited to
- * drop one cannot pin a weaker record.
+ * be judged on exactly the predicates the DoD needs, so a scenario edited to
+ * drop or add one cannot pin a weaker record.
  */
 export const HANDOFF_RETIRES_ARMS = {
   positive: { role: 'positive', needs: ['newPin', 'asked', 'turn1Clean', 'retiredByPin', 'textIdentical', 'othersUntouched', 'modelObserved'] },
@@ -181,6 +181,10 @@ function handoffRetiresReasons(rec) {
     if (arm.role !== spec.role) reasons.push(`handoff-retires: arm "${name}" has role ${JSON.stringify(arm.role)}, needs "${spec.role}"`);
     const lacking = spec.needs.filter((p) => !(arm.predicate ?? []).includes(p));
     if (lacking.length) reasons.push(`handoff-retires: arm "${name}" is not judged on [${lacking}]`);
+    // Exact, not a superset: an extra predicate is AND-ed in, so on the contrast
+    // arm it makes a hit rarer and lets a retiring contrast pass (review round 2).
+    const extra = (arm.predicate ?? []).filter((p) => !spec.needs.includes(p));
+    if (extra.length) reasons.push(`handoff-retires: arm "${name}" is judged on extra [${extra}]; the DoD fixes the list`);
   }
   const c = rec?.arms?.contrast;
   if (c && Array.isArray(c.trials)) {
