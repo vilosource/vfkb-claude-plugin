@@ -152,7 +152,42 @@ export function recordVerdict(rec, slug) {
     const reasons = compactionSurvivalReasons(rec);
     return { ok: reasons.length === 0, reasons };
   }
+  if (slug === 'handoff-retires') {
+    const reasons = [...verdict(rec).reasons, ...handoffRetiresReasons(rec)];
+    return { ok: reasons.length === 0, reasons };
+  }
   return verdict(rec);
+}
+
+/**
+ * vfkb ADR-0082's Definition of Done, on top of verdict(): the generic rule
+ * allows a contrast to hit 1/3 and checks no arm names, so a record with only
+ * a positive and a contrast arm, or a contrast that retired once, would pass.
+ * The DoD names four arms and requires the contrast at 0/N. Each arm must also
+ * be judged on at least the predicates the DoD needs, so a scenario edited to
+ * drop one cannot pin a weaker record.
+ */
+export const HANDOFF_RETIRES_ARMS = {
+  positive: { role: 'positive', needs: ['newPin', 'asked', 'turn1Clean', 'retiredByPin', 'textIdentical', 'othersUntouched', 'modelObserved'] },
+  negative: { role: 'positive', needs: ['newPin', 'asked', 'turn1Clean', 'zonesUnchanged', 'modelObserved'] },
+  noAnswer: { role: 'positive', needs: ['newPin', 'asked', 'turn1Clean', 'zonesUnchanged', 'modelObserved'] },
+  contrast: { role: 'contrast', needs: ['sentinelNotLive'] },
+};
+function handoffRetiresReasons(rec) {
+  const reasons = [];
+  for (const [name, spec] of Object.entries(HANDOFF_RETIRES_ARMS)) {
+    const arm = rec?.arms?.[name];
+    if (!arm) { reasons.push(`handoff-retires: arm "${name}" is missing (vfkb ADR-0082 DoD names all four)`); continue; }
+    if (arm.role !== spec.role) reasons.push(`handoff-retires: arm "${name}" has role ${JSON.stringify(arm.role)}, needs "${spec.role}"`);
+    const lacking = spec.needs.filter((p) => !(arm.predicate ?? []).includes(p));
+    if (lacking.length) reasons.push(`handoff-retires: arm "${name}" is not judged on [${lacking}]`);
+  }
+  const c = rec?.arms?.contrast;
+  if (c && Array.isArray(c.trials)) {
+    const n = hits(c);
+    if (n > 0) reasons.push(`handoff-retires: contrast retired ${n}/${c.trials.length}; vfkb ADR-0082 requires 0`);
+  }
+  return reasons;
 }
 
 /**

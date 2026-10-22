@@ -16,26 +16,33 @@
 //   positive  new skill, turn 2 = "yes"          -> sentinel retired by the new pin
 //   negative  new skill, turn 2 = keep it live    -> no handoff's zone changes
 //   noAnswer  new skill, no turn 2                -> no handoff's zone changes
-//   contrast  TODAY's skill (origin/main SKILL.md), turn 2 = "yes"
+//   contrast  the PRE-ADR-0082 skill (scenarios/fixtures/handoff-SKILL.pre-adr-0082.md,
+//             SKILL.md as of 3d742a7, pinned by sha256), turn 2 = "yes"
 //             -> the sentinel stays live (can-fail arm: proves the retirement
-//                comes from the new skill, not from an agent improvising on "yes")
+//                comes from the new skill, not from an agent improvising on "yes").
+//             A fixture, not a git ref: once this lands, origin/main's SKILL.md
+//             is the new one and a ref-based contrast would stop being one.
 //
 // OBSERVED, NOT ASSERTED (ADR-0051 §3): every predicate is a content assertion
-// over the sandbox brain after the run, never an exit code. The brain is read
-// the way the engine reads it (newest `updated` per id wins), and the pin is
-// read from the vendored engine's own `resume` render.
+// over the sandbox brain, never an exit code. The brain is materialized like
+// the engine's storage (newest `updated` per id wins; tombstones are not
+// modelled, none of these predicates needs them), and the pin is read from the
+// vendored engine's own `resume` render. The brain is also snapshotted after
+// turn 1, so a retirement in turn 1 fails every arm, not only noAnswer.
 //
-// VERDICT: DEMONSTRATED iff the gate's verdict() holds (each positive arm
-// >= 2/3, contrast <= 1/3) AND the contrast retired 0/3, as ADR-0082 requires.
+// VERDICT: DEMONSTRATED iff the gate's recordVerdict(record, 'handoff-retires')
+// holds: each positive arm >= 2/3, all four arms judged on the DoD's
+// predicates, and the contrast retired 0/N, as ADR-0082 requires.
 // LIVE + metered. One at a time.
 //   node scenarios/handoff-retires.mjs
 //   VFKB_HR_TRIALS=1 VFKB_HR_ARMS=positive node scenarios/handoff-retires.mjs
 // ============================================================================
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { verdict, hashTree } from './release-gate.mjs';
+import { recordVerdict, hashTree } from './release-gate.mjs';
 import { authEnv, redactSecrets, producedBy, assertAuthReady } from './auth.mjs';
 assertAuthReady();
 
@@ -45,8 +52,9 @@ const CLI = join(PLUGIN, 'dist', 'bundles', 'vfkb.mjs');
 const TRIALS = Math.max(1, parseInt(process.env.VFKB_HR_TRIALS || '3', 10));
 const OUTER_MODEL = process.env.VFKB_HR_OUTER_MODEL || 'claude-sonnet-5-5';
 const TIMEOUT = parseInt(process.env.VFKB_HR_TIMEOUT || '420000', 10);
-// Today's skill, for the contrast arm: the SKILL.md this change replaces.
-const CONTRAST_REF = process.env.VFKB_HR_CONTRAST_REF || 'origin/main';
+// The contrast arm's skill: the SKILL.md this change replaced, pinned by content.
+const CONTRAST_SKILL = join(REPO, 'scenarios', 'fixtures', 'handoff-SKILL.pre-adr-0082.md');
+const CONTRAST_SKILL_SHA256 = 'c60c4c89256212ecbefddb0ba220bf1d52d1eeafbaf859ac5bf05adbed759d84';
 
 const SENTINEL = 'quillfen-arbor-44';
 const YES = 'yes';
@@ -57,15 +65,18 @@ const sh = (c, a, o = {}) => execFileSync(c, a, { encoding: 'utf8', ...o });
 function contrastPlugin() {
   const dir = mkdtempSync(join(tmpdir(), 'vfkb-hr-plugin-'));
   cpSync(PLUGIN, join(dir, 'plugin'), { recursive: true });
-  const old = sh('git', ['show', `${CONTRAST_REF}:plugin/skills/handoff/SKILL.md`], { cwd: REPO });
-  if (old.includes('curate retire')) throw new Error(`${CONTRAST_REF}'s SKILL.md already retires — not a contrast`);
+  const old = readFileSync(CONTRAST_SKILL, 'utf8');
+  const sha = createHash('sha256').update(old).digest('hex');
+  if (sha !== CONTRAST_SKILL_SHA256) throw new Error(`contrast skill fixture changed (sha256 ${sha}) — not the pinned pre-ADR-0082 skill`);
+  if (old.includes('curate retire')) throw new Error('contrast skill fixture already retires — not a contrast');
   writeFileSync(join(dir, 'plugin', 'skills', 'handoff', 'SKILL.md'), old);
   return join(dir, 'plugin');
 }
 
 function buildSandbox() {
   const dir = mkdtempSync(join(tmpdir(), 'vfkb-hr-'));
-  sh('git', ['init', '-q'], { cwd: dir });
+  // -b main: the SessionEnd B2 fallback is guarded off main/master; don't depend on host git config.
+  sh('git', ['init', '-q', '-b', 'main'], { cwd: dir });
   mkdirSync(join(dir, 'src'));
   writeFileSync(join(dir, 'src', 'main.ts'), 'export const main = () => 0;\n');
   sh('git', ['add', '-A'], { cwd: dir });
@@ -131,6 +142,7 @@ function runArm(arm, contrastDir) {
   const { dir, ids, fixture } = buildSandbox();
   const plugin = arm === 'contrast' ? contrastDir : PLUGIN;
   const t1 = claude(dir, plugin, '/vfkb:handoff');
+  const afterT1 = readBrain(dir);
   const second = { positive: YES, negative: NO, contrast: YES }[arm];
   const t2 = second && t1.sid ? claude(dir, plugin, second, t1.sid) : null;
   const after = readBrain(dir);
@@ -141,17 +153,23 @@ function runArm(arm, contrastDir) {
   const zoneSame = (id) => after.get(id)?.zone === fixture.get(id)?.zone;
   const obs = {
     // The new handoff exists and is the pin: a fact the fixture did not have, tagged handoff.
+    // `auto` excluded: the SessionEnd B2 fallback handoff must not satisfy this.
     newPin: !!pinEntry && !fixtureIds.has(pin) && pinEntry.type === 'fact' &&
-      (pinEntry.tags ?? []).some((t) => t === 'handoff' || t === 'next'),
+      (pinEntry.tags ?? []).some((t) => t === 'handoff' || t === 'next') &&
+      !(pinEntry.tags ?? []).includes('auto'),
+    // Nothing the fixture held changed in turn 1: no retirement before the answer.
+    turn1Clean: [...fixtureIds].every((id) => JSON.stringify(afterT1.get(id)) === JSON.stringify(fixture.get(id))),
     // ADR-0082 §4: archived, tagged retired-by:<new pin>, text byte-identical.
     retiredByPin: !!s1 && s1.zone === 'archive' && !!pin && (s1.tags ?? []).includes(`retired-by:${pin}`),
     textIdentical: !!s1 && s1.text === s0.text,
     othersUntouched: zoneSame(ids.older1) && zoneSame(ids.older2),
     zonesUnchanged: [...fixtureIds].every(zoneSame),
-    // The contrast's predicate: did the sentinel stop being live by ANY route?
-    sentinelNotLive: !!s1 && s1.zone !== s0.zone,
-    // Diagnostics, never gating.
+    // The contrast's predicate: did the sentinel stop being live by ANY route
+    // (a zone change, or its lines deleted outright)?
+    sentinelNotLive: !s1 || s1.zone !== s0.zone,
+    // ADR-0082 §5: turn 1 names the previous pin's id (gating on the three positive arms).
     asked: t1.text.includes(ids.sentinel),
+    // Diagnostics, never gating.
     resumed: !!t2 && t2.sid === t1.sid,
     models: [...new Set([...t1.models, ...(t2?.models ?? [])])],
     turn1: t1.text.replace(/\s+/g, ' ').slice(-300),
@@ -159,15 +177,16 @@ function runArm(arm, contrastDir) {
     err: [t1.err, t2?.err].filter(Boolean).join(' | '),
   };
   // The pinned outer model must be observed, not assumed (ADR-0050).
-  obs.modelObserved = obs.models.some((m) => m.startsWith(OUTER_MODEL));
+  // Checked per turn: each turn that ran must show it.
+  obs.modelObserved = [t1, ...(t2 ? [t2] : [])].every((t) => t.models.some((m) => m.startsWith(OUTER_MODEL)));
   rmSync(dir, { recursive: true, force: true });
   return obs;
 }
 
 const arms = {
-  positive: { role: 'positive', predicate: ['newPin', 'retiredByPin', 'textIdentical', 'othersUntouched', 'modelObserved'], trials: [] },
-  negative: { role: 'positive', predicate: ['newPin', 'zonesUnchanged', 'modelObserved'], trials: [] },
-  noAnswer: { role: 'positive', predicate: ['newPin', 'zonesUnchanged', 'modelObserved'], trials: [] },
+  positive: { role: 'positive', predicate: ['newPin', 'asked', 'turn1Clean', 'retiredByPin', 'textIdentical', 'othersUntouched', 'modelObserved'], trials: [] },
+  negative: { role: 'positive', predicate: ['newPin', 'asked', 'turn1Clean', 'zonesUnchanged', 'modelObserved'], trials: [] },
+  noAnswer: { role: 'positive', predicate: ['newPin', 'asked', 'turn1Clean', 'zonesUnchanged', 'modelObserved'], trials: [] },
   contrast: { role: 'contrast', predicate: ['sentinelNotLive'], trials: [] },
 };
 const ARMS = (process.env.VFKB_HR_ARMS || Object.keys(arms).join(',')).split(',').map((a) => a.trim()).filter(Boolean);
@@ -178,7 +197,7 @@ if (unknown.length) {
 }
 for (const a of Object.keys(arms)) if (!ARMS.includes(a)) delete arms[a];
 
-console.log(`vfkb-claude-plugin handoff-retires L4  (outer=${OUTER_MODEL}, trials=${TRIALS}, contrast=${CONTRAST_REF})`);
+console.log(`vfkb-claude-plugin handoff-retires L4  (outer=${OUTER_MODEL}, trials=${TRIALS}, contrast=pre-ADR-0082 fixture)`);
 const contrastDir = ARMS.includes('contrast') ? contrastPlugin() : null;
 for (let t = 1; t <= TRIALS; t++) {
   for (const arm of ARMS) {
@@ -195,16 +214,14 @@ if (contrastDir) rmSync(resolve(contrastDir, '..'), { recursive: true, force: tr
 const pluginVersion = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version;
 const record = {
   scenario: 'handoff-retires', recordVersion: 2, pluginVersion,
-  pluginTreeHash: hashTree(PLUGIN), outerModel: OUTER_MODEL, contrastRef: CONTRAST_REF,
-  contrastSkillSha: contrastDir === null ? null : sh('git', ['rev-parse', `${CONTRAST_REF}:plugin/skills/handoff/SKILL.md`], { cwd: REPO }).trim(),
+  pluginTreeHash: hashTree(PLUGIN), outerModel: OUTER_MODEL, contrastSkillSha256: CONTRAST_SKILL_SHA256,
   producedBy: producedBy(REPO), trials: TRIALS, generated: new Date().toISOString(),
   ...(process.env.VFKB_HR_NOTE ? { note: process.env.VFKB_HR_NOTE } : {}),
   arms,
 };
-const { ok, reasons } = verdict(record);
-const contrastRetired = (arms.contrast?.trials ?? []).filter((r) => r.sentinelNotLive).length;
-if (arms.contrast && contrastRetired > 0) reasons.push(`contrast retired ${contrastRetired}/${TRIALS}; ADR-0082 requires 0/${TRIALS}`);
-const demonstrated = ok && (!arms.contrast || contrastRetired === 0);
+// Judged by the gate's own rule for this slug (verdict() plus the ADR-0082 DoD:
+// all four arms, their predicates, contrast 0/N), so runner and Brake agree.
+const { ok: demonstrated, reasons } = recordVerdict(record, 'handoff-retires');
 for (const [a, v] of Object.entries(arms)) {
   console.log(`${a}: ${v.trials.filter((r) => v.predicate.every((k) => r[k] === true)).length}/${TRIALS} on [${v.predicate}]`);
 }

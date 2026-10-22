@@ -13,7 +13,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runGate, checkVendor, hashTree } from './release-gate.mjs';
+import { runGate, checkVendor, hashTree, HANDOFF_RETIRES_ARMS } from './release-gate.mjs';
 
 const DISCLOSURE =
   "Delivery is unproven: this plugin's install and upgrade path has never been verified " +
@@ -27,6 +27,22 @@ const write = (root, rel, body) => {
 };
 
 const trial = (sentinel, haiku = true) => ({ sentinel, haiku, models: ['claude-haiku-4-5-20251001'] });
+
+/** A handoff-retires record that meets vfkb ADR-0082's DoD: three positive arms 3/3, contrast 0/3. */
+const hrTrial = (preds, v) => Object.fromEntries(preds.map((p) => [p, v]));
+const goodHandoffRecord = (version, treeHash) => {
+  const arms = {};
+  for (const [name, spec] of Object.entries(HANDOFF_RETIRES_ARMS)) {
+    const v = spec.role === 'positive';
+    arms[name] = { role: spec.role, predicate: [...spec.needs], trials: [hrTrial(spec.needs, v), hrTrial(spec.needs, v), hrTrial(spec.needs, v)] };
+  }
+  return {
+    scenario: 'handoff-retires', recordVersion: 2, pluginVersion: version,
+    ...(treeHash ? { pluginTreeHash: treeHash } : {}),
+    producedBy: { ranOn: 'laptop', credentialKind: 'claude-oauth', authBase: 'anthropic-production', runUrl: null, commit: 'fixture' },
+    trials: 3, arms,
+  };
+};
 
 /** A record that passes: positive 3/3, contrast 0/3. */
 const goodRecord = (scenario, version, treeHash) => ({
@@ -64,9 +80,10 @@ const goodCompactionRecord = (version, treeHash) => ({
 /** Re-pin the capability records to the CURRENT plugin/ tree (#28). */
 function restampCapabilityRecords(root, version = '0.4.0') {
   const TREE = hashTree(join(root, 'plugin'));
-  for (const slug of ['brief-skill', 'hooks-smoke', 'inactive-signal', 'handoff-retires']) {
+  for (const slug of ['brief-skill', 'hooks-smoke', 'inactive-signal']) {
     write(root, `scenarios/records/${slug}.json`, goodRecord(slug, version, TREE));
   }
+  write(root, 'scenarios/records/handoff-retires.json', goodHandoffRecord(version, TREE));
   write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(version, TREE));
 }
 
@@ -90,7 +107,7 @@ function fixture() {
   write(root, 'scenarios/records/brief-skill.json', goodRecord('brief-skill', V, TREE));
   write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V, TREE));
   write(root, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', V, TREE));
-  write(root, 'scenarios/records/handoff-retires.json', goodRecord('handoff-retires', V, TREE));
+  write(root, 'scenarios/records/handoff-retires.json', goodHandoffRecord(V, TREE));
   write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(V, TREE));
   write(root, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: DISCLOSURE });
   write(root, 'README.md', `# plugin\n\n> ${DISCLOSURE}\n`);
@@ -148,6 +165,33 @@ const CASES = [
     break: (r) => {
       const rec = JSON.parse(readFileSync(join(r, 'scenarios/records/hooks-smoke.json'), 'utf8'));
       write(r, 'scenarios/records/compaction-survival.json', rec);
+    },
+  },
+  {
+    name: 'handoff-retires contrast retired 1/3 (generic verdict allows it; ADR-0082 requires 0)',
+    expect: /\[evidence\].*handoff-retires.*contrast retired 1\/3/s,
+    break: (r) => {
+      const rec = goodHandoffRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.contrast.trials[0].sentinelNotLive = true;
+      write(r, 'scenarios/records/handoff-retires.json', rec);
+    },
+  },
+  {
+    name: 'handoff-retires record with the negative and noAnswer arms dropped',
+    expect: /\[evidence\].*arm "negative" is missing.*arm "noAnswer" is missing/s,
+    break: (r) => {
+      const rec = goodHandoffRecord('0.4.0', hashTree(join(r, 'plugin')));
+      delete rec.arms.negative; delete rec.arms.noAnswer;
+      write(r, 'scenarios/records/handoff-retires.json', rec);
+    },
+  },
+  {
+    name: 'handoff-retires positive arm no longer judged on turn1Clean',
+    expect: /\[evidence\].*arm "positive" is not judged on \[turn1Clean\]/s,
+    break: (r) => {
+      const rec = goodHandoffRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.positive.predicate = rec.arms.positive.predicate.filter((p) => p !== 'turn1Clean');
+      write(r, 'scenarios/records/handoff-retires.json', rec);
     },
   },
   {
