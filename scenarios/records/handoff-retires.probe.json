@@ -1,0 +1,49 @@
+{
+  "scenario": "handoff-retires",
+  "recordVersion": 2,
+  "pluginVersion": "0.20.1",
+  "pluginTreeHash": "47667b8974e28898f99667cc72ce1289902983b3e2688b7f3d872f83f36d8194",
+  "outerModel": "claude-sonnet-5-5",
+  "contrastRef": "origin/main",
+  "contrastSkillSha": null,
+  "producedBy": {
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "3d742a7e8e08c3e4355b8466073939b5a3d6119f"
+  },
+  "trials": 1,
+  "generated": "2026-10-22T13:04:55.871Z",
+  "arms": {
+    "positive": {
+      "role": "positive",
+      "predicate": [
+        "newPin",
+        "retiredByPin",
+        "textIdentical",
+        "othersUntouched",
+        "modelObserved"
+      ],
+      "trials": [
+        {
+          "newPin": true,
+          "retiredByPin": true,
+          "textIdentical": true,
+          "othersUntouched": true,
+          "zonesUnchanged": false,
+          "sentinelNotLive": true,
+          "asked": true,
+          "resumed": true,
+          "models": [
+            "claude-sonnet-5-5"
+          ],
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 24413ab8e245` undoes it), or **no** to keep it live.",
+          "turn2": "retired 24413ab8e245 (archived, retired-by:1adbf005bdff)",
+          "err": "",
+          "modelObserved": true
+        }
+      ]
+    }
+  }
+}

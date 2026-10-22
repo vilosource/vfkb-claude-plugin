@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Scenario to run (all | brief-skill | hooks-smoke | inactive-signal | install-path | compaction-survival)'
+        description: 'Scenario to run (all | brief-skill | hooks-smoke | inactive-signal | install-path | compaction-survival | handoff-retires)'
         type: string
         default: 'all'
       trials:
@@ -90,18 +90,20 @@ jobs:
           VFKB_BS_OUTER_MODEL: deepseek-v4-pro
           VFKB_IP_OUTER_MODEL: deepseek-v4-pro
           VFKB_CS_MODEL: deepseek-v4-pro
+          VFKB_HR_OUTER_MODEL: deepseek-v4-pro
           VFKB_BS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_HS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_IS_TRIALS: ${{ github.event.inputs.trials }}
           VFKB_IP_TRIALS: ${{ github.event.inputs.trials }}
+          VFKB_HR_TRIALS: ${{ github.event.inputs.trials }}
           # Never interpolate an input into script text — env-var it (injection
           # hardening; dispatch already needs write access, this is depth).
           ONLY: ${{ github.event.inputs.only }}
         run: |
           set -uo pipefail
           case "$ONLY" in
-            all) scenarios="brief-skill hooks-smoke inactive-signal install-path compaction-survival" ;;
-            brief-skill|hooks-smoke|inactive-signal|install-path|compaction-survival) scenarios="$ONLY" ;;
+            all) scenarios="brief-skill hooks-smoke inactive-signal install-path compaction-survival handoff-retires" ;;
+            brief-skill|hooks-smoke|inactive-signal|install-path|compaction-survival|handoff-retires) scenarios="$ONLY" ;;
             *) echo "::error::unknown scenario '$ONLY'"; exit 1 ;;
           esac
           for s in $scenarios; do

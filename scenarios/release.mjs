@@ -55,7 +55,7 @@ const REMOTE = 'vilosource/vfkb-claude-plugin';
 
 // The records the release needs. `install-path` is the delivery proof and
 // is the only tree-bound one (issues #22/#28) — see treeBindingReasons.
-const SCENARIOS = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'install-path', 'compaction-survival'];
+const SCENARIOS = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'install-path', 'compaction-survival', 'handoff-retires'];
 const TREE_BOUND = new Set(['install-path']);
 // Vendored engine bundles — the plugin ships this subset (the pi package ships more).
 const BUNDLES = ['vfkb.mjs', 'vfkb-mcp.mjs'];

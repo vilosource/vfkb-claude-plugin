@@ -19090,22 +19090,29 @@ var entrySchema = external_exports.looseObject({
   text: external_exports.string().catch(""),
   tags: external_exports.array(external_exports.string()).catch([]),
   zone: external_exports.enum(["incoming", "established", "archive"]).catch("incoming"),
-  author: external_exports.looseObject({ role: ROLE.catch("executor"), id: external_exports.string().optional() }).catch({ role: "executor" }),
+  author: external_exports.looseObject({ role: ROLE.catch("executor"), id: external_exports.string().optional().catch(void 0) }).catch({ role: "executor" }),
+  // EVERY declared field inside a composite carries its OWN .catch(). The
+  // object-level .catch() below is a LAST RESORT for a non-object value, not the
+  // first line of defence: zod discards the WHOLE object when a declared field
+  // fails, so without per-field catches one bad field destroys its valid siblings
+  // (#303 — a bad provenance.date reset a `stale` entry to `unverified`, and a bad
+  // refs.supersedes erased an ADR-0004 supersession edge). Guarded by
+  // test/catch-blast-radius.test.ts, which walks .shape so a field added later is
+  // covered the day it is declared.
   refs: external_exports.looseObject({
-    supersedes: external_exports.string().optional(),
+    supersedes: external_exports.string().optional().catch(void 0),
     contradicts: external_exports.array(external_exports.string()).optional().catch(void 0)
   }).optional().catch(void 0),
   provenance: external_exports.looseObject({
     status: PROV_STATUS.catch("unverified"),
-    date: external_exports.string().optional(),
-    source: external_exports.string().optional(),
-    detail: external_exports.string().optional(),
+    date: external_exports.string().optional().catch(void 0),
+    source: external_exports.string().optional().catch(void 0),
+    detail: external_exports.string().optional().catch(void 0),
     origin: external_exports.unknown().optional()
   }).catch({ status: "unverified" }),
   validity: external_exports.looseObject({
-    valid_from: external_exports.string().optional(),
-    valid_until: external_exports.string().optional(),
-    recorded_invalid_at: external_exports.string().optional()
+    valid_from: external_exports.string().optional().catch(void 0),
+    valid_until: external_exports.string().optional().catch(void 0)
   }).catch({}),
   status: external_exports.enum(["proposed", "accepted", "deprecated", "superseded"]).optional().catch(void 0),
   why: external_exports.string().optional().catch(void 0),
@@ -19230,18 +19237,41 @@ function stem(t) {
 function tokenize(s) {
   return s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1).map(stem);
 }
+var STOPWORDS = new Set(
+  "a about above after again against all am an and any are as at be because been before being below between both but by can could did do does doing down during each few for from further had has have having he her here hers herself him himself his how i if in into is it its itself just me more most my myself no nor not now of off on once only or other our ours ourselves out over own same she should so some such than that the their theirs them themselves then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your yours yourself yourselves".split(" ").map(stem)
+);
+function queryTerms(query) {
+  return new Set(tokenize(query).filter((t) => !STOPWORDS.has(t)));
+}
+var BM25_K1 = 1.2;
+var BM25_B = 0.75;
 function queryTermCount(query) {
-  return new Set(tokenize(query)).size;
+  return queryTerms(query).size;
 }
 var InMemoryIndex = class {
   entries = [];
   token = "";
+  // BM25 statistics, derived from `entries` on every rebuild (never persisted).
+  docTokens = [];
+  docFreq = /* @__PURE__ */ new Map();
+  avgLen = 0;
   constructor() {
     this.rebuild();
   }
   rebuild() {
     this.entries = materialize(readRecords());
     this.token = contentHash(this.entries);
+    this.docTokens = this.entries.map((entry) => tokenize(entry.text + " " + (entry.tags ?? []).join(" ")));
+    this.docFreq = /* @__PURE__ */ new Map();
+    for (const toks of this.docTokens) for (const t of new Set(toks)) this.docFreq.set(t, (this.docFreq.get(t) ?? 0) + 1);
+    const n = this.docTokens.length;
+    this.avgLen = n ? this.docTokens.reduce((a, d) => a + d.length, 0) / n : 0;
+  }
+  // Lucene-style BM25 IDF: always positive, so a very common term still counts a little.
+  idf(term) {
+    const n = this.docTokens.length;
+    const df = this.docFreq.get(term) ?? 0;
+    return Math.log(1 + (n - df + 0.5) / (df + 0.5));
   }
   // Rebuild iff the persisted content token differs from what we hold.
   // The meta hash is authoritative when present; else recompute from JSONL
@@ -19258,25 +19288,26 @@ var InMemoryIndex = class {
     this.ensureFresh();
     return this.entries.find((e) => e.id === id);
   }
-  // Stage-1 relevance: stemmed term-overlap count over text + tags — NOT BM25
-  // (no IDF, no length normalization; the score is # of entry tokens matching a
-  // query term). Adequate as a candidate signal at per-project scale; semantic
-  // ranking is the deferred EmbeddingReranker (ADR-0012/0016). The envelope-aware
-  // Heuristic reranker is a separate Stage-2 applied to these candidates.
+  // Stage-1 relevance: BM25 over stemmed text + tags, with the QUERY pruned of
+  // stopwords (ADR-0080, accepts RFC-044). It replaced plain occurrence counting (no IDF,
+  // no length normalisation), under which long entries won every chatty prompt: on the R1
+  // eval, recall@5 was 0.014. Deterministic and stdlib; semantic ranking stays the
+  // deferred, gated EmbeddingReranker (ADR-0012/0016), forbidden on the injection path.
+  // The envelope-aware Heuristic reranker is a separate Stage-2 applied to these
+  // candidates. Ties keep the existing order: newest `updated` first.
   searchScored(query, k = 30) {
     this.ensureFresh();
-    const terms = new Set(tokenize(query));
+    const terms = queryTerms(query);
     if (terms.size === 0) return [];
-    return this.entries.map((entry) => {
-      const hay = tokenize(entry.text + " " + (entry.tags ?? []).join(" "));
+    const idf = new Map([...terms].map((t) => [t, this.idf(t)]));
+    return this.entries.map((entry, i) => {
+      const toks = this.docTokens[i];
+      const tf = /* @__PURE__ */ new Map();
+      for (const t of toks) if (terms.has(t)) tf.set(t, (tf.get(t) ?? 0) + 1);
       let score = 0;
-      const hit = /* @__PURE__ */ new Set();
-      for (const t of hay)
-        if (terms.has(t)) {
-          score++;
-          hit.add(t);
-        }
-      return { entry, score, matched: hit.size };
+      const norm = BM25_K1 * (1 - BM25_B + BM25_B * toks.length / (this.avgLen || 1));
+      for (const [t, f] of tf) score += (idf.get(t) ?? 0) * f * (BM25_K1 + 1) / (f + norm);
+      return { entry, score, matched: tf.size };
     }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || b.entry.updated.localeCompare(a.entry.updated)).slice(0, k);
   }
   search(query, k = 30) {
@@ -19525,6 +19556,30 @@ function foldWhy(text, why) {
 Why: ${w}`;
 }
 function addEntry(type, text, opts = {}) {
+  const retires = [...new Set(opts.retires ?? [])];
+  if (retires.length === 0) {
+    const entry = buildEntry(type, text, opts);
+    appendRecord(entry);
+    return entry;
+  }
+  return withExclusive(() => {
+    const entry = buildEntry(type, text, opts);
+    const all = readAll();
+    const superseded = supersededIds(all);
+    const today = nowIso().slice(0, 10);
+    const olds = retires.map((id) => {
+      const old = all.find((e) => e.id === id);
+      if (!old) throw new Error(`no such entry: ${id}`);
+      const refusal = retirementRefusal(old, entry, today, superseded);
+      if (refusal) throw new Error(refusal);
+      return old;
+    });
+    appendRecord(entry);
+    for (const old of olds) appendRecord(retiredVersion(old, entry.id));
+    return entry;
+  });
+}
+function buildEntry(type, text, opts) {
   text = foldWhy(text, opts.why);
   assertNoSecrets(text);
   const role = opts.role ?? "executor";
@@ -19555,7 +19610,6 @@ function addEntry(type, text, opts = {}) {
     created: ts,
     updated: ts
   };
-  appendRecord(entry);
   return entry;
 }
 function readAll() {
@@ -19574,6 +19628,22 @@ function updateEntry(id, patch) {
     appendRecord(next);
     return next;
   });
+}
+var RETIRED_BY = "retired-by:";
+function retirementRefusal(old, by, today = nowIso().slice(0, 10), superseded) {
+  if (!isPinCandidate(old)) return `cannot retire ${old.id}: it is not a fact tagged handoff or next`;
+  if (!isInjectable(old, today, superseded)) return `cannot retire ${old.id}: it is not live (archived, stale or expired)`;
+  if (by.id === old.id) return `cannot retire ${old.id} by itself`;
+  if (!isPinCandidate(by)) return `cannot retire ${old.id} by ${by.id}: ${by.id} is not a fact tagged handoff or next`;
+  if (!isInjectable(by, today, superseded)) return `cannot retire ${old.id} by ${by.id}: ${by.id} is not live`;
+  if (by.created < old.created) {
+    return `cannot retire ${old.id} by ${by.id}: ${by.id} is older (created ${by.created} < ${old.created}) \u2014 that would move the pin back`;
+  }
+  return null;
+}
+function retiredVersion(old, byId) {
+  const tags = [.../* @__PURE__ */ new Set([...old.tags, `${RETIRED_BY}${byId}`])];
+  return { ...old, zone: "archive", tags, updated: nowIso() };
 }
 function setProvenanceStatus(id, status) {
   return withExclusive(() => {
@@ -19719,17 +19789,15 @@ function trustGlyph(e) {
   return `${v}${t}`;
 }
 var HANDOFF_PIN_CAP_CHARS = 2e3;
+function isPinCandidate(e) {
+  return e.type === "fact" && (e.tags.includes("handoff") || e.tags.includes("next"));
+}
 function latestHandoff(all = readAll(), today = nowIso().slice(0, 10), superseded = supersededIds(all)) {
   let latest = null;
   for (const e of all) {
-    if (!(e.tags.includes("handoff") || e.tags.includes("next"))) continue;
+    if (!isPinCandidate(e)) continue;
     if (!isInjectable(e, today, superseded)) continue;
-    if (!latest) {
-      latest = e;
-      continue;
-    }
-    const cmp = e.updated.localeCompare(latest.updated) || e.created.localeCompare(latest.created);
-    if (cmp >= 0) latest = e;
+    if (!latest || e.created >= latest.created) latest = e;
   }
   return latest;
 }
@@ -19757,7 +19825,7 @@ function renderCaptureFallback(engineDir = dirname4(fileURLToPath(import.meta.ur
   const cli = resolveCliFace(engineDir);
   const target = cli ? `node "${cli}"` : `node <vfkb CLI not found beside the engine at ${engineDir} \u2014 locate vfkb.mjs or cli.js>`;
   return `capture fallback: if the kb_* tools error or disappear, the CLI still writes (same engine, separate process; journaled per ADR-0064) \u2014
-  VFKB_DATA_DIR="${resolvePath(brainDir())}" ${target} add <type> "\u2026" [--tags a,b] [--why "\u2026"]`;
+  VFKB_DATA_DIR="${resolvePath(brainDir())}" ${target} add <type> "\u2026" [--tag a,b] [--why "\u2026"]`;
 }
 function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
   const all = readAll();
@@ -19784,7 +19852,7 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
   if (handoff2 && !constitutionalIds.has(handoff2.id)) {
     const text = handoff2.text.length > HANDOFF_PIN_CAP_CHARS ? `${handoff2.text.slice(0, HANDOFF_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${handoff2.id} for the rest)` : handoff2.text;
     body += `## Last handoff
-- [${handoff2.type} ${trustGlyph(handoff2)}] ${text}
+- [${handoff2.type} ${trustGlyph(handoff2)} \xB7 ${handoff2.id}] ${text}
 
 `;
   }
@@ -20422,8 +20490,8 @@ import { dirname as dirname7, join as join10 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
-var ENGINE_VERSION = true ? "0.8.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "365aa00" : "dev";
+var ENGINE_VERSION = true ? "0.9.1" : ownPackageVersion();
+var ENGINE_COMMIT = true ? "6b2d69e" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -20612,6 +20680,59 @@ function findLexicalDuplicates(entries = readAll()) {
     else seen.set(key, e.id);
   }
   return out;
+}
+function retire(oldId, byId) {
+  return withExclusive(() => {
+    const all = readAll();
+    const old = all.find((e) => e.id === oldId);
+    if (!old) throw new Error(`no such entry: ${oldId}`);
+    const by = all.find((e) => e.id === byId);
+    if (!by) throw new Error(`no such entry: ${byId}`);
+    const refusal = retirementRefusal(old, by, void 0, supersededIds(all));
+    if (refusal) throw new Error(refusal);
+    const tags = [.../* @__PURE__ */ new Set([...old.tags, `${RETIRED_BY}${byId}`])];
+    return updateEntry(oldId, { zone: "archive", tags });
+  });
+}
+function restore(id) {
+  return withExclusive(() => {
+    const e = get(id);
+    if (isDecisionFamily(e.type)) {
+      throw new Error(`restore() is for fluid types; a decision's standing is its status (use transitionDecision)`);
+    }
+    if (e.zone !== "archive") throw new Error(`entry ${id} is not archived (zone ${e.zone}) \u2014 nothing to restore`);
+    return updateEntry(id, { zone: "established", tags: e.tags.filter((t) => !t.startsWith(RETIRED_BY)) });
+  });
+}
+var HANDOFF_SHAPE = /^\W*(SESSION\s+)?(HANDOFF|RESUME)\b/i;
+var DAY_MS = 864e5;
+var todayIso = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+function row(e, today) {
+  const ageDays = Math.floor((Date.parse(today) - Date.parse(e.created.slice(0, 10))) / DAY_MS);
+  return { id: e.id, type: e.type, created: e.created, ageDays, firstLine: e.text.split("\n")[0].slice(0, 100) };
+}
+var oldestFirst = (a, b) => a.created.localeCompare(b.created);
+var tagged = (e) => e.tags.includes("handoff") || e.tags.includes("next");
+function handoffReport(today = todayIso(), entries = readAll()) {
+  const superseded = supersededIds(entries);
+  const live = entries.filter((e) => isInjectable(e, today, superseded)).sort(oldestFirst);
+  const pin = latestHandoff(entries, today, superseded);
+  const shapedRow = (e) => ({ ...row(e, today), shaped: HANDOFF_SHAPE.test(e.text) });
+  return {
+    pin: pin ? shapedRow(pin) : null,
+    candidates: live.filter((e) => isPinCandidate(e) && e.id !== pin?.id).map(shapedRow),
+    // tagged handoff/next but not a fact: §1 stops these pinning (listed, not proposed)
+    unpinnable: live.filter((e) => tagged(e) && e.type !== "fact").map((e) => row(e, today))
+  };
+}
+function staleReport(days = 30, today = todayIso(), entries = readAll()) {
+  const superseded = supersededIds(entries);
+  const old = entries.filter((e) => isInjectable(e, today, superseded)).filter((e) => row(e, today).ageDays > days).sort(oldestFirst);
+  return {
+    proposed: old.filter((e) => isDecisionFamily(e.type) && effectiveStatus(e, superseded) === "proposed").map((e) => row(e, today)),
+    incoming: old.filter((e) => e.zone === "incoming" && !isDecisionFamily(e.type)).map((e) => row(e, today)),
+    status: old.filter((e) => e.type === "fact" && e.tags.includes("status") && !tagged(e)).map((e) => row(e, today))
+  };
 }
 
 // src/distiller.ts
@@ -20853,47 +20974,31 @@ function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd()) {
   }).filter((e) => e !== null);
 }
 var isHandoff = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
-function newestHandoffTimestamp(brain) {
-  const file2 = join12(brain, "entries.jsonl");
+function pinnedHandoff(brain) {
   let lines;
   try {
-    lines = readFileSync9(file2, "utf8").split("\n").filter(Boolean);
+    lines = readFileSync9(join12(brain, "entries.jsonl"), "utf8").split("\n").filter(Boolean);
   } catch {
     return void 0;
   }
-  const all = [];
+  const records = [];
   for (const l of lines) {
     try {
-      all.push(JSON.parse(l));
+      records.push(JSON.parse(l));
     } catch {
       continue;
     }
   }
-  const superseded = supersededIds(all);
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  let newest;
-  for (const e of all) {
-    if (!isHandoff(e)) continue;
-    let injectable;
-    try {
-      injectable = isInjectable(e, today, superseded);
-    } catch {
-      continue;
-    }
-    if (!injectable) continue;
-    if (!newest) {
-      newest = e;
-      continue;
-    }
-    const cmp = e.updated.localeCompare(newest.updated) || e.created.localeCompare(newest.created);
-    if (cmp >= 0) newest = e;
-  }
-  return newest?.updated;
+  const all = materialize(records);
+  return latestHandoff(all, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), supersededIds(all)) ?? void 0;
+}
+function pinnedHandoffCreated(brain) {
+  return pinnedHandoff(brain)?.created;
 }
 var EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 function handoffIsStale(cwd = process.cwd(), brain = brainDir()) {
   try {
-    const since = newestHandoffTimestamp(brain);
+    const since = pinnedHandoffCreated(brain);
     if (!since) return false;
     const root = execFileSync3("git", ["rev-parse", "--show-toplevel"], {
       cwd,
@@ -22170,7 +22275,8 @@ async function dispatch() {
       "prov-status": "value",
       "valid-until": "value",
       zone: "value",
-      constitutional: "boolean"
+      constitutional: "boolean",
+      retires: "value"
     });
     const type = entryType("add", p.positionals[0]);
     const textArg = p.positionals.slice(1).join(" ").trim();
@@ -22186,7 +22292,8 @@ async function dispatch() {
         provStatus: flagValue(p, "prov-status"),
         validUntil: flagValue(p, "valid-until"),
         zone: flagValue(p, "zone"),
-        constitutional: p.flags.get("constitutional") === true
+        constitutional: p.flags.get("constitutional") === true,
+        retires: flagList(p, "retires")
       });
       process.stdout.write(`${e.id}	[${e.type} ${deriveTrust(e.author.role)}]	${e.text}
 `);
@@ -22371,7 +22478,7 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "curate") {
-    const p = parseArgs("curate", argsOf(sub, rest), {});
+    const p = parseArgs("curate", argsOf(sub, rest), { by: "value", days: "value" });
     const [action, id1, id2] = p.positionals;
     const need = (n, usage) => {
       if (p.positionals.length - 1 !== n) throw new UsageError(`usage: vfkb curate ${usage}`);
@@ -22415,9 +22522,57 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
         mergeDuplicate(id1, id2);
         process.stdout.write(`merged ${id1} -> ${id2} (loser archived)
 `);
+      } else if (action === "retire") {
+        need(1, "retire <old> --by <new>");
+        const by = flagValue(p, "by");
+        if (!by) throw new UsageError("usage: vfkb curate retire <old> --by <new>");
+        retire(id1, by);
+        process.stdout.write(`retired ${id1} (archived, retired-by:${by})
+`);
+      } else if (action === "restore") {
+        need(1, "restore <id>");
+        const e = restore(id1);
+        process.stdout.write(`restored ${e.id} -> ${e.zone}
+`);
+      } else if (action === "handoffs") {
+        need(0, "handoffs");
+        const r = handoffReport();
+        const fmt = (x) => `${x.id}	${x.ageDays}d	${x.firstLine}`;
+        process.stdout.write(r.pin ? `pin	${fmt(r.pin)}
+` : "pin	(none)\n");
+        process.stdout.write(`
+${r.candidates.length} other live handoff/next fact(s), oldest first (shaped = opens as a handoff):
+`);
+        for (const c of r.candidates) process.stdout.write(`${c.shaped ? "shaped" : "topical"}	${fmt(c)}
+`);
+        if (r.unpinnable.length) {
+          process.stdout.write(`
+${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinned (ADR-0082 \xA71), listed only:
+`);
+          for (const u of r.unpinnable) process.stdout.write(`${u.type}	${fmt(u)}
+`);
+        }
+        if (r.candidates.length) {
+          process.stdout.write("\n# proposals only \u2014 edit this list, then run the lines you keep:\n");
+          for (const c of r.candidates) process.stdout.write(`vfkb curate archive ${c.id}
+`);
+        }
+      } else if (action === "stale") {
+        need(0, "stale [--days N]");
+        const days = flagInt(p, "days") ?? 30;
+        const r = staleReport(days);
+        const section = (title, rows) => {
+          process.stdout.write(`${title} older than ${days}d: ${rows.length}
+`);
+          for (const x of rows) process.stdout.write(`${x.id}	${x.type}	${x.ageDays}d	${x.firstLine}
+`);
+        };
+        section("proposed decisions", r.proposed);
+        section("unpromoted incoming entries", r.incoming);
+        section("non-handoff status facts", r.status);
       } else {
         process.stderr.write(
-          "usage: vfkb curate <dups|promote <id>|promote-auto <id>|archive <id>|merge <loser> <winner>|signal <id> <helpful|harmful>>\n"
+          "usage: vfkb curate <dups|promote <id>|promote-auto <id>|archive <id>|merge <loser> <winner>|signal <id> <helpful|harmful>|retire <old> --by <new>|restore <id>|handoffs|stale [--days N]>\n"
         );
         process.exit(1);
       }

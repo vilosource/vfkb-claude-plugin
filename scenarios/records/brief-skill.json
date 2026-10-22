@@ -1,19 +1,19 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.20.1",
-  "pluginTreeHash": "a84fe3fb24a4c9b56cc0af8248adc8dd273678c5e350b850ec93e3778c38edd7",
-  "outerModel": "deepseek-v4-pro",
+  "pluginVersion": "0.21.0",
+  "pluginTreeHash": "204bc0917f72013d4c4826fff7098b426bca1aa91380a0a1af4b01ef951bf8c3",
+  "outerModel": "claude-sonnet-5",
   "predicatesSha256": "4e15beca54e305b6a292d504f947de800bacbea3f3e6036c290cd4dcc432fd4f",
   "producedBy": {
-    "ranOn": "github-runner",
-    "credentialKind": "deepseek-env",
-    "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/38896152873",
-    "commit": "508973309dd327635ecf11142954cb2df6da41db"
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "2262798032461ffbd2ef909e8cd50b7dc627a815"
   },
   "trials": 3,
-  "generated": "2026-10-16T11:49:59.073Z",
+  "generated": "2026-10-22T13:21:34.571Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -41,7 +41,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief — vfkb-bs-dzTxKz **Last done** — Handoff dated 2026-10-16 (recorded 11:48:06Z) states the ingest refactor shipped and was verified end-to-end. A related verified gotcha was also recorded: \"shard workers must drain before the schema lock is released.\" **Moved since** — Nothing.",
+          "out": "**Last done:** Handoff from 2026-10-22 13:17Z reports ingest refactor shipped and verified end-to-end. **Moved since:** One commit (5fb859d chore: scaffold) is from the same session; nothing newer than the handoff. **What's next:** Migration codenamed copperlark-echo-31; keep feature flag off until ",
           "err": ""
         },
         {
@@ -63,7 +63,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "# Session brief — vfkb-bs-5EM12q - **Last done** — Per the handoff dated 2026-10-16, the ingest refactor shipped and was verified end-to-end. A related gotcha is recorded: \"shard workers must drain before the schema lock is released\" (operator-verified). - **Moved since** — Nothing. The only commit ",
+          "out": "**Final brief:** **Last done** — Ingest refactor shipped and verified end-to-end (2026-10-22 13:18Z). **Moved since** — One commit 56 seconds after the handoff: `48d6531 chore: scaffold`. No commits matching the named next step. **What's next** — Migration codenamed copperlark-echo-31; keep the feat",
           "err": ""
         },
         {
@@ -85,7 +85,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Guard: `.vfkb/` exists with a non-empty `entries.jsonl` (2 entries) — wired with recorded history. Handoff located. Reporting. --- **Last done** — Handoff dated 2026-10-16 (11:49:20Z): the ingest refactor shipped and was verified end-to-end. **Moved since** — Nothing newer than the handoff. The only",
+          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (handoff dated 2026-10-22 13:20Z). **Moved since** — One commit: `d32325f chore: scaffold` (2026-10-22 16:20Z, unrelated to next steps). **What's next** — Migration codenamed copperlark-echo-31; keep the feature f",
           "err": ""
         }
       ]
@@ -115,7 +115,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "The project is wired (`.vfkb/` present, one recorded entry) but **no handoff has ever been recorded** — the resume's `## Last handoff` section is absent and the `search \"handoff next\"` fallback returned no match. Briefing from git and the queue alone. --- **Last done** — No handoff recorded. The onl",
+          "out": "**Step 5: The brief** Based on my findings: 1. `.vfkb/` directory exists with entries — the project is wired. 2. No prior handoff with next steps recorded (only one gotcha entry about shard workers). 3. Git history shows only one commit: 123d14c chore: scaffold (from today). 4. GitHub queue state un",
           "err": ""
         },
         {
@@ -137,7 +137,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "Brief assembled from the sources. --- **Session-start brief — vfkb-bs-PD5NVt** - **Last done** — No handoff is recorded. The only continuity entry in `.vfkb/entries.jsonl` is a gotcha, provenance-verified 2026-10-16: \"shard workers must drain before the schema lock is released\". (`resume` shows no `",
+          "out": "**Last done** No prior handoff recorded. This is the project's first recorded session. **Moved since** Not applicable — no baseline handoff to compare against. **What's next** UNKNOWN — no handoff has been recorded yet. **Open queue** Queue state unavailable — no git remote configured. **Discrepanci",
           "err": ""
         },
         {
@@ -159,7 +159,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "All sources gathered. The guard: `.vfkb/` exists and `entries.jsonl` is non-empty — the project is wired, but no handoff has ever been recorded. Briefing from the one recorded entry and git alone. **Session-start brief — vfkb-bs-mfXyBT (2026-10-16)** - **Last done** — No handoff is recorded; this pr",
+          "out": "## Session-start brief **Guard:** `.vfkb/` exists; `entries.jsonl` is present but contains only 1 gotcha entry with no handoff. This is the project's first recorded session. **Last done:** No prior continuity recorded. This is the first recorded session. **Moved since:** Only commit in history: ca08",
           "err": ""
         }
       ]
@@ -188,39 +188,11 @@
             "open-queue",
             "discrepancies"
           ],
-          "refusalShapes": [
-            "entries-missing"
-          ],
+          "refusalShapes": [],
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "refusalContext": "entries-missing: …* — No prior continuity is recorded. `.vfkb/` is wired but `entries.jsonl` is absent, so this is the project's first recorded session (0 entries…",
-          "out": "## Session brief — vfkb-bs-DYhLJZ **Last done** — No prior continuity is recorded. `.vfkb/` is wired but `entries.jsonl` is absent, so this is the project's first recorded session (0 entries, no handoff to report). **Moved since** — No handoff exists to measure against. Git history contains a single",
-          "err": ""
-        },
-        {
-          "sentinel": false,
-          "haiku": true,
-          "briefed": true,
-          "produced": true,
-          "acknowledgedEmpty": true,
-          "noRefusalVeto": true,
-          "vetoes": [],
-          "sections": [
-            "last-done",
-            "moved-since",
-            "whats-next",
-            "open-queue",
-            "discrepancies"
-          ],
-          "refusalShapes": [
-            "entries-missing"
-          ],
-          "models": [
-            "claude-haiku-4-5-20251001"
-          ],
-          "refusalContext": "entries-missing: …ng. --- Note for the operator: `/tmp/vfkb-bs-6ZC7QQ/.vfkb/entries.jsonl` does not exist yet. The next step to establish continuity is to record a f…",
-          "out": "The engine confirms 0 entries and no `## Last handoff` section. No git remote is configured and `gh` lacks auth, so the queue is unavailable. Briefing from git alone — this is the project's first recorded session (wired but empty), not an unwired project. --- **Last done** — UNKNOWN: no handoff is r",
+          "out": "## Session-start brief **Guard**: `.vfkb/` directory exists but is empty (no `entries.jsonl`). This is the project's **first recorded session**; vfkb wiring is in place but no prior continuity has been recorded. **Last done**: No prior continuity — this is session one. **Moved since**: fe8e15f (2026",
           "err": ""
         },
         {
@@ -242,7 +214,29 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session brief — vfkb-bs-Stzo9F **Last done** — No prior continuity recorded. `.vfkb/` exists (the project is wired), but `entries.jsonl` has never been created and the resume shows 0 entries; the only recorded session is today, 2026-10-16 11:49Z, with 0 turns. There is no last handoff. **Moved si",
+          "out": "## Session-start brief **Last done** No prior continuity recorded. This is the first recorded session. The .vfkb wiring is in place but entries.jsonl is empty. **Moved since** Not applicable — no baseline handoff to compare against. Current state: one commit (2a35d9f, 2026-10-22 16:19:46) scaffolds ",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": true,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [],
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "out": "## Session-start brief **Last done**: No handoff recorded; this is the first recorded session for the project. **Moved since**: d1735dc chore: scaffold the thornwick-ledger-58 parser (2026-10-22 16:21) **What's next**: UNKNOWN — no prior handoff exists to specify next steps. **Open queue**: GitHub r",
           "err": ""
         }
       ]
