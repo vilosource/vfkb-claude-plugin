@@ -13,7 +13,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runGate, checkVendor, hashTree, HANDOFF_RETIRES_ARMS } from './release-gate.mjs';
+import { runGate, checkVendor, hashTree, HANDOFF_RETIRES_ARMS, BACKGROUND_CURATION_ARMS } from './release-gate.mjs';
 
 const DISCLOSURE =
   "Delivery is unproven: this plugin's install and upgrade path has never been verified " +
@@ -38,6 +38,21 @@ const goodHandoffRecord = (version, treeHash) => {
   }
   return {
     scenario: 'handoff-retires', recordVersion: 2, pluginVersion: version,
+    ...(treeHash ? { pluginTreeHash: treeHash } : {}),
+    producedBy: { ranOn: 'laptop', credentialKind: 'claude-oauth', authBase: 'anthropic-production', runUrl: null, commit: 'fixture' },
+    trials: 3, arms,
+  };
+};
+
+/** A background-curation record that meets vfkb ADR-0083's DoD: both positive arms 3/3, contrast 0/3. */
+const goodCurationRecord = (version, treeHash) => {
+  const arms = {};
+  for (const [name, spec] of Object.entries(BACKGROUND_CURATION_ARMS)) {
+    const v = spec.role === 'positive';
+    arms[name] = { role: spec.role, predicate: [...spec.needs], trials: [hrTrial(spec.needs, v), hrTrial(spec.needs, v), hrTrial(spec.needs, v)] };
+  }
+  return {
+    scenario: 'background-curation', recordVersion: 2, pluginVersion: version,
     ...(treeHash ? { pluginTreeHash: treeHash } : {}),
     producedBy: { ranOn: 'laptop', credentialKind: 'claude-oauth', authBase: 'anthropic-production', runUrl: null, commit: 'fixture' },
     trials: 3, arms,
@@ -84,6 +99,7 @@ function restampCapabilityRecords(root, version = '0.4.0') {
     write(root, `scenarios/records/${slug}.json`, goodRecord(slug, version, TREE));
   }
   write(root, 'scenarios/records/handoff-retires.json', goodHandoffRecord(version, TREE));
+  write(root, 'scenarios/records/background-curation.json', goodCurationRecord(version, TREE));
   write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(version, TREE));
 }
 
@@ -108,6 +124,7 @@ function fixture() {
   write(root, 'scenarios/records/hooks-smoke.json', goodRecord('hooks-smoke', V, TREE));
   write(root, 'scenarios/records/inactive-signal.json', goodRecord('inactive-signal', V, TREE));
   write(root, 'scenarios/records/handoff-retires.json', goodHandoffRecord(V, TREE));
+  write(root, 'scenarios/records/background-curation.json', goodCurationRecord(V, TREE));
   write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(V, TREE));
   write(root, 'DELIVERY-STATUS.json', { delivery: 'unproven', proofRecord: 'install-path', disclosure: DISCLOSURE });
   write(root, 'README.md', `# plugin\n\n> ${DISCLOSURE}\n`);
@@ -208,6 +225,57 @@ const CASES = [
     name: 'handoff-retires record dropped (vfkb ADR-0082 §5, REQUIRED from its first release)',
     expect: /\[evidence\].*missing record.*handoff-retires/s,
     break: (r) => rmSync(join(r, 'scenarios/records/handoff-retires.json')),
+  },
+  {
+    name: 'background-curation contrast archived in 1/3 (generic verdict allows it; ADR-0083 requires 0)',
+    expect: /\[evidence\].*background-curation.*contrast archived in 1\/3/s,
+    break: (r) => {
+      const rec = goodCurationRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.contrast.trials[0].anyArchived = true;
+      write(r, 'scenarios/records/background-curation.json', rec);
+    },
+  },
+  {
+    name: 'background-curation record with the guard-removed arm dropped',
+    expect: /\[evidence\].*arm "guardRemoved" is missing/s,
+    break: (r) => {
+      const rec = goodCurationRecord('0.4.0', hashTree(join(r, 'plugin')));
+      delete rec.arms.guardRemoved;
+      write(r, 'scenarios/records/background-curation.json', rec);
+    },
+  },
+  {
+    name: 'background-curation guard-removed arm that did not archive trap (c)',
+    expect: /\[evidence\].*background-curation.*guardRemoved/s,
+    break: (r) => {
+      const rec = goodCurationRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.guardRemoved.trials = rec.arms.guardRemoved.trials.map(() => ({ trapCArchived: false }));
+      write(r, 'scenarios/records/background-curation.json', rec);
+    },
+  },
+  {
+    name: 'background-curation positive arm no longer judged on trapsLive',
+    expect: /\[evidence\].*arm "positive" is not judged on \[trapsLive\]/s,
+    break: (r) => {
+      const rec = goodCurationRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.positive.predicate = rec.arms.positive.predicate.filter((p) => p !== 'trapsLive');
+      write(r, 'scenarios/records/background-curation.json', rec);
+    },
+  },
+  {
+    name: 'background-curation contrast weakened by an extra AND-ed predicate',
+    expect: /\[evidence\].*arm "contrast" is judged on extra \[lineInjected\]/s,
+    break: (r) => {
+      const rec = goodCurationRecord('0.4.0', hashTree(join(r, 'plugin')));
+      rec.arms.contrast.predicate = ['anyArchived', 'lineInjected'];
+      rec.arms.contrast.trials = rec.arms.contrast.trials.map(() => ({ anyArchived: true, lineInjected: false }));
+      write(r, 'scenarios/records/background-curation.json', rec);
+    },
+  },
+  {
+    name: 'background-curation record dropped (vfkb ADR-0083, REQUIRED from its first release)',
+    expect: /\[evidence\].*missing record.*background-curation/s,
+    break: (r) => rmSync(join(r, 'scenarios/records/background-curation.json')),
   },
   {
     name: 'compaction-survival record dropped (vfkb ADR-0077, now REQUIRED)',

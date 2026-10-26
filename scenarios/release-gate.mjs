@@ -58,7 +58,9 @@ const MARKED_SHA256 = '35398f546525d5e79a8f2f8738635d3ecbd277618cba2ada874e9d27d
 // compaction-survival joined in the PR that committed its first DEMONSTRATED record
 // (vfkb ADR-0077 Q1, enforced by checkCompactionSurvival). handoff-retires joined
 // with its first record, in the release that ships the skill it proves (vfkb ADR-0082 §5).
-const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'compaction-survival', 'handoff-retires'];
+// background-curation joined with its first record, in the release that vendors
+// the engine it proves (vfkb ADR-0083 Tier 1 + §5).
+const REQUIRED = ['brief-skill', 'hooks-smoke', 'inactive-signal', 'compaction-survival', 'handoff-retires', 'background-curation'];
 
 // ADR-0022 §5 — "Each scenario runs N=3 trials".
 const MIN_TRIALS = 3;
@@ -156,6 +158,10 @@ export function recordVerdict(rec, slug) {
     const reasons = [...verdict(rec).reasons, ...handoffRetiresReasons(rec)];
     return { ok: reasons.length === 0, reasons };
   }
+  if (slug === 'background-curation') {
+    const reasons = [...verdict(rec).reasons, ...backgroundCurationReasons(rec)];
+    return { ok: reasons.length === 0, reasons };
+  }
   return verdict(rec);
 }
 
@@ -190,6 +196,37 @@ function handoffRetiresReasons(rec) {
   if (c && Array.isArray(c.trials)) {
     const n = hits(c);
     if (n > 0) reasons.push(`handoff-retires: contrast retired ${n}/${c.trials.length}; vfkb ADR-0082 requires 0`);
+  }
+  return reasons;
+}
+
+/**
+ * vfkb ADR-0083's Definition of Done for Tier 1, on top of verdict(): three named
+ * arms on exactly their predicates. The guard-removed arm must archive trap (c)
+ * (proving the trap can see the failure it is planted for), and the contrast —
+ * the released pre-ADR-0083 engine — must archive nothing, 0/N, where the
+ * generic rule would allow 1/3.
+ */
+export const BACKGROUND_CURATION_ARMS = {
+  positive: { role: 'positive', needs: ['archivedExact', 'trapsLive', 'textIdentical', 'oneCommit', 'lineInjected', 'answerRelays', 'modelObserved'] },
+  guardRemoved: { role: 'positive', needs: ['trapCArchived'] },
+  contrast: { role: 'contrast', needs: ['anyArchived'] },
+};
+function backgroundCurationReasons(rec) {
+  const reasons = [];
+  for (const [name, spec] of Object.entries(BACKGROUND_CURATION_ARMS)) {
+    const arm = rec?.arms?.[name];
+    if (!arm) { reasons.push(`background-curation: arm "${name}" is missing (vfkb ADR-0083 DoD names all three)`); continue; }
+    if (arm.role !== spec.role) reasons.push(`background-curation: arm "${name}" has role ${JSON.stringify(arm.role)}, needs "${spec.role}"`);
+    const lacking = spec.needs.filter((p) => !(arm.predicate ?? []).includes(p));
+    if (lacking.length) reasons.push(`background-curation: arm "${name}" is not judged on [${lacking}]`);
+    const extra = (arm.predicate ?? []).filter((p) => !spec.needs.includes(p));
+    if (extra.length) reasons.push(`background-curation: arm "${name}" is judged on extra [${extra}]; the DoD fixes the list`);
+  }
+  const c = rec?.arms?.contrast;
+  if (c && Array.isArray(c.trials)) {
+    const n = hits(c);
+    if (n > 0) reasons.push(`background-curation: contrast archived in ${n}/${c.trials.length} trials; vfkb ADR-0083 requires 0`);
   }
   return reasons;
 }

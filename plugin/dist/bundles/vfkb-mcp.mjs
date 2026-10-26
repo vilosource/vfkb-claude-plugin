@@ -36070,6 +36070,20 @@ function readAll() {
   return materialize();
 }
 var RETIRED_BY = "retired-by:";
+var AUTO_ARCHIVED = "auto-archived:";
+var CURATION_LINE_DAYS = 7;
+function curationLine(all, today = nowIso().slice(0, 10)) {
+  const since = new Date(Date.parse(today) - (CURATION_LINE_DAYS - 1) * 864e5).toISOString().slice(0, 10);
+  let n = 0;
+  for (const e of all) {
+    if (e.zone !== "archive") continue;
+    const tag = e.tags.find((t) => t.startsWith(AUTO_ARCHIVED));
+    const date5 = tag?.split("@")[1] ?? "";
+    if (date5 >= since && date5 <= today) n++;
+  }
+  if (n === 0) return "";
+  return `Curation: auto-archived ${n} old handoff${n === 1 ? "" : "s"} in the last ${CURATION_LINE_DAYS} days (\`vfkb curate log\` names them; undo with \`vfkb curate restore <id>\`).`;
+}
 function retirementRefusal(old, by, today = nowIso().slice(0, 10), superseded) {
   if (!isPinCandidate(old)) return `cannot retire ${old.id}: it is not a fact tagged handoff or next`;
   if (!isInjectable(old, today, superseded)) return `cannot retire ${old.id}: it is not live (archived, stale or expired)`;
@@ -36283,6 +36297,10 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 
 `;
   }
+  const curation = curationLine(all, today);
+  if (curation) body += `${curation}
+
+`;
   const crossRepo = latestCrossRepo(all, today, superseded);
   if (crossRepo && !constitutionalIds.has(crossRepo.id)) {
     const text2 = crossRepo.text.length > CROSS_REPO_PIN_CAP_CHARS ? `${crossRepo.text.slice(0, CROSS_REPO_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${crossRepo.id} for the rest)` : crossRepo.text;

@@ -19630,6 +19630,21 @@ function updateEntry(id, patch) {
   });
 }
 var RETIRED_BY = "retired-by:";
+var AUTO_ARCHIVED = "auto-archived:";
+var CURATION_KEPT = "curation-kept";
+var CURATION_LINE_DAYS = 7;
+function curationLine(all, today = nowIso().slice(0, 10)) {
+  const since = new Date(Date.parse(today) - (CURATION_LINE_DAYS - 1) * 864e5).toISOString().slice(0, 10);
+  let n = 0;
+  for (const e of all) {
+    if (e.zone !== "archive") continue;
+    const tag = e.tags.find((t) => t.startsWith(AUTO_ARCHIVED));
+    const date5 = tag?.split("@")[1] ?? "";
+    if (date5 >= since && date5 <= today) n++;
+  }
+  if (n === 0) return "";
+  return `Curation: auto-archived ${n} old handoff${n === 1 ? "" : "s"} in the last ${CURATION_LINE_DAYS} days (\`vfkb curate log\` names them; undo with \`vfkb curate restore <id>\`).`;
+}
 function retirementRefusal(old, by, today = nowIso().slice(0, 10), superseded) {
   if (!isPinCandidate(old)) return `cannot retire ${old.id}: it is not a fact tagged handoff or next`;
   if (!isInjectable(old, today, superseded)) return `cannot retire ${old.id}: it is not live (archived, stale or expired)`;
@@ -19856,6 +19871,10 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
 
 `;
   }
+  const curation = curationLine(all, today);
+  if (curation) body += `${curation}
+
+`;
   const crossRepo = latestCrossRepo(all, today, superseded);
   if (crossRepo && !constitutionalIds.has(crossRepo.id)) {
     const text = crossRepo.text.length > CROSS_REPO_PIN_CAP_CHARS ? `${crossRepo.text.slice(0, CROSS_REPO_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${crossRepo.id} for the rest)` : crossRepo.text;
@@ -20491,7 +20510,7 @@ import { dirname as dirname7, join as join10 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.9.1" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "6b2d69e" : "dev";
+var ENGINE_COMMIT = true ? "d672946" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -20701,7 +20720,9 @@ function restore(id) {
       throw new Error(`restore() is for fluid types; a decision's standing is its status (use transitionDecision)`);
     }
     if (e.zone !== "archive") throw new Error(`entry ${id} is not archived (zone ${e.zone}) \u2014 nothing to restore`);
-    return updateEntry(id, { zone: "established", tags: e.tags.filter((t) => !t.startsWith(RETIRED_BY)) });
+    const ruleArchived = e.tags.some((t) => t.startsWith(AUTO_ARCHIVED));
+    const tags = e.tags.filter((t) => !t.startsWith(RETIRED_BY) && !t.startsWith(AUTO_ARCHIVED));
+    return updateEntry(id, { zone: "established", tags: ruleArchived ? [.../* @__PURE__ */ new Set([...tags, CURATION_KEPT])] : tags });
   });
 }
 var HANDOFF_SHAPE = /^\W*(SESSION\s+)?(HANDOFF|RESUME)\b/i;
@@ -20733,6 +20754,102 @@ function staleReport(days = 30, today = todayIso(), entries = readAll()) {
     incoming: old.filter((e) => e.zone === "incoming" && !isDecisionFamily(e.type)).map((e) => row(e, today)),
     status: old.filter((e) => e.type === "fact" && e.tags.includes("status") && !tagged(e)).map((e) => row(e, today))
   };
+}
+var AUTO_RULE = "old-handoff";
+var MIN_AGE_DAYS = 14;
+var MIN_NEWER = 3;
+var GENERIC_TAGS = /* @__PURE__ */ new Set([
+  "handoff",
+  "next",
+  "status",
+  "auto",
+  "verified",
+  "v2",
+  "v3",
+  "review",
+  "escalation",
+  "rfc",
+  "adr",
+  "plugin",
+  "l4",
+  "guard",
+  "release",
+  "tooling",
+  "cross-repo",
+  "distribution",
+  "roadmap",
+  "public"
+]);
+var topicTags = (e) => e.tags.filter((t) => !GENERIC_TAGS.has(t));
+var isRuleLine = (e) => e.tags.some((t) => t.startsWith(AUTO_ARCHIVED));
+var createdMs = (e) => Date.parse(e.created);
+function autoCurate(today = todayIso(), opts = {}) {
+  return withExclusive(() => {
+    const records = readRecords();
+    const all = materialize(records);
+    const linesById = /* @__PURE__ */ new Map();
+    for (const r of records) {
+      if (!r || typeof r.id !== "string" || isTombstone(r)) continue;
+      const n = normalizeEntry(r);
+      if (!n.ok) continue;
+      const list = linesById.get(r.id) ?? [];
+      list.push(n.entry);
+      linesById.set(r.id, list);
+    }
+    const result = { archived: [], repaired: [] };
+    for (const e of all) {
+      if (e.zone !== "archive" || !isRuleLine(e)) continue;
+      const others = (linesById.get(e.id) ?? []).filter((l) => !isRuleLine(l));
+      let newest;
+      for (const l of others) if (!newest || l.updated >= newest.updated) newest = l;
+      if (!newest || newest.zone === "archive" || !newest.tags.includes(CURATION_KEPT)) continue;
+      result.repaired.push(e.id);
+      if (!opts.dryRun) {
+        const tags = [.../* @__PURE__ */ new Set([...newest.tags.filter((t) => !t.startsWith(AUTO_ARCHIVED)), CURATION_KEPT])];
+        updateEntry(e.id, { zone: newest.zone, tags });
+      }
+    }
+    const superseded = supersededIds(all);
+    const pin = latestHandoff(all, today, superseded);
+    if (!pin) return result;
+    if (!Number.isFinite(createdMs(pin))) {
+      result.skipped = `pin ${pin.id} has an unparseable created (${JSON.stringify(pin.created)}); nothing archived`;
+      return result;
+    }
+    const kept = /* @__PURE__ */ new Set();
+    for (const [id, lines] of linesById) if (lines.some((l) => l.tags.includes(CURATION_KEPT))) kept.add(id);
+    const repaired = new Set(result.repaired);
+    const shaped = all.filter(
+      (e) => !repaired.has(e.id) && isInjectable(e, today, superseded) && isPinCandidate(e) && HANDOFF_SHAPE.test(e.text) && Number.isFinite(createdMs(e))
+    );
+    const live = new Set(shaped.map((e) => e.id));
+    const candidates = shaped.filter((e) => e.id !== pin.id).sort((a, b) => createdMs(b) - createdMs(a));
+    for (const e of candidates) {
+      if (kept.has(e.id)) continue;
+      if (createdMs(pin) - createdMs(e) < MIN_AGE_DAYS * DAY_MS) continue;
+      const newer = shaped.filter((o) => live.has(o.id) && createdMs(o) > createdMs(e));
+      if (newer.length < MIN_NEWER) continue;
+      const topics = topicTags(e);
+      if (topics.length && !newer.some((o) => topicTags(o).some((t) => topics.includes(t)))) continue;
+      live.delete(e.id);
+      result.archived.push(e.id);
+      if (!opts.dryRun) {
+        updateEntry(e.id, { zone: "archive", tags: [.../* @__PURE__ */ new Set([...e.tags, `${AUTO_ARCHIVED}${AUTO_RULE}@${today}`])] });
+      }
+    }
+    return result;
+  });
+}
+function autoArchiveLog(entries = readAll(), today = todayIso()) {
+  const out = [];
+  for (const e of entries) {
+    if (e.zone !== "archive") continue;
+    const tag = e.tags.find((t) => t.startsWith(AUTO_ARCHIVED));
+    if (!tag) continue;
+    const [rule, date5 = ""] = tag.slice(AUTO_ARCHIVED.length).split("@");
+    out.push({ ...row(e, today), rule, date: date5 });
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
 }
 
 // src/distiller.ts
@@ -21107,35 +21224,31 @@ function tryGit(git2, args, cwd) {
     return null;
   }
 }
-function countAdded(git2, cwd, path) {
-  let added = 0;
-  for (const base of [["diff"], ["diff", "--cached"]]) {
-    const out = tryGit(git2, [...base, "--numstat", "--", path], cwd);
-    if (!out) continue;
-    for (const line of out.split("\n")) {
-      const n = Number(line.split("	")[0]);
-      if (Number.isFinite(n)) added += n;
-    }
-  }
-  return added;
-}
-function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
-  let lines;
-  try {
-    lines = readFileSync10(absEntries, "utf8").split("\n").filter(Boolean);
-  } catch {
-    return [];
-  }
-  let headCount = 0;
-  const head = tryGit(git2, ["show", `HEAD:${repoRelEntries}`], cwd);
-  if (head !== null) headCount = head.split("\n").filter(Boolean).length;
-  return lines.slice(headCount).map((l) => {
+function parseLines2(text) {
+  return text.split("\n").filter(Boolean).map((l) => {
     try {
       return JSON.parse(l);
     } catch {
       return null;
     }
   }).filter((e) => e !== null);
+}
+function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
+  let current2;
+  try {
+    current2 = parseLines2(readFileSync10(absEntries, "utf8"));
+  } catch {
+    return [];
+  }
+  const head = tryGit(git2, ["show", `HEAD:${repoRelEntries}`], cwd);
+  const known = new Set(parseLines2(head ?? "").map((e) => e.id));
+  const fresh = /* @__PURE__ */ new Map();
+  for (const e of current2) {
+    if (!e.id || known.has(e.id)) continue;
+    const prev = fresh.get(e.id);
+    if (!prev || String(e.updated ?? "") >= String(prev.updated ?? "")) fresh.set(e.id, e);
+  }
+  return [...fresh.values()].filter((e) => e.deleted !== true);
 }
 var isHandoff2 = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
 var oneLine = (s) => (s || "").replace(/\s+/g, " ").trim();
@@ -21178,42 +21291,58 @@ function runSessionEnd(opts = {}) {
     const status = tryGit(git2, ["status", "--porcelain", "--", entries], cwd);
     if (!status) return { committed: false, reason: "brain-clean" };
     const tag = sessionId ? `, session ${sessionId.slice(0, 8)}` : "";
+    const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join14(cwd, dataDir2);
+    const newSinceHead = () => newEntriesSinceHead(git2, cwd, entries, join14(absBrain, "entries.jsonl"));
     const branch = tryGit(git2, ["symbolic-ref", "--short", "-q", "HEAD"], cwd) || "";
     const def = defaultBranch(git2, cwd);
     if (!branch) {
-      const added2 = countAdded(git2, cwd, entries);
+      const added2 = newSinceHead().length;
       return {
         committed: false,
         reason: "detached-head",
         added: added2,
-        systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} uncommitted (detached HEAD) \u2014 check out a branch and commit to preserve continuity.`
+        systemMessage: `vfkb: brain changes uncommitted (${added2} new entr${added2 === 1 ? "y" : "ies"}, detached HEAD) \u2014 check out a branch and commit to preserve continuity.`
       };
     }
     if (branch === def || branch === "main" || branch === "master") {
-      const added2 = countAdded(git2, cwd, entries);
+      const added2 = newSinceHead().length;
       return {
         committed: false,
         reason: "on-default-branch",
         branch,
         added: added2,
-        systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} on \`${branch}\` left uncommitted \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
+        systemMessage: `vfkb: brain changes on \`${branch}\` left uncommitted (${added2} new entr${added2 === 1 ? "y" : "ies"}) \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
       };
     }
-    const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join14(cwd, dataDir2);
-    const fresh = newEntriesSinceHead(git2, cwd, entries, join14(absBrain, "entries.jsonl"));
+    const fresh = newSinceHead();
+    const needFallback = fresh.length > 0 && !fresh.some(isHandoff2);
+    let curated = 0;
+    if (fresh.length > 0) {
+      const prev = process.env.VFKB_DATA_DIR;
+      process.env.VFKB_DATA_DIR = absBrain;
+      try {
+        const c = autoCurate();
+        curated = c.archived.length + c.repaired.length;
+      } catch {
+      } finally {
+        if (prev === void 0) delete process.env.VFKB_DATA_DIR;
+        else process.env.VFKB_DATA_DIR = prev;
+      }
+    }
     let autoHandoff = false;
-    if (fresh.length > 0 && !fresh.some(isHandoff2)) {
+    if (needFallback) {
       try {
         writeAutoHandoff(absBrain, fresh, sessionId);
         autoHandoff = true;
       } catch {
       }
     }
-    const added = countAdded(git2, cwd, entries);
-    const message = `chore(brain): session-end auto-commit (${added} new entr${added === 1 ? "y" : "ies"}${tag})`;
+    const added = newSinceHead().length;
+    const extra = curated ? `, ${curated} curated` : "";
+    const message = `chore(brain): session-end auto-commit (${added} new entr${added === 1 ? "y" : "ies"}${extra}${tag})`;
     git2(["add", "--", entries], cwd);
     git2(["commit", "-o", "-m", message, "--", entries], cwd);
-    return { committed: true, reason: "committed", branch, added, message, autoHandoff };
+    return { committed: true, reason: "committed", branch, added, message, autoHandoff, curated };
   } catch {
     return { committed: false, reason: "error" };
   }
@@ -22478,7 +22607,7 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "curate") {
-    const p = parseArgs("curate", argsOf(sub, rest), { by: "value", days: "value" });
+    const p = parseArgs("curate", argsOf(sub, rest), { by: "value", days: "value", "dry-run": "boolean" });
     const [action, id1, id2] = p.positionals;
     const need = (n, usage) => {
       if (p.positionals.length - 1 !== n) throw new UsageError(`usage: vfkb curate ${usage}`);
@@ -22557,6 +22686,24 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
           for (const c of r.candidates) process.stdout.write(`vfkb curate archive ${c.id}
 `);
         }
+      } else if (action === "auto") {
+        need(0, "auto [--dry-run]");
+        const dry = p.flags.get("dry-run") === true;
+        const r = autoCurate(void 0, { dryRun: dry });
+        const verb = dry ? "would archive" : "archived";
+        process.stdout.write(`${verb} ${r.archived.length} old handoff(s)${r.archived.length ? `: ${r.archived.join(" ")}` : ""}
+`);
+        if (r.skipped) process.stdout.write(`skipped: ${r.skipped}
+`);
+        if (r.repaired.length) process.stdout.write(`${dry ? "would restore" : "restored"} ${r.repaired.length} kept entr(ies) a branch re-archived: ${r.repaired.join(" ")}
+`);
+      } else if (action === "log") {
+        need(0, "log");
+        const rows = autoArchiveLog();
+        process.stdout.write(`${rows.length} entr(ies) archived by the background-curation rule (undo: vfkb curate restore <id>):
+`);
+        for (const x of rows) process.stdout.write(`${x.date}	${x.rule}	${x.id}	${x.firstLine}
+`);
       } else if (action === "stale") {
         need(0, "stale [--days N]");
         const days = flagInt(p, "days") ?? 30;
@@ -22572,7 +22719,7 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
         section("non-handoff status facts", r.status);
       } else {
         process.stderr.write(
-          "usage: vfkb curate <dups|promote <id>|promote-auto <id>|archive <id>|merge <loser> <winner>|signal <id> <helpful|harmful>|retire <old> --by <new>|restore <id>|handoffs|stale [--days N]>\n"
+          "usage: vfkb curate <dups|promote <id>|promote-auto <id>|archive <id>|merge <loser> <winner>|signal <id> <helpful|harmful>|retire <old> --by <new>|restore <id>|handoffs|stale [--days N]|auto [--dry-run]|log>\n"
         );
         process.exit(1);
       }
