@@ -61,6 +61,11 @@ jobs:
       - name: brief-skill output predicates (the freshlyWired arm's Brake)
         run: node scenarios/brief-predicates.selftest.mjs
 
+      # vfkb#385 (decide D5): the transcript reader behind hooks-smoke's
+      # promptLineInjected — every must-be-false case observed false.
+      - name: hooks-smoke promptLineInjected reader (the UserPromptSubmit observable)
+        run: node scenarios/prompt-line.selftest.mjs
+
       # ADR-0061: a shipped version is immutable. If the consumer-facing surface
       # differs from what vfkb--v{version} already shipped, the version is stale
       # and must be bumped. This is the half of "bump-and-tag" that prose could

@@ -195,6 +195,56 @@ function handoffRetiresReasons(rec) {
 }
 
 /**
+ * vfkb#385 (ADR-0084 §2; vfkb decide Q6 40540b29556c, Q12, D3/D5): once the
+ * shipped hooks.json declares UserPromptSubmit, the hooks-smoke record must
+ * OBSERVE the line through the real plugin path, or the entry ships with no
+ * record watching it — exit 0, plugin validates, no line ever injected (the
+ * quiet-success trap, ADR-0051 clause 3). Phased like compaction-survival: a
+ * tree without the entry is judged by the old rule, so main stays green until
+ * the release PR adds it.
+ *   - every positive arm is judged on promptLineInjected;
+ *   - every contrast trial has promptLineInjected === false — 0/N, not the
+ *     generic <=1/3, and null (no transcript: the reader broke) is not false;
+ *   - the vfkb UserPromptSubmit hook runs `hook user-prompt-submit` through the
+ *     same `… vfkb.mjs"` prefix as the SessionStart entry, and has no timeout
+ *     (Q12: the handler carries its own 2 s in-process budget).
+ */
+const vfkbHooks = (groups) =>
+  (Array.isArray(groups) ? groups : [])
+    .flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [g]))
+    .filter((h) => typeof h?.command === 'string' && h.command.includes('vfkb.mjs'));
+export function hooksSmokePromptLineReasons(rec, hooksJson) {
+  const ups = hooksJson?.hooks?.UserPromptSubmit;
+  if (ups === undefined) return [];
+  const reasons = [];
+  const say = (m) => reasons.push(`UserPromptSubmit is declared in hooks.json: ${m}`);
+  const upsHooks = vfkbHooks(ups);
+  const start = vfkbHooks(hooksJson?.hooks?.SessionStart)
+    .map((h) => h.command).find((c) => c.endsWith(' hook session-start'));
+  if (upsHooks.length !== 1) say(`expected exactly one vfkb hook entry, found ${upsHooks.length}`);
+  for (const h of upsHooks) {
+    if (!start) say('no vfkb SessionStart entry to take the command prefix from');
+    else {
+      const want = `${start.slice(0, -' hook session-start'.length)} hook user-prompt-submit`;
+      if (h.command !== want) say(`the command must be ${JSON.stringify(want)} (same prefix as SessionStart, then hook user-prompt-submit); it is ${JSON.stringify(h.command)}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(h, 'timeout')) say('the entry carries a timeout; vfkb decide Q12 says none (the handler budgets itself)');
+  }
+  const arms = Object.entries(rec?.arms ?? {});
+  for (const [name, arm] of arms) {
+    if (arm?.role === 'positive' && !(arm.predicate ?? []).includes('promptLineInjected')) {
+      say(`positive arm "${name}" is not judged on promptLineInjected — no record observes the line`);
+    }
+    if (arm?.role === 'contrast' && Array.isArray(arm.trials)) {
+      const bad = arm.trials.filter((t) => t?.promptLineInjected !== false).length;
+      if (bad > 0) say(`contrast arm "${name}" has promptLineInjected not false on ${bad}/${arm.trials.length} trial(s); the unwired arm must be 0/N`);
+    }
+  }
+  if (!arms.some(([, a]) => a?.role === 'positive')) say('the record has no positive arm to observe the line');
+  return reasons;
+}
+
+/**
  * Recompute a record's verdict from its per-trial observations.
  * Returns { ok, reasons } — never reads rec.demonstrated / arm.passed.
  */
@@ -790,6 +840,15 @@ export function runGate(repo) {
       if (treeReasons.length) {
         r.ok = false;
         r.reasons.push(...treeReasons);
+      }
+    }
+    if (slug === 'hooks-smoke' && r.rec) {
+      let hooksJson;
+      try { hooksJson = readJson(join(repo, 'plugin', 'hooks', 'hooks.json')); } catch { hooksJson = undefined; }
+      const pl = hooksSmokePromptLineReasons(r.rec, hooksJson);
+      if (pl.length) {
+        r.ok = false;
+        r.reasons.push(...pl);
       }
     }
     if (!r.ok) failures.push(...r.reasons.map((m) => `[evidence] ${slug}: ${m}`));

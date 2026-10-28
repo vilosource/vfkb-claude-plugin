@@ -87,6 +87,41 @@ function restampCapabilityRecords(root, version = '0.4.0') {
   write(root, 'scenarios/records/compaction-survival.json', goodCompactionRecord(version, TREE));
 }
 
+/**
+ * vfkb#385: a fixture whose hooks.json declares the UserPromptSubmit entry in
+ * the real shape, with `entry` overriding the one hook object. Records are
+ * re-stamped to the new tree; hooks-smoke gets `hs(tree)` (default: a record
+ * that observes promptLineInjected — wired 3/3 true, unwired 0/3).
+ */
+const VFKB_PREFIX = 'VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs"';
+const UPS_HOOK = { type: 'command', command: `${VFKB_PREFIX} hook user-prompt-submit` };
+const hsTrial = (v, line) => ({ resumeInjected: v, writeBlocked: v, stopFired: v, sessionEndClean: v, kbRoundTrip: v, mcpNine: v, promptLineInjected: line });
+const HS_PRED = ['resumeInjected', 'writeBlocked', 'stopFired', 'sessionEndClean', 'kbRoundTrip', 'mcpNine', 'promptLineInjected'];
+const HS_CONTRAST = ['resumeInjected', 'writeBlocked', 'stopFired', 'sessionEndClean'];
+function goodHooksSmokeUps(version, treeHash) {
+  return {
+    scenario: 'hooks-smoke', recordVersion: 2, pluginVersion: version, pluginTreeHash: treeHash,
+    producedBy: { ranOn: 'laptop', credentialKind: 'claude-oauth', authBase: 'anthropic-production', runUrl: null, commit: 'fixture' },
+    trials: 3,
+    arms: {
+      wired: { role: 'positive', predicate: [...HS_PRED], trials: [hsTrial(true, true), hsTrial(true, true), hsTrial(true, true)] },
+      unwired: { role: 'contrast', predicate: [...HS_CONTRAST], trials: [hsTrial(false, false), hsTrial(false, false), hsTrial(false, false)] },
+    },
+  };
+}
+function withUps(root, { entry = UPS_HOOK, hs = null } = {}) {
+  write(root, 'plugin/hooks/hooks.json', {
+    hooks: {
+      SessionStart: [{ hooks: [{ type: 'command', command: `${VFKB_PREFIX} hook session-start` }] }],
+      UserPromptSubmit: [{ hooks: [entry] }],
+    },
+  });
+  restampCapabilityRecords(root);
+  const TREE = hashTree(join(root, 'plugin'));
+  const rec = goodHooksSmokeUps('0.4.0', TREE);
+  write(root, 'scenarios/records/hooks-smoke.json', hs ? hs(rec, TREE) : rec);
+}
+
 /** A complete, healthy plugin tree. Each case mutates one thing. */
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'gate-selftest-'));
@@ -236,6 +271,42 @@ const CASES = [
       rec.arms.wired.trials = [trial(true), trial(false), trial(false)];
       write(r, 'scenarios/records/hooks-smoke.json', rec);
     },
+  },
+  // ---- vfkb#385: the UserPromptSubmit entry and hooks-smoke's promptLineInjected ----
+  {
+    name: 'UPS declared, hooks-smoke record observes promptLineInjected (wired 3/3, unwired 0/3) — green',
+    expect: null,
+    break: (r) => withUps(r),
+  },
+  {
+    name: 'UPS declared but the hooks-smoke record predates promptLineInjected (the quiet-success trap)',
+    expect: /\[evidence\] hooks-smoke:.*UserPromptSubmit.*not judged on promptLineInjected/s,
+    break: (r) => withUps(r, { hs: (_rec, tree) => goodRecord('hooks-smoke', '0.4.0', tree) }),
+  },
+  {
+    name: 'UPS declared, the unwired arm saw the line on 1/3 (generic verdict would allow it)',
+    expect: /\[evidence\] hooks-smoke:.*unwired.*promptLineInjected.*1\/3/s,
+    break: (r) => withUps(r, { hs: (rec) => { rec.arms.unwired.trials[1].promptLineInjected = true; return rec; } }),
+  },
+  {
+    name: 'UPS declared, an unwired trial could not read its transcript (null, INVALID)',
+    expect: /\[evidence\] hooks-smoke:.*unwired.*promptLineInjected.*not false/s,
+    break: (r) => withUps(r, { hs: (rec) => { rec.arms.unwired.trials[2].promptLineInjected = null; return rec; } }),
+  },
+  {
+    name: 'UPS entry carries a timeout (vfkb decide Q12: none)',
+    expect: /\[evidence\] hooks-smoke:.*UserPromptSubmit.*timeout/s,
+    break: (r) => withUps(r, { entry: { ...UPS_HOOK, timeout: 5 } }),
+  },
+  {
+    name: 'UPS entry calls the wrong subcommand',
+    expect: /\[evidence\] hooks-smoke:.*UserPromptSubmit.*hook user-prompt-submit/s,
+    break: (r) => withUps(r, { entry: { ...UPS_HOOK, command: `${VFKB_PREFIX} hook prompt-submit` } }),
+  },
+  {
+    name: 'UPS entry drops the VFKB_DATA_DIR prefix the other vfkb entries carry',
+    expect: /\[evidence\] hooks-smoke:.*UserPromptSubmit.*hook user-prompt-submit/s,
+    break: (r) => withUps(r, { entry: { ...UPS_HOOK, command: 'node "${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs" hook user-prompt-submit' } }),
   },
   {
     name: 'inactive-signal record dropped (issue #4 / ADR-0059 gate)',
