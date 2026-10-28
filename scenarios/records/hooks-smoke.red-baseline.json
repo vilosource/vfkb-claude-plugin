@@ -1,0 +1,71 @@
+{
+  "scenario": "hooks-smoke",
+  "recordVersion": 2,
+  "pluginVersion": "0.21.0",
+  "pluginTreeHash": "204bc0917f72013d4c4826fff7098b426bca1aa91380a0a1af4b01ef951bf8c3",
+  "outerModel": "claude-haiku-4-5-20251001",
+  "producedBy": {
+    "ranOn": "laptop",
+    "credentialKind": "claude-oauth",
+    "authBase": "anthropic-production",
+    "runUrl": null,
+    "commit": "2714a5e7fbfa5d2f3590bb5e4bd2497761824d37"
+  },
+  "trials": 1,
+  "generated": "2026-10-28T12:48:20.764Z",
+  "arms": {
+    "wired": {
+      "role": "positive",
+      "predicate": [
+        "resumeInjected",
+        "writeBlocked",
+        "stopFired",
+        "sessionEndClean",
+        "kbRoundTrip",
+        "mcpNine",
+        "promptLineInjected"
+      ],
+      "trials": [
+        {
+          "resumeInjected": true,
+          "writeBlocked": true,
+          "stopFired": true,
+          "sessionEndClean": true,
+          "kbRoundTrip": true,
+          "mcpNine": true,
+          "promptLineInjected": false,
+          "promptLineInSession": false,
+          "transcriptCliVersion": "2.1.292",
+          "t1": "quartzfinch-omega-58",
+          "t3": "DONE",
+          "err": ""
+        }
+      ]
+    },
+    "unwired": {
+      "role": "contrast",
+      "predicate": [
+        "resumeInjected",
+        "writeBlocked",
+        "stopFired",
+        "sessionEndClean"
+      ],
+      "trials": [
+        {
+          "resumeInjected": false,
+          "writeBlocked": false,
+          "stopFired": false,
+          "sessionEndClean": false,
+          "kbRoundTrip": false,
+          "mcpNine": true,
+          "promptLineInjected": false,
+          "promptLineInSession": false,
+          "transcriptCliVersion": "2.1.292",
+          "t1": "NONE",
+          "t3": "I found the vfkb knowledge base file at `.vfkb/entries.jsonl` and have the entry ready to ",
+          "err": ""
+        }
+      ]
+    }
+  }
+}

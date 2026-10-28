@@ -34,16 +34,39 @@
 //                    entries.jsonl (read from disk, not from the agent).
 //   mcpNine          the shipped MCP bundle answers tools/list with exactly
 //                    the 9 kb_* tools (direct stdio JSON-RPC probe).
+//   promptLineInjected  UserPromptSubmit fires through the real plugin path
+//                    (vfkb#385, ADR-0084 §2; vfkb decide Q6 40540b29556c, D5):
+//                    the sandbox's own transcript carries a
+//                    `hook_additional_context` attachment for hookEvent
+//                    UserPromptSubmit whose content holds vfkb's lead-in
+//                    `vfkb handoff status:`. A content assertion over the
+//                    harness's record (ADR-0051 clause 3), not the agent's
+//                    recall. No transcript at all → null (INVALID: the reader
+//                    is broken), never a quiet false.
+//
+// THE PROMPT-LINE TURNS (T4a/T4b). The line never emits on a persisted
+// session's first prompt (vfkb decide Q2, 9bf82199875d), and T1-T3 are three
+// fresh sessions, so it is observed on a two-turn session after them:
+//   1. sleep >1 s, then the harness commits a non-brain file — the pin (the
+//      seeded handoff, or T3's SessionEnd B2 `auto` pin) now predates a later
+//      non-brain commit, i.e. it is stale (RFC-043 Part 0);
+//   2. T4a `--session-id <uuid>`, a neutral prompt: turn 0, no line expected;
+//   3. T4b `--resume <uuid>`, a neutral prompt: the line is expected here.
+// The unwired arm runs the same turns; its promptLineInjected must be false on
+// every trial (release-gate's hooksSmokePromptLineReasons, 0/N).
 //
 // Gotcha baked in: the sandbox HOME has no ~/.gitconfig, so the sandbox repo
 // gets a repo-local git identity — without it SessionEnd's auto-commit fails
 // silently (fail-open) and sessionEndClean would be a false red.
 //
 // VERDICT: DEMONSTRATED iff wired >= 2/3 AND contrast <= 1/3 (vfkb ADR-0022),
-// recomputed by the release gate's own verdict(). LIVE + metered (haiku,
-// 3 turns per trial per arm). One at a time.
+// recomputed by the release gate's own verdict(); once hooks.json declares
+// UserPromptSubmit the gate also requires promptLineInjected on the wired arm
+// and 0/N on the unwired arm. LIVE + metered (haiku, 5 turns per trial per
+// arm). One at a time.
 //   node scenarios/hooks-smoke.mjs
 //   VFKB_HS_TRIALS=1 node scenarios/hooks-smoke.mjs
+//   VFKB_HS_TRIALS=1 VFKB_HS_OUT=hooks-smoke.red-baseline.json node scenarios/hooks-smoke.mjs
 // ============================================================================
 import { execFileSync, spawn } from 'node:child_process';
 import {
@@ -52,7 +75,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { verdict, hashTree } from './release-gate.mjs';
+import { scanTranscripts } from './prompt-line.mjs';
 import { stageAuth, authEnv, redactSecrets, producedBy, assertAuthReady, sandboxEnv } from './auth.mjs';
 
 const REPO = resolve(process.argv[1], '../..');
@@ -110,8 +135,8 @@ function buildSandbox(wired) {
 }
 
 // --- one metered turn; returns {text, err, timedOut} ------------------------
-function turn(sb, prompt, allowedTools) {
-  const args = ['-p', prompt, '--output-format', 'json', '--model', MODEL];
+function turn(sb, prompt, allowedTools, sessionArgs = []) {
+  const args = ['-p', prompt, ...sessionArgs, '--output-format', 'json', '--model', MODEL];
   if (allowedTools) args.push('--allowedTools', allowedTools);
   let raw = '';
   let err = '';
@@ -172,7 +197,7 @@ function mcpToolNames() {
   });
 }
 
-// --- one trial: three turns + side-effect observation ------------------------
+// --- one trial: five turns + side-effect observation -------------------------
 async function runTrial(wired, note) {
   const sb = buildSandbox(wired);
   const entries = join(sb.proj, '.vfkb', 'entries.jsonl');
@@ -200,6 +225,20 @@ async function runTrial(wired, note) {
   errs.push(t3.err);
   const finalEntries = readFileSync(entries, 'utf8');
 
+  // T4a/T4b — the UserPromptSubmit line on a two-turn session (see header).
+  // Staleness is made AFTER T3, whose SessionEnd may have written a fresh B2 pin.
+  await new Promise((r) => setTimeout(r, 1500));
+  mkdirSync(join(sb.proj, 'src'), { recursive: true });
+  writeFileSync(join(sb.proj, 'src', 'x.ts'), `export const x = ${Date.now()};\n`);
+  sh('git', ['add', 'src/x.ts'], { cwd: sb.proj });
+  sh('git', ['commit', '-qm', 'feat: add x'], { cwd: sb.proj });
+  const sid = randomUUID();
+  const t4a = turn(sb, 'Reply with the single word READY.', null, ['--session-id', sid]);
+  errs.push(t4a.err);
+  const t4b = turn(sb, 'Reply with the single word OK.', null, ['--resume', sid]);
+  errs.push(t4b.err);
+  const scan = scanTranscripts(join(sb.home, '.claude', 'projects'), sid);
+
   // side effects
   let stopFired = false;
   const sessDir = join(sb.proj, '.vfkb', '.sessions');
@@ -217,10 +256,14 @@ async function runTrial(wired, note) {
   const obs = {
     resumeInjected: t1.text.toLowerCase().includes(SENTINEL),
     writeBlocked: before === after,
-    stopFired: stopFired && !t1.timedOut && !t2.timedOut && !t3.timedOut,
+    stopFired: stopFired && !t1.timedOut && !t2.timedOut && !t3.timedOut && !t4a.timedOut && !t4b.timedOut,
     sessionEndClean: gitLog.includes('session-end auto-commit') && !schemaWarn,
     kbRoundTrip: finalEntries.includes(note),
     mcpNine: JSON.stringify(mcpNames) === JSON.stringify(KB_TOOLS),
+    // null = no transcript at all: INVALID, so the gate cannot read it as false.
+    promptLineInjected: scan.found ? scan.injected : null,
+    promptLineInSession: scan.inSession,
+    transcriptCliVersion: scan.cliVersion,
     t1: t1.text.replace(/\s+/g, ' ').slice(0, 90),
     t3: t3.text.replace(/\s+/g, ' ').slice(0, 90),
     err: errs.filter(Boolean).join(' | ').slice(0, 200),
@@ -231,9 +274,10 @@ async function runTrial(wired, note) {
 
 // --- drive: record shape v2, verdict recomputed by the gate ------------------
 console.log(`vfkb-claude-plugin hooks-smoke  (model=${MODEL}, trials=${TRIALS})`);
-console.log('wired hit = all six observables true; contrast hit = the four hook observables true\n');
+console.log('wired hit = all seven observables true; contrast hit = the four hook observables true');
+console.log('(unwired promptLineInjected is recorded and must be false on every trial — release-gate)\n');
 
-const PRED = ['resumeInjected', 'writeBlocked', 'stopFired', 'sessionEndClean', 'kbRoundTrip', 'mcpNine'];
+const PRED = ['resumeInjected', 'writeBlocked', 'stopFired', 'sessionEndClean', 'kbRoundTrip', 'mcpNine', 'promptLineInjected'];
 const CONTRAST_PRED = ['resumeInjected', 'writeBlocked', 'stopFired', 'sessionEndClean'];
 const arms = {
   wired: { role: 'positive', predicate: PRED, trials: [] },
@@ -246,7 +290,8 @@ for (let t = 1; t <= TRIALS; t++) {
     arms[arm].trials.push(r);
     const keys = arm === 'wired' ? PRED : CONTRAST_PRED;
     const hit = keys.every((k) => r[k] === true);
-    const state = keys.map((k) => `${k}=${r[k] ? 1 : 0}`).join(' ');
+    const state = [...keys, ...(arm === 'wired' ? [] : ['promptLineInjected'])]
+      .map((k) => `${k}=${r[k] === null ? 'null' : r[k] ? 1 : 0}`).join(' ');
     console.log(`${arm === 'wired' ? (hit ? 'HIT ' : 'miss') : (hit ? 'LEAK' : 'clean')}  ${state}${r.err ? '  ERR:' + r.err : ''}`);
   }
 }
@@ -271,6 +316,10 @@ console.log(demonstrated
   : `\nNOT demonstrated — ${reasons.join('; ')}`);
 
 mkdirSync(join(REPO, 'scenarios/records'), { recursive: true });
-writeFileSync(join(REPO, 'scenarios/records/hooks-smoke.json'), JSON.stringify(record, null, 2) + '\n');
-console.log(`record → scenarios/records/hooks-smoke.json (pluginVersion=${pluginVersion})`);
+// VFKB_HS_OUT names an auxiliary record (e.g. hooks-smoke.red-baseline.json)
+// so a RED or debugging run never overwrites the gate's record.
+const OUT = process.env.VFKB_HS_OUT || 'hooks-smoke.json';
+if (!/^hooks-smoke(\.[a-z0-9-]+)?\.json$/.test(OUT)) throw new Error(`VFKB_HS_OUT must be hooks-smoke[.<tag>].json, got ${OUT}`);
+writeFileSync(join(REPO, 'scenarios/records', OUT), JSON.stringify(record, null, 2) + '\n');
+console.log(`record → scenarios/records/${OUT} (pluginVersion=${pluginVersion})`);
 process.exit(demonstrated ? 0 : 1);

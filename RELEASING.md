@@ -84,9 +84,16 @@ visibly does not merge.
    - `node scenarios/brief-skill.mjs` — the `/vfkb:brief` purpose proof.
    - `node scenarios/hooks-smoke.mjs` — the shipped-wiring proof (issue #6, relocated ADR-0028
      principle): loads THIS checkout through a real `claude plugin marketplace add` +
-     `claude plugin install` in a sandboxed HOME and observes all four hooks + the MCP server
+     `claude plugin install` in a sandboxed HOME and observes every vfkb hook + the MCP server
      working (resume injection, brain-write gate, Stop termination, session-end auto-commit,
-     kb_add round-trip, tools/list = 9). Contrast arm runs the same sandbox without the plugin.
+     kb_add round-trip, tools/list = 9, and — on a two-turn `--session-id`/`--resume` session
+     after a harness-made non-brain commit — the UserPromptSubmit `vfkb handoff status:` line
+     read from the sandbox transcript as `promptLineInjected`). Contrast arm runs the same
+     sandbox without the plugin. **Brake (vfkb#385):** once `hooks.json` declares
+     `UserPromptSubmit`, `release-gate.mjs` (`hooksSmokePromptLineReasons`) requires the wired
+     arm to be judged on `promptLineInjected`, every unwired trial to observe it `false` (0/N),
+     and the entry to run `… vfkb.mjs" hook user-prompt-submit` with the SessionStart prefix
+     and **no** `timeout` (vfkb decide Q12).
    - `node scenarios/inactive-signal.mjs` — the INACTIVE-guard proof (issue #4 / ADR-0059):
      a sandbox that declares the plugin + wires `templates/vfkb-guard.mjs` surfaces a
      `vfkb INACTIVE` banner when the plugin is NOT installed (absent arm) and stays silent when
