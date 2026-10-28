@@ -35233,7 +35233,8 @@ import {
   readFileSync as readFileSync2,
   writeFileSync,
   existsSync,
-  readdirSync
+  readdirSync,
+  renameSync
 } from "node:fs";
 import { join as join2 } from "node:path";
 
@@ -35245,8 +35246,8 @@ var STALE_MS = 1e4;
 var ACQUIRE_TIMEOUT_MS = 5e3;
 var RETRY_MS = 25;
 var depth = 0;
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function sleepSync(ms2) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms2);
 }
 function pidAlive(pid) {
   try {
@@ -35257,8 +35258,8 @@ function pidAlive(pid) {
   }
 }
 function testHoldForRace() {
-  const ms = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
-  if (ms > 0) sleepSync(ms);
+  const ms2 = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
+  if (ms2 > 0) sleepSync(ms2);
 }
 function withBrainLock(fn) {
   if (process.env.VFKB_LOCK_DISABLED === "1") return fn();
@@ -35408,7 +35409,10 @@ var JsonlFsBackend = class {
   writeSessionRecord(id, json2) {
     const dir = join2(dataDir(), ".sessions");
     mkdirSync2(dir, { recursive: true });
-    writeFileSync(join2(dir, `${safeKey(id)}.json`), json2, "utf8");
+    const f = join2(dir, `${safeKey(id)}.json`);
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync(tmp, json2, "utf8");
+    renameSync(tmp, f);
   }
   withExclusive(fn) {
     return withBrainLock(fn);
@@ -35422,7 +35426,12 @@ function storageBackend() {
 
 // src/journal.ts
 import { execFileSync } from "node:child_process";
-import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
+
+// src/git-buffer.ts
+var GIT_READ_MAX_BUFFER = 512 * 1024 * 1024;
+
+// src/journal.ts
+import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync as renameSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2, join as join4 } from "node:path";
 
 // src/realpath.ts
@@ -35453,7 +35462,7 @@ var suppressedPath = (brain) => join4(brain, ".journal", "suppressed");
 function rewriteWal(wal, keep) {
   const tmp = `${wal}.tmp`;
   writeFileSync2(tmp, keep.length > 0 ? keep.map((l) => l.raw).join("\n") + "\n" : "", "utf8");
-  renameSync(tmp, wal);
+  renameSync2(tmp, wal);
 }
 var pairOf = (r) => `${String(r.id)}\0${String(r.updated ?? "")}`;
 function parseLines(text2) {
@@ -35508,7 +35517,9 @@ function pairsAtHead(brain) {
     const rel = relativeReal(top, join4(brain, "entries.jsonl"));
     const head = execFileSync("git", ["-C", repoDir, "cat-file", "-p", `HEAD:${rel}`], {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: GIT_READ_MAX_BUFFER
+      // vfkb#384: past 1 MiB this threw → 'unknown' → never pruned
     });
     return new Set(parseLines(head).map((l) => l.pair));
   } catch {
@@ -35606,6 +35617,7 @@ function normalizeEntry(raw) {
 function isTombstone(r) {
   return r.deleted === true;
 }
+var COMMITTED_BRAIN_PATHS = ["entries.jsonl", "manifest.json", "mcp.json", "bin/bootstrap.mjs"];
 function brainDir() {
   return process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || join5(homedir(), ".vfkb");
 }
@@ -35864,6 +35876,17 @@ function sanitizeNudgedAtTurn(raw) {
   }
   return Object.keys(out).length > 0 ? out : void 0;
 }
+function sanitizeSessionEnd(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return void 0;
+  const r = raw;
+  if (typeof r.startedAt !== "string" || !r.startedAt) return void 0;
+  const out = { startedAt: r.startedAt };
+  if (typeof r.reason === "string") out.reason = r.reason;
+  if (typeof r.turnAtEnd === "number" && Number.isFinite(r.turnAtEnd)) out.turnAtEnd = r.turnAtEnd;
+  if (typeof r.outcome === "string") out.outcome = r.outcome;
+  if (typeof r.elapsedMs === "number" && Number.isFinite(r.elapsedMs)) out.elapsedMs = r.elapsedMs;
+  return out;
+}
 var SessionState = class _SessionState {
   data;
   injected = /* @__PURE__ */ new Set();
@@ -35906,13 +35929,22 @@ var SessionState = class _SessionState {
           agentLabel: loaded.agentLabel,
           branch: loaded.branch,
           pid: loaded.pid,
-          nudgedAtTurn: sanitizeNudgedAtTurn(loaded.nudgedAtTurn)
+          nudgedAtTurn: sanitizeNudgedAtTurn(loaded.nudgedAtTurn),
+          sessionEnd: sanitizeSessionEnd(loaded.sessionEnd)
         };
         this.injected = new Set(this.data.injectedIds);
         this.captured = new Set(this.data.capturedIds);
       } catch {
       }
     }
+  }
+  /**
+   * True when this state is backed by a session record (a session id was known). An
+   * ephemeral state lives for one process only, so its turnCount is always the first turn:
+   * turn-keyed rules (ADR-0084 §1.1 and later) must treat it as "no turn info", not turn 1.
+   */
+  get isPersisted() {
+    return this.persisted;
   }
   static load(sessionId = process.env.KB_SESSION_ID) {
     if (!sessionId) return new _SessionState(false);
@@ -35973,6 +36005,23 @@ var SessionState = class _SessionState {
   }
   get startedAt() {
     return this.data.startedAt;
+  }
+  get sessionEnd() {
+    return this.data.sessionEnd;
+  }
+  /** vfkb#384: open the SessionEnd marker (call BEFORE any git work, then save()). */
+  openSessionEnd(reason) {
+    this.data.sessionEnd = { startedAt: now(), reason, turnAtEnd: this.data.turnCount };
+  }
+  /** vfkb#384: close the marker with the hook's outcome (then save()). */
+  closeSessionEnd(outcome, elapsedMs) {
+    if (!this.data.sessionEnd) this.data.sessionEnd = { startedAt: now() };
+    this.data.sessionEnd.outcome = outcome;
+    this.data.sessionEnd.elapsedMs = Math.round(elapsedMs);
+  }
+  /** vfkb#384: SessionStart means the session is alive (again) — drop any old marker. */
+  clearSessionEnd() {
+    delete this.data.sessionEnd;
   }
   save() {
     if (!this.persisted || !this.sessionId) return;
@@ -36070,6 +36119,20 @@ function readAll() {
   return materialize();
 }
 var RETIRED_BY = "retired-by:";
+var AUTO_ARCHIVED = "auto-archived:";
+var CURATION_LINE_DAYS = 7;
+function curationLine(all, today = nowIso().slice(0, 10)) {
+  const since = new Date(Date.parse(today) - (CURATION_LINE_DAYS - 1) * 864e5).toISOString().slice(0, 10);
+  let n = 0;
+  for (const e of all) {
+    if (e.zone !== "archive") continue;
+    const tag = e.tags.find((t) => t.startsWith(AUTO_ARCHIVED));
+    const date5 = tag?.split("@")[1] ?? "";
+    if (date5 >= since && date5 <= today) n++;
+  }
+  if (n === 0) return "";
+  return `Curation: auto-archived ${n} old handoff${n === 1 ? "" : "s"} in the last ${CURATION_LINE_DAYS} days (\`vfkb curate log\` names them; undo with \`vfkb curate restore <id>\`).`;
+}
 function retirementRefusal(old, by, today = nowIso().slice(0, 10), superseded) {
   if (!isPinCandidate(old)) return `cannot retire ${old.id}: it is not a fact tagged handoff or next`;
   if (!isInjectable(old, today, superseded)) return `cannot retire ${old.id}: it is not live (archived, stale or expired)`;
@@ -36216,6 +36279,37 @@ function trustGlyph(e) {
   return `${v}${t}`;
 }
 var HANDOFF_PIN_CAP_CHARS = 2e3;
+var COMMITS_SINCE_SLICE_CHARS = 400;
+var COMMIT_SUBJECT_CAP_CHARS = 100;
+var COMMITS_SINCE_LEADIN = "Commits since this handoff was recorded (";
+var truncateSubject = (s) => s.length > COMMIT_SUBJECT_CAP_CHARS ? `${s.slice(0, COMMIT_SUBJECT_CAP_CHARS)}\u2026` : s;
+function boundedCommits(commits) {
+  const n = commits.length;
+  const trailer = (k) => k > 0 ? `  (+${k} more)
+`.length : 0;
+  let len = `${COMMITS_SINCE_LEADIN}${n}):
+`.length;
+  const shown = [];
+  for (let i = 0; i < n; i++) {
+    const line2 = `  ${commits[i].short} ${truncateSubject(commits[i].subject)}
+`.length;
+    if (len + line2 + trailer(n - i - 1) > COMMITS_SINCE_SLICE_CHARS) break;
+    len += line2;
+    shown.push(commits[i]);
+  }
+  return { shown, more: n - shown.length };
+}
+function renderCommitsSince(commits) {
+  if (commits.length === 0) return "";
+  const { shown, more } = boundedCommits(commits);
+  let out = `${COMMITS_SINCE_LEADIN}${commits.length}):
+`;
+  for (const c of shown) out += `  ${c.short} ${truncateSubject(c.subject)}
+`;
+  if (more > 0) out += `  (+${more} more)
+`;
+  return out;
+}
 function isPinCandidate(e) {
   return e.type === "fact" && (e.tags.includes("handoff") || e.tags.includes("next"));
 }
@@ -36254,7 +36348,7 @@ function renderCaptureFallback(engineDir = dirname4(fileURLToPath(import.meta.ur
   return `capture fallback: if the kb_* tools error or disappear, the CLI still writes (same engine, separate process; journaled per ADR-0064) \u2014
   VFKB_DATA_DIR="${resolvePath(brainDir())}" ${target} add <type> "\u2026" [--tag a,b] [--why "\u2026"]`;
 }
-function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
+function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS, opts = {}) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
   const superseded = supersededIds(all);
@@ -36277,12 +36371,25 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
   const constitutionalIds = new Set(constitution.map((c) => c.id));
   const handoff2 = latestHandoff(all, today, superseded);
   if (handoff2 && !constitutionalIds.has(handoff2.id)) {
-    const text2 = handoff2.text.length > HANDOFF_PIN_CAP_CHARS ? `${handoff2.text.slice(0, HANDOFF_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${handoff2.id} for the rest)` : handoff2.text;
+    let since = "";
+    if (opts.pinStaleness) {
+      try {
+        since = renderCommitsSince(opts.pinStaleness(handoff2) ?? []);
+      } catch {
+        since = "";
+      }
+    }
+    const cap = HANDOFF_PIN_CAP_CHARS - since.length;
+    const text2 = handoff2.text.length > cap ? `${handoff2.text.slice(0, cap)}\u2026 (truncated \u2014 kb_get ${handoff2.id} for the rest)` : handoff2.text;
     body += `## Last handoff
 - [${handoff2.type} ${trustGlyph(handoff2)} \xB7 ${handoff2.id}] ${text2}
-
+${since}
 `;
   }
+  const curation = curationLine(all, today);
+  if (curation) body += `${curation}
+
+`;
   const crossRepo = latestCrossRepo(all, today, superseded);
   if (crossRepo && !constitutionalIds.has(crossRepo.id)) {
     const text2 = crossRepo.text.length > CROSS_REPO_PIN_CAP_CHARS ? `${crossRepo.text.slice(0, CROSS_REPO_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${crossRepo.id} for the rest)` : crossRepo.text;
@@ -36410,27 +36517,199 @@ function renderResumeDigest(rec, all = readAll()) {
   for (const s of rec.signals ?? []) lines.push(`- ${s.label} (ASSERTED by caller): ${s.value}`);
   return lines.join("\n");
 }
-function renderResume(project = defaultProject(), session = SessionState.load()) {
+function renderResume(project = defaultProject(), session = SessionState.load(), opts = {}) {
   const all = readAll();
   const prior = SessionState.records().find((r) => r.sessionId !== session.sessionId);
   const digest = prior ? renderResumeDigest(prior, all) : "## Resume\n- (first recorded session \u2014 no prior continuity)";
   const head = `<vfkb-resume project="${project}">
 ${digest}
 </vfkb-resume>`;
-  const bundle = renderContextBundle(project, Math.max(0, SESSION_BUDGET_CHARS - head.length - 1));
+  const bundle = renderContextBundle(project, Math.max(0, SESSION_BUDGET_CHARS - head.length - 1), opts);
   return `${head}
 ${bundle}`;
 }
 
 // src/heal.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname5, join as join8 } from "node:path";
+import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname6, join as join9 } from "node:path";
+
+// src/pin-staleness.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync5, renameSync as renameSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname5, isAbsolute, join as join8 } from "node:path";
+var defaultGit = (args, cwd, o) => execFileSync2("git", args, {
+  cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "ignore"],
+  timeout: o.timeout,
+  maxBuffer: o.maxBuffer
+});
+var PIN_STALENESS_BUDGET_MS = 1500;
+var PIN_STALENESS_RULE = "rfc043-part0/bprime/created/1";
+var ms = (t) => Math.max(1, Math.floor(t));
+var escapeRegex2 = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var Budget = class {
+  deadline;
+  now;
+  constructor(o) {
+    this.now = o.now ?? (() => performance.now());
+    this.deadline = o.deadline ?? this.now() + PIN_STALENESS_BUDGET_MS;
+  }
+  /** ms left, or throws when none: the pre-call check, so a spent budget spawns nothing. */
+  left() {
+    const l = this.deadline - this.now();
+    if (l <= 0) throw new Error("pin-staleness: budget spent");
+    return ms(l);
+  }
+};
+function staleRepoRoot(cwd, brain, run2, b) {
+  try {
+    return run2(["rev-parse", "--show-toplevel"], cwd, { timeout: b.left() }).trim() || void 0;
+  } catch {
+  }
+  if (existsSync5(join8(brain, ".git"))) return void 0;
+  try {
+    return run2(["rev-parse", "--show-toplevel"], dirname5(realPath(brain)), { timeout: b.left() }).trim() || void 0;
+  } catch {
+    return void 0;
+  }
+}
+function brainPathspec(root, brain) {
+  const brainRel = relativeReal(root, brain);
+  if (brainRel === "") {
+    return { brainRel, paths: [".", ...COMMITTED_BRAIN_PATHS.map((f) => `:(exclude)${f}`)], ent: "entries.jsonl" };
+  }
+  if (brainRel === ".." || brainRel.startsWith("../") || isAbsolute(brainRel)) {
+    return { brainRel, paths: ["."], ent: null };
+  }
+  return { brainRel, paths: [".", `:(exclude)${brainRel}`], ent: `${brainRel}/entries.jsonl` };
+}
+function pinInHead(text2, pin) {
+  for (const line2 of text2.split("\n")) {
+    if (!line2.includes(pin.id)) continue;
+    try {
+      const r = JSON.parse(line2);
+      if (r.id === pin.id && r.created === pin.created) return true;
+    } catch {
+    }
+  }
+  return false;
+}
+function prepare(cwd, brain, pin, run2, b) {
+  const uMs = Date.parse(pin.created);
+  if (!pin.id || !Number.isFinite(uMs)) return null;
+  const root = staleRepoRoot(cwd, brain, run2, b);
+  if (!root) return null;
+  const { brainRel, paths, ent } = brainPathspec(root, brain);
+  const head = run2(["rev-parse", "HEAD"], root, { timeout: b.left() }).trim();
+  if (!head) return null;
+  return { root, paths, ent, uMs, key: { rule: PIN_STALENESS_RULE, id: pin.id, created: pin.created, head, toplevel: root, brainRel } };
+}
+function computeFromKey(root, paths, ent, pin, uMs, run2, b) {
+  const T = run2(["rev-list", "-1", "--first-parent", `--before=${pin.created}`, "HEAD"], root, { timeout: b.left() }).trim();
+  let C = "";
+  if (ent) {
+    try {
+      const atHead = run2(["show", `HEAD:${ent}`], root, { timeout: b.left(), maxBuffer: GIT_READ_MAX_BUFFER });
+      if (pinInHead(atHead, pin)) {
+        const pattern = `"id":"${escapeRegex2(pin.id)}".*"created":"${escapeRegex2(pin.created)}"`;
+        C = run2(["log", "--first-parent", "--reverse", "--format=%H", `-G${pattern}`, "HEAD", "--", ent], root, {
+          timeout: b.left()
+        }).split("\n").find((l) => l.trim())?.trim() ?? "";
+      }
+    } catch (e) {
+      if (b.deadline - b.now() <= 0) throw e;
+      C = "";
+    }
+  }
+  const range = T ? `${T}..HEAD` : "HEAD";
+  const raw = run2(["log", "--first-parent", "--format=%H%x00%at%x00%s", range, "--", ...paths], root, {
+    timeout: b.left()
+  });
+  const S = raw.split("\n").filter((l) => l.length > 0).map((l) => {
+    const [hash2, at, ...rest] = l.split("\0");
+    return { hash: hash2, at: Number(at), subject: rest.join("\0") };
+  }).filter((c) => /^[0-9a-f]{7,}$/.test(c.hash));
+  let newerThanC = null;
+  if (C) {
+    try {
+      newerThanC = new Set(
+        run2(["rev-list", "--first-parent", `${C}..HEAD`], root, { timeout: b.left() }).split("\n").map((l) => l.trim()).filter(Boolean)
+      );
+    } catch (e) {
+      if (b.deadline - b.now() <= 0) throw e;
+      newerThanC = null;
+    }
+  }
+  const authoredByU = (at) => !Number.isFinite(at) || at * 1e3 <= uMs;
+  const kept = S.filter((c) => {
+    if (C) {
+      if (c.hash === C) return false;
+      if (newerThanC === null) return false;
+      const ancestorOfC = !newerThanC.has(c.hash);
+      return !(ancestorOfC && authoredByU(c.at));
+    }
+    return !authoredByU(c.at);
+  });
+  b.left();
+  return { commits: kept.map((c) => ({ hash: c.hash, short: c.hash.slice(0, 7), subject: c.subject })) };
+}
+var cachePath = (brain) => join8(brain, ".signals", "pin-staleness.json");
+var sameKey = (a, b) => {
+  if (!b || typeof b !== "object") return false;
+  const o = b;
+  return Object.keys(a).every((k) => o[k] === a[k]);
+};
+function readCache(brain, key) {
+  try {
+    const raw = JSON.parse(readFileSync5(cachePath(brain), "utf8"));
+    if (!sameKey(key, raw.key) || !Array.isArray(raw.commits)) return void 0;
+    const ok = raw.commits.every(
+      (c) => c && typeof c === "object" && typeof c.hash === "string" && typeof c.short === "string" && typeof c.subject === "string"
+    );
+    return ok ? raw.commits : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function writeCache(brain, key, commits) {
+  try {
+    mkdirSync5(join8(brain, ".signals"), { recursive: true });
+    const f = cachePath(brain);
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync3(tmp, JSON.stringify({ key, commits, computedAt: (/* @__PURE__ */ new Date()).toISOString() }), "utf8");
+    renameSync3(tmp, f);
+  } catch {
+  }
+}
+function cachedPinStaleness(cwd, brain, pin, opts = {}) {
+  const run2 = opts.git ?? defaultGit;
+  const b = new Budget(opts);
+  try {
+    const p = prepare(cwd, brain, pin, run2, b);
+    if (!p) return null;
+    if (opts.cache !== false) {
+      const hit = readCache(brain, p.key);
+      if (hit) return { commits: hit };
+    }
+    const res = computeFromKey(p.root, p.paths, p.ent, pin, p.uMs, run2, b);
+    if (opts.cache !== false) writeCache(brain, p.key, res.commits);
+    return res;
+  } catch {
+    return null;
+  }
+}
+function gitPinStalenessProvider(cwd, brain, opts = {}) {
+  return (pin) => cachedPinStaleness(cwd, brain, { id: pin.id, created: pin.created }, opts)?.commits ?? null;
+}
+
+// src/heal.ts
 var healedThisProcess = false;
 var MARKER_DEBOUNCE_MS = Number(process.env.VFKB_HEAL_DEBOUNCE_MS ?? 15 * 60 * 1e3);
-var markerPath = (brain) => join8(brain, ".journal", ".healed");
+var markerPath = (brain) => join9(brain, ".journal", ".healed");
 function alreadyHealed(brain, sid, debounce) {
   try {
-    const raw = readFileSync5(markerPath(brain), "utf8");
+    const raw = readFileSync6(markerPath(brain), "utf8");
     const m = JSON.parse(raw);
     if (sid) return m.sessionId === sid;
     if (!debounce) return false;
@@ -36442,8 +36721,8 @@ function alreadyHealed(brain, sid, debounce) {
 function stampHealed(brain, sid) {
   try {
     const p = markerPath(brain);
-    mkdirSync5(dirname5(p), { recursive: true });
-    writeFileSync3(p, JSON.stringify({ sessionId: sid, at: Date.now() }), "utf8");
+    mkdirSync6(dirname6(p), { recursive: true });
+    writeFileSync4(p, JSON.stringify({ sessionId: sid, at: Date.now() }), "utf8");
   } catch {
   }
 }
@@ -36474,7 +36753,7 @@ function healBrain(opts = {}) {
 }
 function resumePayload(project, session, opts = {}) {
   const note = healBrain(opts);
-  return note + renderResume(project, session);
+  return note + renderResume(project, session, { pinStaleness: gitPinStalenessProvider(process.cwd(), brainDir()) });
 }
 
 // src/read.ts
