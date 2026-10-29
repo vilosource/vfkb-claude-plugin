@@ -3,9 +3,10 @@
 // ----------------------------------------------------------------------------
 // Two modes, selected by $VFKB_L4_AUTH:
 //
-//   oauth (default)  — the laptop leg: stage the operator's claudeAiOauth block
-//                      into the sandbox HOME, exactly as the scenarios always
-//                      did. Env untouched. Full production fidelity.
+//   oauth (default)  — the laptop leg: hand the operator's OAuth access token to
+//                      each child as $CLAUDE_CODE_OAUTH_TOKEN. NOTHING is staged
+//                      on disk and the child never touches the macOS Keychain
+//                      (see "No Keychain" below).
 //   deepseek-env     — the CI leg: NO credential file anywhere; headless
 //                      Claude Code authenticates via ANTHROPIC_BASE_URL +
 //                      ANTHROPIC_AUTH_TOKEN against DeepSeek's
@@ -22,12 +23,14 @@
 // ============================================================================
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const AUTH_MODE = process.env.VFKB_L4_AUTH || 'oauth';
 const DEEPSEEK_BASE = 'https://api.deepseek.com/anthropic';
+// The env token cannot be refreshed by the child, so it must outlive the run.
+const MIN_TOKEN_MINUTES = parseInt(process.env.VFKB_L4_MIN_TOKEN_MINUTES || '60', 10);
 
 if (!['oauth', 'deepseek-env'].includes(AUTH_MODE)) {
   throw new Error(`VFKB_L4_AUTH=${AUTH_MODE} is not a mode (oauth | deepseek-env)`);
@@ -111,6 +114,8 @@ export function assertAuthReady() {
     }
     return;
   }
+  assertNoKeychainDialogs();
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return; // operator-supplied (e.g. `claude setup-token`)
   let all;
   try { all = readRealCredentials(); } catch (e) {
     throw new Error(`oauth mode but no credentials could be read: ${e.message}`);
@@ -131,6 +136,18 @@ export function assertAuthReady() {
   // hangs the turn and would be scored as a model miss") — applied to the failure
   // mode that actually happened.
   const expiresAt = all.claudeAiOauth.expiresAt;
+  if (typeof expiresAt === 'number' && expiresAt > Date.now() &&
+      expiresAt - Date.now() < MIN_TOKEN_MINUTES * 60000) {
+    // The child gets the ACCESS token only (no refresh token — that is what keeps it
+    // off the Keychain), so a run that outlives the token fails mid-trial with a
+    // 401 and scores the auth failure as a capability miss.
+    const mins = Math.round((expiresAt - Date.now()) / 60000);
+    throw new Error(
+      `the stored claudeAiOauth token expires in ${mins} min (< VFKB_L4_MIN_TOKEN_MINUTES=${MIN_TOKEN_MINUTES}) — ` +
+        'refusing: the sandboxed children cannot refresh it. Use `claude` interactively until it refreshes, ' +
+        'or export a long-lived CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`), then re-run.',
+    );
+  }
   if (typeof expiresAt === 'number' && expiresAt <= Date.now()) {
     const when = new Date(expiresAt).toISOString();
     throw new Error(
@@ -142,16 +159,104 @@ export function assertAuthReady() {
   }
 }
 
-/** Stage credentials into a sandbox HOME. deepseek-env stages nothing — auth is env-only. */
-export function stageAuth(homeDir) {
-  if (AUTH_MODE === 'deepseek-env') return;
-  const all = readRealCredentials();
-  if (!all.claudeAiOauth) throw new Error('credentials found, but they carry no claudeAiOauth block');
-  const dir = join(homeDir, '.claude');
-  mkdirSync(dir, { recursive: true });
-  const dst = join(dir, '.credentials.json');
-  writeFileSync(dst, JSON.stringify({ claudeAiOauth: all.claudeAiOauth }));
-  chmodSync(dst, 0o600);
+/**
+ * Stage credentials into a sandbox HOME — now a deliberate no-op in BOTH modes.
+ *
+ * It used to copy the claudeAiOauth block (access AND refresh token) into
+ * <home>/.claude/.credentials.json. On macOS that made every sandbox a fresh
+ * Claude Code profile that could refresh the token and save it to a NEW Keychain
+ * item, "Claude Code-credentials-<sha256(config dir)[:8]>" — one per throwaway
+ * dir. Observed 2026-10-29: run from a herdr pane (`launchctl managername` =
+ * "Background", no GUI login keychain), every such save popped "A keychain cannot
+ * be found to store …", one dialog per spawned run. A sandbox refresh could also
+ * rotate the operator's real refresh token out from under the live session.
+ * authEnv() now carries an access token in the child env instead; kept as an
+ * export so the scenarios' call sites stay valid.
+ */
+export function stageAuth(_homeDir) {}
+
+// --- No Keychain -------------------------------------------------------------
+// Belt and braces for the env token: every child runs with a `security` shim
+// first on PATH that answers "item not found" (exit 44) and never reaches the real
+// Keychain. Claude Code 2.1.292 reads and writes the Keychain by spawning
+// `security` from PATH (`security -i` with stdin, or `add-generic-password` for a
+// large payload — seen in the binary), so this makes a Keychain write IMPOSSIBLE
+// rather than merely unexpected. Attempts are logged (subcommand + service only,
+// never an argument that could carry a secret); keychainWriteAttempts() reads them.
+let shimDir = null;
+let shimLog = null;
+function keychainShim() {
+  if (shimDir) return shimDir;
+  shimDir = mkdtempSync(join(tmpdir(), 'vfkb-l4-nokeychain-'));
+  shimLog = join(shimDir, 'attempts.log');
+  const sec = join(shimDir, 'security');
+  writeFileSync(sec, [
+    '#!/bin/sh',
+    '# vfkb L4: no Keychain access from sandboxed children (auth.mjs)',
+    'sub="$1"; svc=""',
+    'while [ $# -gt 0 ]; do [ "$1" = "-s" ] && svc="$2"; shift; done',
+    `printf '%s|%s\n' "$sub" "$svc" >> '${shimLog}'`,
+    'exit 44',
+    '',
+  ].join('\n'));
+  chmodSync(sec, 0o755);
+  return shimDir;
+}
+
+/** Keychain WRITE attempts the shim refused so far (`-i` is the stdin write path). */
+export function keychainWriteAttempts() {
+  if (!shimLog) return [];
+  let lines = [];
+  try { lines = readFileSync(shimLog, 'utf8').split('\n').filter(Boolean); } catch { return []; }
+  return lines.filter((l) => /^(-i|add-generic-password|delete-generic-password)\|/.test(l));
+}
+
+// Say so loudly if a child still tried: the shim refused it, but it means the env
+// route stopped covering some path and the shim is all that stands in the way.
+process.on('exit', () => {
+  const n = keychainWriteAttempts().length;
+  if (n) process.stderr.write(`auth.mjs: WARNING — the no-Keychain shim refused ${n} Keychain write attempt(s)\n`);
+});
+
+let managerName;
+function sessionManager() {
+  if (managerName !== undefined) return managerName;
+  try {
+    managerName = execFileSync('launchctl', ['managername'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { managerName = 'unknown'; }
+  return managerName;
+}
+
+/**
+ * Refuse to spawn into a dialog storm. On macOS outside the GUI ("Aqua") session
+ * — tmux/herdr panes, ssh, launchd — the login Keychain cannot be written and each
+ * attempt is a modal dialog for the operator. If the child env would carry no env
+ * credential, Claude Code falls back to the Keychain: refuse instead.
+ */
+export function assertNoKeychainDialogs(env = process.env, probe = {}) {
+  if ((probe.platform ?? process.platform) !== 'darwin') return;
+  const hasEnvCred = Boolean(env.CLAUDE_CODE_OAUTH_TOKEN || env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN);
+  if (hasEnvCred) return;
+  if (AUTH_MODE === 'oauth') {
+    // authEnv() supplies the token itself; only a missing token is a problem.
+    const read = probe.readToken ?? (() => readRealCredentials().claudeAiOauth?.accessToken);
+    try { if (read()) return; } catch { /* fall through */ }
+  }
+  const mgr = probe.manager ?? sessionManager();
+  if (mgr !== 'Aqua') {
+    throw new Error(
+      `launchctl managername is "${mgr}", not "Aqua", and no env credential (CLAUDE_CODE_OAUTH_TOKEN / ` +
+        'ANTHROPIC_API_KEY) is available — refusing to spawn claude: each child would try the login Keychain ' +
+        'and pop a "keychain cannot be found" dialog. Export CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) and re-run.',
+    );
+  }
+}
+
+let oauthToken;
+function oauthAccessToken() {
+  if (oauthToken !== undefined) return oauthToken;
+  oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN || readRealCredentials().claudeAiOauth?.accessToken || null;
+  return oauthToken;
 }
 
 /**
@@ -177,13 +282,22 @@ export function sandboxEnv(baseEnv, home) {
 }
 
 /**
- * The env a `claude` child runs under. oauth: passthrough (laptop behaviour
- * byte-identical). deepseek-env: strip every ANTHROPIC- and CLAUDE-prefixed
+ * The env a `claude` child runs under. oauth: passthrough plus
+ * CLAUDE_CODE_OAUTH_TOKEN and the no-Keychain `security` shim on PATH (above).
+ * deepseek-env: strip every ANTHROPIC- and CLAUDE-prefixed
  * var the caller inherited (nothing may leak from the invoking session), then
  * set the endpoint pair.
  */
 export function authEnv(baseEnv) {
-  if (AUTH_MODE === 'oauth') return baseEnv;
+  if (AUTH_MODE === 'oauth') {
+    const token = oauthAccessToken();
+    const env = { ...baseEnv };
+    if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token;
+    // On every platform: a no-op where there is no `security`, and it keeps the selftest portable.
+    env.PATH = `${keychainShim()}:${baseEnv.PATH || process.env.PATH || ''}`;
+    assertNoKeychainDialogs(env);
+    return env;
+  }
   const env = {};
   for (const [k, v] of Object.entries(baseEnv)) {
     if (/^(ANTHROPIC|CLAUDE)/i.test(k)) continue;
@@ -197,9 +311,10 @@ export function authEnv(baseEnv) {
 /** Redact the token (and any deepseek-key-shaped string) from text bound for a record. */
 export function redactSecrets(text) {
   let out = String(text ?? '');
-  const tok = process.env.DEEPSEEK_TOKEN;
-  if (tok && tok.length >= 8) out = out.split(tok).join('***REDACTED***');
-  return out.replace(/sk-[A-Za-z0-9]{16,}/g, '***REDACTED***');
+  for (const tok of [process.env.DEEPSEEK_TOKEN, oauthToken, process.env.CLAUDE_CODE_OAUTH_TOKEN]) {
+    if (tok && tok.length >= 8) out = out.split(tok).join('***REDACTED***');
+  }
+  return out.replace(/sk-[A-Za-z0-9_-]{16,}/g, '***REDACTED***');
 }
 
 /** The ADR-0067 D5 provenance block. Credential KIND only — never a value. */

@@ -66,6 +66,11 @@ jobs:
       - name: hooks-smoke promptLineInjected reader (the UserPromptSubmit observable)
         run: node scenarios/prompt-line.selftest.mjs
 
+      # The L4 auth seam hands children an env token and puts a no-Keychain
+      # `security` shim on PATH (a sandbox once popped one macOS dialog per run).
+      - name: L4 auth seam (env token, no Keychain writes, non-Aqua guard)
+        run: node scenarios/auth.selftest.mjs
+
       # ADR-0061: a shipped version is immutable. If the consumer-facing surface
       # differs from what vfkb--v{version} already shipped, the version is stale
       # and must be bumped. This is the half of "bump-and-tag" that prose could
