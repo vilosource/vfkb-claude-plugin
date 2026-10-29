@@ -59,7 +59,8 @@ function probe() {
   const script = `{ printf '%s\\n' '${msg('Reply OK.')}'; sleep 20; printf '%s\\n' '${msg('/compact')}'; sleep 60; } | ` +
     `"${process.env.CLAUDE_BIN || 'claude'}" -p --input-format stream-json --output-format stream-json --verbose ` +
     `--settings "${settings}" --model claude-haiku-4-5 --permission-mode bypassPermissions`;
-  const r = spawnSync('bash', ['-c', script], { cwd: sb, env: { ...process.env, MLOG: log }, encoding: 'utf8', maxBuffer: 64 << 20 });
+  // Through the L4 auth seam (env token + no-Keychain shim) — loaded only when run directly.
+  const r = spawnSync('bash', ['-c', script], { cwd: sb, env: authEnvFn({ ...process.env, MLOG: log }), encoding: 'utf8', maxBuffer: 64 << 20 });
   if (!existsSync(log)) throw new Error(`no hook fired at all (exit ${r.status}): ${(r.stderr || '').slice(0, 400)}`);
   const fired = { startup: new Set(), compact: new Set() };
   for (const line of readFileSync(log, 'utf8').trim().split('\n')) {
@@ -70,6 +71,11 @@ function probe() {
   const fmt = (s) => [...s].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))).join(' ');
   return `startup: ${fmt(fired.startup)}\ncompact: ${fmt(fired.compact)}`;
 }
+
+// Loaded only when run directly, so compact-coverage (which imports PROBED) never loads auth.mjs.
+const authEnvFn = process.argv[1] === fileURLToPath(import.meta.url)
+  ? (await import('./auth.mjs')).authEnv
+  : (env) => env;
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const version = cliVersion();
