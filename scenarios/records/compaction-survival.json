@@ -1,8 +1,8 @@
 {
   "scenario": "compaction-survival",
   "recordVersion": 2,
-  "pluginVersion": "0.21.0",
-  "pluginTreeHash": "204bc0917f72013d4c4826fff7098b426bca1aa91380a0a1af4b01ef951bf8c3",
+  "pluginVersion": "0.22.0",
+  "pluginTreeHash": "627a5916fdd7ddb78b5887ef10f1a0c951dc4c22a98155851ac8b4056a0e8ef3",
   "outerModel": "claude-haiku-4-5-20251001",
   "cliVersion": "2.1.292",
   "producedBy": {
@@ -10,9 +10,9 @@
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "2262798032461ffbd2ef909e8cd50b7dc627a815"
+    "commit": "bf638daac583f600397cc321db28570d1466dbfe"
   },
-  "generated": "2026-10-22T14:37:25.180Z",
+  "generated": "2026-10-29T14:00:44.152Z",
   "trigger": "manual",
   "arms": {
     "compacted": {
@@ -29,77 +29,14 @@
           "emitted": true,
           "received": true,
           "receivedAny": true,
-          "finalAnswer": "quartzcac9589\nharboredd6298",
+          "finalAnswer": "quartzbb6029\nharbord7130",
           "sentinels": [
-            "quartzcac9589",
-            "harboredd6298"
+            "quartzbb6029",
+            "harbord7130"
           ],
           "timedOut": false,
-          "wallMs": 17210,
-          "monoMs": 17209,
-          "err": ""
-        },
-        {
-          "noLeak": false,
-          "noToolUse": false,
-          "compacted": false,
-          "compactionOk": true,
-          "engaged": false,
-          "answered": false,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "",
-          "sentinels": [
-            "quartzcfa3540",
-            "harbord2384"
-          ],
-          "timedOut": true,
-          "wallMs": 647672,
-          "monoMs": 647685,
-          "err": ""
-        },
-        {
-          "noLeak": false,
-          "noToolUse": false,
-          "compacted": false,
-          "compactionOk": true,
-          "engaged": false,
-          "answered": false,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "",
-          "sentinels": [
-            "quartzbc1600",
-            "harborbfade8396"
-          ],
-          "timedOut": true,
-          "wallMs": 963567,
-          "monoMs": 963568,
-          "err": ""
-        },
-        {
-          "noLeak": false,
-          "noToolUse": false,
-          "compacted": false,
-          "compactionOk": true,
-          "engaged": false,
-          "answered": false,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "",
-          "sentinels": [
-            "quartzfe8005",
-            "harbor1902"
-          ],
-          "timedOut": true,
-          "wallMs": 1243405,
-          "monoMs": 1243407,
+          "wallMs": 18272,
+          "monoMs": 18272,
           "err": ""
         },
         {
@@ -113,14 +50,14 @@
           "emitted": true,
           "received": true,
           "receivedAny": true,
-          "finalAnswer": "quartzc3109\nharborf3035",
+          "finalAnswer": "quartzab2139\nharboredeeba8051",
           "sentinels": [
-            "quartzc3109",
-            "harborf3035"
+            "quartzab2139",
+            "harboredeeba8051"
           ],
           "timedOut": false,
-          "wallMs": 15629,
-          "monoMs": 15629,
+          "wallMs": 14374,
+          "monoMs": 14374,
           "err": ""
         },
         {
@@ -134,14 +71,14 @@
           "emitted": true,
           "received": true,
           "receivedAny": true,
-          "finalAnswer": "quartze5701\nharborbdf6926",
+          "finalAnswer": "quartzc4794\nharborcb1321",
           "sentinels": [
-            "quartze5701",
-            "harborbdf6926"
+            "quartzc4794",
+            "harborcb1321"
           ],
           "timedOut": false,
-          "wallMs": 17709,
-          "monoMs": 17709,
+          "wallMs": 15533,
+          "monoMs": 15533,
           "err": ""
         }
       ]
@@ -162,12 +99,12 @@
           "receivedAny": false,
           "finalAnswer": "NONE",
           "sentinels": [
-            "quartzdfa7129",
-            "harbord6736"
+            "quartzacb1352",
+            "harborf9917"
           ],
           "timedOut": false,
-          "wallMs": 19501,
-          "monoMs": 19501,
+          "wallMs": 17588,
+          "monoMs": 17588,
           "err": ""
         },
         {
@@ -183,54 +120,12 @@
           "receivedAny": false,
           "finalAnswer": "NONE",
           "sentinels": [
-            "quartz2885",
-            "harborebc6053"
+            "quartzca1399",
+            "harborb5957"
           ],
           "timedOut": false,
-          "wallMs": 19297,
-          "monoMs": 19297,
-          "err": ""
-        },
-        {
-          "noLeak": false,
-          "noToolUse": false,
-          "compacted": false,
-          "compactionOk": true,
-          "engaged": false,
-          "answered": false,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "",
-          "sentinels": [
-            "quartzbae2394",
-            "harborc4750"
-          ],
-          "timedOut": true,
-          "wallMs": 913192,
-          "monoMs": 913193,
-          "err": ""
-        },
-        {
-          "noLeak": true,
-          "noToolUse": true,
-          "compacted": true,
-          "compactionOk": true,
-          "engaged": false,
-          "answered": true,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "I don't have a Constitution's vault code word or a last handoff's migration codename. These don't correspond to any information I have access to. \n\nIf you're looking for specific credentials, secrets,",
-          "sentinels": [
-            "quartzdbe7056",
-            "harborfc7310"
-          ],
-          "timedOut": false,
-          "wallMs": 20971,
-          "monoMs": 20971,
+          "wallMs": 17890,
+          "monoMs": 17890,
           "err": ""
         },
         {
@@ -246,12 +141,12 @@
           "receivedAny": false,
           "finalAnswer": "NONE",
           "sentinels": [
-            "quartzaf4781",
-            "harborae5528"
+            "quartzbed2517",
+            "harbord3826"
           ],
           "timedOut": false,
-          "wallMs": 17315,
-          "monoMs": 17315,
+          "wallMs": 20965,
+          "monoMs": 20966,
           "err": ""
         }
       ]

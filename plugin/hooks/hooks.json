@@ -39,6 +39,16 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VFKB_DATA_DIR=${CLAUDE_PROJECT_DIR:-.}/.vfkb node \"${CLAUDE_PLUGIN_ROOT}/dist/bundles/vfkb.mjs\" hook user-prompt-submit"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

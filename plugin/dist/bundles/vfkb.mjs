@@ -23,7 +23,8 @@ import {
   readFileSync as readFileSync2,
   writeFileSync,
   existsSync,
-  readdirSync
+  readdirSync,
+  renameSync
 } from "node:fs";
 import { join as join2 } from "node:path";
 
@@ -35,8 +36,8 @@ var STALE_MS = 1e4;
 var ACQUIRE_TIMEOUT_MS = 5e3;
 var RETRY_MS = 25;
 var depth = 0;
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function sleepSync(ms3) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms3);
 }
 function pidAlive(pid) {
   try {
@@ -47,8 +48,8 @@ function pidAlive(pid) {
   }
 }
 function testHoldForRace() {
-  const ms = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
-  if (ms > 0) sleepSync(ms);
+  const ms3 = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
+  if (ms3 > 0) sleepSync(ms3);
 }
 function withBrainLock(fn) {
   if (process.env.VFKB_LOCK_DISABLED === "1") return fn();
@@ -198,7 +199,10 @@ var JsonlFsBackend = class {
   writeSessionRecord(id, json2) {
     const dir = join2(dataDir(), ".sessions");
     mkdirSync2(dir, { recursive: true });
-    writeFileSync(join2(dir, `${safeKey(id)}.json`), json2, "utf8");
+    const f = join2(dir, `${safeKey(id)}.json`);
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync(tmp, json2, "utf8");
+    renameSync(tmp, f);
   }
   withExclusive(fn) {
     return withBrainLock(fn);
@@ -212,7 +216,12 @@ function storageBackend() {
 
 // src/journal.ts
 import { execFileSync } from "node:child_process";
-import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
+
+// src/git-buffer.ts
+var GIT_READ_MAX_BUFFER = 512 * 1024 * 1024;
+
+// src/journal.ts
+import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync as renameSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2, join as join4 } from "node:path";
 
 // src/realpath.ts
@@ -246,7 +255,7 @@ var suppressedPath = (brain) => join4(brain, ".journal", "suppressed");
 function rewriteWal(wal, keep) {
   const tmp = `${wal}.tmp`;
   writeFileSync2(tmp, keep.length > 0 ? keep.map((l) => l.raw).join("\n") + "\n" : "", "utf8");
-  renameSync(tmp, wal);
+  renameSync2(tmp, wal);
 }
 var pairOf = (r) => `${String(r.id)}\0${String(r.updated ?? "")}`;
 function parseLines(text) {
@@ -287,21 +296,23 @@ function journalAppend(brain, rec) {
 }
 function pairsAtHead(brain) {
   const repoDir = dirname2(realPath(brain));
-  const git2 = (...a) => execFileSync("git", ["-C", repoDir, ...a], {
+  const git3 = (...a) => execFileSync("git", ["-C", repoDir, ...a], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"]
   }).trim();
   try {
-    if (git2("rev-parse", "--is-inside-work-tree") !== "true") return "not-git";
+    if (git3("rev-parse", "--is-inside-work-tree") !== "true") return "not-git";
   } catch {
     return "not-git";
   }
   try {
-    const top = git2("rev-parse", "--show-toplevel");
+    const top = git3("rev-parse", "--show-toplevel");
     const rel = relativeReal(top, join4(brain, "entries.jsonl"));
     const head = execFileSync("git", ["-C", repoDir, "cat-file", "-p", `HEAD:${rel}`], {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: GIT_READ_MAX_BUFFER
+      // vfkb#384: past 1 MiB this threw → 'unknown' → never pruned
     });
     return new Set(parseLines(head).map((l) => l.pair));
   } catch {
@@ -19409,6 +19420,17 @@ function sanitizeNudgedAtTurn(raw) {
   }
   return Object.keys(out).length > 0 ? out : void 0;
 }
+function sanitizeSessionEnd(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return void 0;
+  const r = raw;
+  if (typeof r.startedAt !== "string" || !r.startedAt) return void 0;
+  const out = { startedAt: r.startedAt };
+  if (typeof r.reason === "string") out.reason = r.reason;
+  if (typeof r.turnAtEnd === "number" && Number.isFinite(r.turnAtEnd)) out.turnAtEnd = r.turnAtEnd;
+  if (typeof r.outcome === "string") out.outcome = r.outcome;
+  if (typeof r.elapsedMs === "number" && Number.isFinite(r.elapsedMs)) out.elapsedMs = r.elapsedMs;
+  return out;
+}
 var SessionState = class _SessionState {
   data;
   injected = /* @__PURE__ */ new Set();
@@ -19451,13 +19473,22 @@ var SessionState = class _SessionState {
           agentLabel: loaded.agentLabel,
           branch: loaded.branch,
           pid: loaded.pid,
-          nudgedAtTurn: sanitizeNudgedAtTurn(loaded.nudgedAtTurn)
+          nudgedAtTurn: sanitizeNudgedAtTurn(loaded.nudgedAtTurn),
+          sessionEnd: sanitizeSessionEnd(loaded.sessionEnd)
         };
         this.injected = new Set(this.data.injectedIds);
         this.captured = new Set(this.data.capturedIds);
       } catch {
       }
     }
+  }
+  /**
+   * True when this state is backed by a session record (a session id was known). An
+   * ephemeral state lives for one process only, so its turnCount is always the first turn:
+   * turn-keyed rules (ADR-0084 §1.1 and later) must treat it as "no turn info", not turn 1.
+   */
+  get isPersisted() {
+    return this.persisted;
   }
   static load(sessionId = process.env.KB_SESSION_ID) {
     if (!sessionId) return new _SessionState(false);
@@ -19518,6 +19549,23 @@ var SessionState = class _SessionState {
   }
   get startedAt() {
     return this.data.startedAt;
+  }
+  get sessionEnd() {
+    return this.data.sessionEnd;
+  }
+  /** vfkb#384: open the SessionEnd marker (call BEFORE any git work, then save()). */
+  openSessionEnd(reason) {
+    this.data.sessionEnd = { startedAt: now(), reason, turnAtEnd: this.data.turnCount };
+  }
+  /** vfkb#384: close the marker with the hook's outcome (then save()). */
+  closeSessionEnd(outcome, elapsedMs) {
+    if (!this.data.sessionEnd) this.data.sessionEnd = { startedAt: now() };
+    this.data.sessionEnd.outcome = outcome;
+    this.data.sessionEnd.elapsedMs = Math.round(elapsedMs);
+  }
+  /** vfkb#384: SessionStart means the session is alive (again) — drop any old marker. */
+  clearSessionEnd() {
+    delete this.data.sessionEnd;
   }
   save() {
     if (!this.persisted || !this.sessionId) return;
@@ -19630,6 +19678,21 @@ function updateEntry(id, patch) {
   });
 }
 var RETIRED_BY = "retired-by:";
+var AUTO_ARCHIVED = "auto-archived:";
+var CURATION_KEPT = "curation-kept";
+var CURATION_LINE_DAYS = 7;
+function curationLine(all, today = nowIso().slice(0, 10)) {
+  const since = new Date(Date.parse(today) - (CURATION_LINE_DAYS - 1) * 864e5).toISOString().slice(0, 10);
+  let n = 0;
+  for (const e of all) {
+    if (e.zone !== "archive") continue;
+    const tag = e.tags.find((t) => t.startsWith(AUTO_ARCHIVED));
+    const date5 = tag?.split("@")[1] ?? "";
+    if (date5 >= since && date5 <= today) n++;
+  }
+  if (n === 0) return "";
+  return `Curation: auto-archived ${n} old handoff${n === 1 ? "" : "s"} in the last ${CURATION_LINE_DAYS} days (\`vfkb curate log\` names them; undo with \`vfkb curate restore <id>\`).`;
+}
 function retirementRefusal(old, by, today = nowIso().slice(0, 10), superseded) {
   if (!isPinCandidate(old)) return `cannot retire ${old.id}: it is not a fact tagged handoff or next`;
   if (!isInjectable(old, today, superseded)) return `cannot retire ${old.id}: it is not live (archived, stale or expired)`;
@@ -19711,7 +19774,11 @@ function supersede(oldId, text, opts = {}) {
     return addEntry("decision", text, {
       role: opts.role ?? "human",
       why: opts.why,
-      tags: opts.tags,
+      // A successor inherits its predecessor's tags unless the caller supplies
+      // its own (explicit wins, no merge). Same shape as `constitutional` below;
+      // without it every successor written without tags (CLI, or a model that
+      // omits them) fell out of `--tag` listings (#127; 52e9ea680e0e).
+      tags: opts.tags ?? old.tags,
       status: opts.status ?? "accepted",
       constitutional: opts.constitutional ?? old.constitutional,
       supersedes: oldId,
@@ -19789,6 +19856,37 @@ function trustGlyph(e) {
   return `${v}${t}`;
 }
 var HANDOFF_PIN_CAP_CHARS = 2e3;
+var COMMITS_SINCE_SLICE_CHARS = 400;
+var COMMIT_SUBJECT_CAP_CHARS = 100;
+var COMMITS_SINCE_LEADIN = "Commits since this handoff was recorded (";
+var truncateSubject = (s) => s.length > COMMIT_SUBJECT_CAP_CHARS ? `${s.slice(0, COMMIT_SUBJECT_CAP_CHARS)}\u2026` : s;
+function boundedCommits(commits) {
+  const n = commits.length;
+  const trailer = (k) => k > 0 ? `  (+${k} more)
+`.length : 0;
+  let len = `${COMMITS_SINCE_LEADIN}${n}):
+`.length;
+  const shown = [];
+  for (let i = 0; i < n; i++) {
+    const line = `  ${commits[i].short} ${truncateSubject(commits[i].subject)}
+`.length;
+    if (len + line + trailer(n - i - 1) > COMMITS_SINCE_SLICE_CHARS) break;
+    len += line;
+    shown.push(commits[i]);
+  }
+  return { shown, more: n - shown.length };
+}
+function renderCommitsSince(commits) {
+  if (commits.length === 0) return "";
+  const { shown, more } = boundedCommits(commits);
+  let out = `${COMMITS_SINCE_LEADIN}${commits.length}):
+`;
+  for (const c of shown) out += `  ${c.short} ${truncateSubject(c.subject)}
+`;
+  if (more > 0) out += `  (+${more} more)
+`;
+  return out;
+}
 function isPinCandidate(e) {
   return e.type === "fact" && (e.tags.includes("handoff") || e.tags.includes("next"));
 }
@@ -19827,7 +19925,7 @@ function renderCaptureFallback(engineDir = dirname4(fileURLToPath(import.meta.ur
   return `capture fallback: if the kb_* tools error or disappear, the CLI still writes (same engine, separate process; journaled per ADR-0064) \u2014
   VFKB_DATA_DIR="${resolvePath(brainDir())}" ${target} add <type> "\u2026" [--tag a,b] [--why "\u2026"]`;
 }
-function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS) {
+function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET_CHARS, opts = {}) {
   const all = readAll();
   const today = nowIso().slice(0, 10);
   const superseded = supersededIds(all);
@@ -19850,12 +19948,25 @@ function renderContextBundle(project = defaultProject(), budget = SESSION_BUDGET
   const constitutionalIds = new Set(constitution.map((c) => c.id));
   const handoff2 = latestHandoff(all, today, superseded);
   if (handoff2 && !constitutionalIds.has(handoff2.id)) {
-    const text = handoff2.text.length > HANDOFF_PIN_CAP_CHARS ? `${handoff2.text.slice(0, HANDOFF_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${handoff2.id} for the rest)` : handoff2.text;
+    let since = "";
+    if (opts.pinStaleness) {
+      try {
+        since = renderCommitsSince(opts.pinStaleness(handoff2) ?? []);
+      } catch {
+        since = "";
+      }
+    }
+    const cap = HANDOFF_PIN_CAP_CHARS - since.length;
+    const text = handoff2.text.length > cap ? `${handoff2.text.slice(0, cap)}\u2026 (truncated \u2014 kb_get ${handoff2.id} for the rest)` : handoff2.text;
     body += `## Last handoff
 - [${handoff2.type} ${trustGlyph(handoff2)} \xB7 ${handoff2.id}] ${text}
-
+${since}
 `;
   }
+  const curation = curationLine(all, today);
+  if (curation) body += `${curation}
+
+`;
   const crossRepo = latestCrossRepo(all, today, superseded);
   if (crossRepo && !constitutionalIds.has(crossRepo.id)) {
     const text = crossRepo.text.length > CROSS_REPO_PIN_CAP_CHARS ? `${crossRepo.text.slice(0, CROSS_REPO_PIN_CAP_CHARS)}\u2026 (truncated \u2014 kb_get ${crossRepo.id} for the rest)` : crossRepo.text;
@@ -20059,27 +20170,199 @@ function renderResumeDigest(rec, all = readAll()) {
   for (const s of rec.signals ?? []) lines.push(`- ${s.label} (ASSERTED by caller): ${s.value}`);
   return lines.join("\n");
 }
-function renderResume(project = defaultProject(), session = SessionState.load()) {
+function renderResume(project = defaultProject(), session = SessionState.load(), opts = {}) {
   const all = readAll();
   const prior = SessionState.records().find((r) => r.sessionId !== session.sessionId);
   const digest = prior ? renderResumeDigest(prior, all) : "## Resume\n- (first recorded session \u2014 no prior continuity)";
   const head = `<vfkb-resume project="${project}">
 ${digest}
 </vfkb-resume>`;
-  const bundle = renderContextBundle(project, Math.max(0, SESSION_BUDGET_CHARS - head.length - 1));
+  const bundle = renderContextBundle(project, Math.max(0, SESSION_BUDGET_CHARS - head.length - 1), opts);
   return `${head}
 ${bundle}`;
 }
 
 // src/heal.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname5, join as join8 } from "node:path";
+import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname6, join as join9 } from "node:path";
+
+// src/pin-staleness.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync5, renameSync as renameSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname5, isAbsolute, join as join8 } from "node:path";
+var defaultGit = (args, cwd, o) => execFileSync2("git", args, {
+  cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "ignore"],
+  timeout: o.timeout,
+  maxBuffer: o.maxBuffer
+});
+var PIN_STALENESS_BUDGET_MS = 1500;
+var PIN_STALENESS_RULE = "rfc043-part0/bprime/created/1";
+var ms = (t) => Math.max(1, Math.floor(t));
+var escapeRegex2 = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var Budget = class {
+  deadline;
+  now;
+  constructor(o) {
+    this.now = o.now ?? (() => performance.now());
+    this.deadline = o.deadline ?? this.now() + PIN_STALENESS_BUDGET_MS;
+  }
+  /** ms left, or throws when none: the pre-call check, so a spent budget spawns nothing. */
+  left() {
+    const l = this.deadline - this.now();
+    if (l <= 0) throw new Error("pin-staleness: budget spent");
+    return ms(l);
+  }
+};
+function staleRepoRoot(cwd, brain, run2, b) {
+  try {
+    return run2(["rev-parse", "--show-toplevel"], cwd, { timeout: b.left() }).trim() || void 0;
+  } catch {
+  }
+  if (existsSync5(join8(brain, ".git"))) return void 0;
+  try {
+    return run2(["rev-parse", "--show-toplevel"], dirname5(realPath(brain)), { timeout: b.left() }).trim() || void 0;
+  } catch {
+    return void 0;
+  }
+}
+function brainPathspec(root, brain) {
+  const brainRel = relativeReal(root, brain);
+  if (brainRel === "") {
+    return { brainRel, paths: [".", ...COMMITTED_BRAIN_PATHS.map((f) => `:(exclude)${f}`)], ent: "entries.jsonl" };
+  }
+  if (brainRel === ".." || brainRel.startsWith("../") || isAbsolute(brainRel)) {
+    return { brainRel, paths: ["."], ent: null };
+  }
+  return { brainRel, paths: [".", `:(exclude)${brainRel}`], ent: `${brainRel}/entries.jsonl` };
+}
+function pinInHead(text, pin) {
+  for (const line of text.split("\n")) {
+    if (!line.includes(pin.id)) continue;
+    try {
+      const r = JSON.parse(line);
+      if (r.id === pin.id && r.created === pin.created) return true;
+    } catch {
+    }
+  }
+  return false;
+}
+function prepare(cwd, brain, pin, run2, b) {
+  const uMs = Date.parse(pin.created);
+  if (!pin.id || !Number.isFinite(uMs)) return null;
+  const root = staleRepoRoot(cwd, brain, run2, b);
+  if (!root) return null;
+  const { brainRel, paths, ent } = brainPathspec(root, brain);
+  const head = run2(["rev-parse", "HEAD"], root, { timeout: b.left() }).trim();
+  if (!head) return null;
+  return { root, paths, ent, uMs, key: { rule: PIN_STALENESS_RULE, id: pin.id, created: pin.created, head, toplevel: root, brainRel } };
+}
+function computeFromKey(root, paths, ent, pin, uMs, run2, b) {
+  const T = run2(["rev-list", "-1", "--first-parent", `--before=${pin.created}`, "HEAD"], root, { timeout: b.left() }).trim();
+  let C = "";
+  if (ent) {
+    try {
+      const atHead = run2(["show", `HEAD:${ent}`], root, { timeout: b.left(), maxBuffer: GIT_READ_MAX_BUFFER });
+      if (pinInHead(atHead, pin)) {
+        const pattern = `"id":"${escapeRegex2(pin.id)}".*"created":"${escapeRegex2(pin.created)}"`;
+        C = run2(["log", "--first-parent", "--reverse", "--format=%H", `-G${pattern}`, "HEAD", "--", ent], root, {
+          timeout: b.left()
+        }).split("\n").find((l) => l.trim())?.trim() ?? "";
+      }
+    } catch (e) {
+      if (b.deadline - b.now() <= 0) throw e;
+      C = "";
+    }
+  }
+  const range = T ? `${T}..HEAD` : "HEAD";
+  const raw = run2(["log", "--first-parent", "--format=%H%x00%at%x00%s", range, "--", ...paths], root, {
+    timeout: b.left()
+  });
+  const S = raw.split("\n").filter((l) => l.length > 0).map((l) => {
+    const [hash2, at, ...rest] = l.split("\0");
+    return { hash: hash2, at: Number(at), subject: rest.join("\0") };
+  }).filter((c) => /^[0-9a-f]{7,}$/.test(c.hash));
+  let newerThanC = null;
+  if (C) {
+    try {
+      newerThanC = new Set(
+        run2(["rev-list", "--first-parent", `${C}..HEAD`], root, { timeout: b.left() }).split("\n").map((l) => l.trim()).filter(Boolean)
+      );
+    } catch (e) {
+      if (b.deadline - b.now() <= 0) throw e;
+      newerThanC = null;
+    }
+  }
+  const authoredByU = (at) => !Number.isFinite(at) || at * 1e3 <= uMs;
+  const kept = S.filter((c) => {
+    if (C) {
+      if (c.hash === C) return false;
+      if (newerThanC === null) return false;
+      const ancestorOfC = !newerThanC.has(c.hash);
+      return !(ancestorOfC && authoredByU(c.at));
+    }
+    return !authoredByU(c.at);
+  });
+  b.left();
+  return { commits: kept.map((c) => ({ hash: c.hash, short: c.hash.slice(0, 7), subject: c.subject })) };
+}
+var cachePath = (brain) => join8(brain, ".signals", "pin-staleness.json");
+var sameKey = (a, b) => {
+  if (!b || typeof b !== "object") return false;
+  const o = b;
+  return Object.keys(a).every((k) => o[k] === a[k]);
+};
+function readCache(brain, key) {
+  try {
+    const raw = JSON.parse(readFileSync5(cachePath(brain), "utf8"));
+    if (!sameKey(key, raw.key) || !Array.isArray(raw.commits)) return void 0;
+    const ok = raw.commits.every(
+      (c) => c && typeof c === "object" && typeof c.hash === "string" && typeof c.short === "string" && typeof c.subject === "string"
+    );
+    return ok ? raw.commits : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function writeCache(brain, key, commits) {
+  try {
+    mkdirSync5(join8(brain, ".signals"), { recursive: true });
+    const f = cachePath(brain);
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync3(tmp, JSON.stringify({ key, commits, computedAt: (/* @__PURE__ */ new Date()).toISOString() }), "utf8");
+    renameSync3(tmp, f);
+  } catch {
+  }
+}
+function cachedPinStaleness(cwd, brain, pin, opts = {}) {
+  const run2 = opts.git ?? defaultGit;
+  const b = new Budget(opts);
+  try {
+    const p = prepare(cwd, brain, pin, run2, b);
+    if (!p) return null;
+    if (opts.cache !== false) {
+      const hit = readCache(brain, p.key);
+      if (hit) return { commits: hit };
+    }
+    const res = computeFromKey(p.root, p.paths, p.ent, pin, p.uMs, run2, b);
+    if (opts.cache !== false) writeCache(brain, p.key, res.commits);
+    return res;
+  } catch {
+    return null;
+  }
+}
+function gitPinStalenessProvider(cwd, brain, opts = {}) {
+  return (pin) => cachedPinStaleness(cwd, brain, { id: pin.id, created: pin.created }, opts)?.commits ?? null;
+}
+
+// src/heal.ts
 var healedThisProcess = false;
 var MARKER_DEBOUNCE_MS = Number(process.env.VFKB_HEAL_DEBOUNCE_MS ?? 15 * 60 * 1e3);
-var markerPath = (brain) => join8(brain, ".journal", ".healed");
+var markerPath = (brain) => join9(brain, ".journal", ".healed");
 function alreadyHealed(brain, sid, debounce) {
   try {
-    const raw = readFileSync5(markerPath(brain), "utf8");
+    const raw = readFileSync6(markerPath(brain), "utf8");
     const m = JSON.parse(raw);
     if (sid) return m.sessionId === sid;
     if (!debounce) return false;
@@ -20091,8 +20374,8 @@ function alreadyHealed(brain, sid, debounce) {
 function stampHealed(brain, sid) {
   try {
     const p = markerPath(brain);
-    mkdirSync5(dirname5(p), { recursive: true });
-    writeFileSync3(p, JSON.stringify({ sessionId: sid, at: Date.now() }), "utf8");
+    mkdirSync6(dirname6(p), { recursive: true });
+    writeFileSync4(p, JSON.stringify({ sessionId: sid, at: Date.now() }), "utf8");
   } catch {
   }
 }
@@ -20123,20 +20406,20 @@ function healBrain(opts = {}) {
 }
 function resumePayload(project, session, opts = {}) {
   const note = healBrain(opts);
-  return note + renderResume(project, session);
+  return note + renderResume(project, session, { pinStaleness: gitPinStalenessProvider(process.cwd(), brainDir()) });
 }
 
 // src/export.ts
 import {
-  existsSync as existsSync6,
-  mkdirSync as mkdirSync6,
+  existsSync as existsSync7,
+  mkdirSync as mkdirSync7,
   readdirSync as readdirSync2,
-  readFileSync as readFileSync6,
+  readFileSync as readFileSync7,
   rmSync,
   statSync as statSync2,
-  writeFileSync as writeFileSync4
+  writeFileSync as writeFileSync5
 } from "node:fs";
-import { dirname as dirname6, join as join9 } from "node:path";
+import { dirname as dirname7, join as join10 } from "node:path";
 var GENERATED_MARKER = "generated by vfkb export";
 var MARKER_LINE_RE = /^<!-- generated by vfkb export /m;
 var EXPORT_BUDGET_CHARS = 4e4;
@@ -20185,7 +20468,7 @@ function listFiles(dir) {
   const out = [];
   const walk = (d) => {
     for (const name of readdirSync2(d)) {
-      const p = join9(d, name);
+      const p = join10(d, name);
       if (statSync2(p).isDirectory()) walk(p);
       else out.push(p);
     }
@@ -20196,14 +20479,14 @@ function listFiles(dir) {
 function isGenerated(path) {
   if (!path.endsWith(".md")) return false;
   try {
-    return MARKER_LINE_RE.test(readFileSync6(path, "utf8"));
+    return MARKER_LINE_RE.test(readFileSync7(path, "utf8"));
   } catch {
     return false;
   }
 }
 function prepareTree(dir) {
-  if (!existsSync6(dir)) {
-    mkdirSync6(dir, { recursive: true });
+  if (!existsSync7(dir)) {
+    mkdirSync7(dir, { recursive: true });
     return;
   }
   const files = listFiles(dir);
@@ -20218,7 +20501,7 @@ function prepareTree(dir) {
   const dirs = [];
   const collect = (d) => {
     for (const name of readdirSync2(d)) {
-      const p = join9(d, name);
+      const p = join10(d, name);
       if (statSync2(p).isDirectory()) {
         collect(p);
         dirs.push(p);
@@ -20234,8 +20517,8 @@ function exportAgentsMd(opts = {}) {
   const { superseded, asOf, eligible } = projectionInputs();
   const project = opts.project ?? defaultProject();
   const budget = opts.budget ?? EXPORT_BUDGET_CHARS;
-  const out = opts.out ?? join9(process.cwd(), "AGENTS.md");
-  if (existsSync6(out) && !MARKER_LINE_RE.test(readFileSync6(out, "utf8"))) {
+  const out = opts.out ?? join10(process.cwd(), "AGENTS.md");
+  if (existsSync7(out) && !MARKER_LINE_RE.test(readFileSync7(out, "utf8"))) {
     throw new Error(
       `vfkb export: refusing to overwrite ${out} \u2014 it is not a previous export (no generated marker)`
     );
@@ -20320,8 +20603,8 @@ ${spine.trim()}
   } else {
     body = kept.join("");
   }
-  mkdirSync6(dirname6(out), { recursive: true });
-  writeFileSync4(out, head + body);
+  mkdirSync7(dirname7(out), { recursive: true });
+  writeFileSync5(out, head + body);
   return { path: out };
 }
 function okfDoc(e, asOf, exportedDirs) {
@@ -20418,14 +20701,14 @@ function deriveLog(eligibleIds, records, live) {
 function exportOkf(opts = {}) {
   const { superseded, asOf, eligible } = projectionInputs();
   const project = opts.project ?? defaultProject();
-  const dir = opts.out ?? join9(process.cwd(), ".okf");
+  const dir = opts.out ?? join10(process.cwd(), ".okf");
   prepareTree(dir);
   const marker = `<!-- ${GENERATED_MARKER} okf; regenerate with \`vfkb export okf\`, do not hand-edit (as-of ${asOf}) -->`;
   const files = [];
   const write = (rel, content) => {
-    const p = join9(dir, rel);
-    mkdirSync6(dirname6(p), { recursive: true });
-    writeFileSync4(p, content);
+    const p = join10(dir, rel);
+    mkdirSync7(dirname7(p), { recursive: true });
+    writeFileSync5(p, content);
     files.push(rel);
   };
   const exportedDirs = new Map(eligible.map((e) => [e.id, TYPE_DIR[e.type]]));
@@ -20480,22 +20763,22 @@ function runExport(target, opts = {}) {
 }
 
 // src/broadcast.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync8, readFileSync as readFileSync8 } from "node:fs";
-import { basename as basename3, join as join11, resolve as resolve3 } from "node:path";
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { existsSync as existsSync9, readFileSync as readFileSync9 } from "node:fs";
+import { basename as basename3, join as join12, resolve as resolve3 } from "node:path";
 
 // src/manifest.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync7, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname7, join as join10 } from "node:path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync8, readFileSync as readFileSync8, writeFileSync as writeFileSync6 } from "node:fs";
+import { dirname as dirname8, join as join11 } from "node:path";
 
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.9.1" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "6b2d69e" : "dev";
+var ENGINE_COMMIT = true ? "e2ac6e9" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
-  return join10(brainDir2, "manifest.json");
+  return join11(brainDir2, "manifest.json");
 }
 function isUnknownCommit(commit) {
   return !commit || commit === "dev";
@@ -20509,9 +20792,9 @@ function currentManifest(opts = {}) {
 }
 function readManifest(brainDir2) {
   const p = manifestPath(brainDir2);
-  if (!existsSync7(p)) return void 0;
+  if (!existsSync8(p)) return void 0;
   try {
-    return JSON.parse(readFileSync7(p, "utf8"));
+    return JSON.parse(readFileSync8(p, "utf8"));
   } catch {
     return void 0;
   }
@@ -20523,7 +20806,7 @@ function manifestNeedsStamp(brainDir2, engineCommit = ENGINE_COMMIT) {
 }
 function writeManifest(brainDir2, opts = {}) {
   const p = manifestPath(brainDir2);
-  const existed = existsSync7(p);
+  const existed = existsSync8(p);
   const cur = readManifest(brainDir2);
   const next = currentManifest(opts);
   if (cur && isUnknownCommit(next.engine_commit) && !isUnknownCommit(cur.engine_commit)) {
@@ -20531,8 +20814,8 @@ function writeManifest(brainDir2, opts = {}) {
     next.engine_version = cur.engine_version;
   }
   if (cur && JSON.stringify(cur) === JSON.stringify(next)) return "skipped";
-  mkdirSync7(dirname7(p), { recursive: true });
-  writeFileSync5(p, JSON.stringify(next, null, 2) + "\n");
+  mkdirSync8(dirname8(p), { recursive: true });
+  writeFileSync6(p, JSON.stringify(next, null, 2) + "\n");
   return existed ? "updated" : "created";
 }
 
@@ -20540,17 +20823,17 @@ function writeManifest(brainDir2, opts = {}) {
 var FORBIDDEN_TAGS = /* @__PURE__ */ new Set(["handoff", "next"]);
 function targetBrainDir(target) {
   const abs = resolve3(target);
-  return basename3(abs) === ".vfkb" ? abs : join11(abs, ".vfkb");
+  return basename3(abs) === ".vfkb" ? abs : join12(abs, ".vfkb");
 }
 function gitPosture(repoDir) {
-  const git2 = (...a) => execFileSync2("git", ["-C", repoDir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  const git3 = (...a) => execFileSync3("git", ["-C", repoDir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   try {
-    const branch = git2("rev-parse", "--abbrev-ref", "HEAD");
+    const branch = git3("rev-parse", "--abbrev-ref", "HEAD");
     const parked = branch === "main" || branch === "master";
     return `uncommitted; target on ${branch}${parked ? " (parked \u2014 rides until a topic-branch brain commit)" : ""}`;
   } catch {
     try {
-      if (git2("rev-parse", "--is-inside-work-tree") === "true") {
+      if (git3("rev-parse", "--is-inside-work-tree") === "true") {
         return "uncommitted; target git repository on an unborn branch (no commits yet)";
       }
     } catch {
@@ -20581,16 +20864,16 @@ function broadcast(text, targets, opts = {}) {
       continue;
     }
     const repoDir = resolve3(brain, "..");
-    const manifestPath2 = join11(brain, "manifest.json");
+    const manifestPath2 = join12(brain, "manifest.json");
     let healed = false;
     let upgraded = false;
     const needsStamp = manifestNeedsStamp(brain, opts.engineCommit ?? ENGINE_COMMIT);
     if (needsStamp) {
-      if (!existsSync8(join11(brain, "entries.jsonl"))) {
+      if (!existsSync9(join12(brain, "entries.jsonl"))) {
         results.push({ target, ok: false, reason: `no brain (no entries.jsonl in ${brain}) \u2014 never bootstrap a wire-less brain (ADR-0063 \xA73)` });
         continue;
       }
-      const absent = !existsSync8(manifestPath2);
+      const absent = !existsSync9(manifestPath2);
       try {
         writeManifest(brain, { engineCommit: opts.engineCommit, engineVersion: opts.engineVersion });
       } catch (err) {
@@ -20602,7 +20885,7 @@ function broadcast(text, targets, opts = {}) {
     }
     let schema;
     try {
-      schema = JSON.parse(readFileSync8(manifestPath2, "utf8")).schema_version;
+      schema = JSON.parse(readFileSync9(manifestPath2, "utf8")).schema_version;
     } catch {
       results.push({ target, ok: false, reason: "unreadable manifest.json" });
       continue;
@@ -20701,7 +20984,9 @@ function restore(id) {
       throw new Error(`restore() is for fluid types; a decision's standing is its status (use transitionDecision)`);
     }
     if (e.zone !== "archive") throw new Error(`entry ${id} is not archived (zone ${e.zone}) \u2014 nothing to restore`);
-    return updateEntry(id, { zone: "established", tags: e.tags.filter((t) => !t.startsWith(RETIRED_BY)) });
+    const ruleArchived = e.tags.some((t) => t.startsWith(AUTO_ARCHIVED));
+    const tags = e.tags.filter((t) => !t.startsWith(RETIRED_BY) && !t.startsWith(AUTO_ARCHIVED));
+    return updateEntry(id, { zone: "established", tags: ruleArchived ? [.../* @__PURE__ */ new Set([...tags, CURATION_KEPT])] : tags });
   });
 }
 var HANDOFF_SHAPE = /^\W*(SESSION\s+)?(HANDOFF|RESUME)\b/i;
@@ -20733,6 +21018,108 @@ function staleReport(days = 30, today = todayIso(), entries = readAll()) {
     incoming: old.filter((e) => e.zone === "incoming" && !isDecisionFamily(e.type)).map((e) => row(e, today)),
     status: old.filter((e) => e.type === "fact" && e.tags.includes("status") && !tagged(e)).map((e) => row(e, today))
   };
+}
+var AUTO_RULE = "old-handoff";
+var MIN_AGE_DAYS = 14;
+var MIN_NEWER = 3;
+var GENERIC_TAGS = /* @__PURE__ */ new Set([
+  "handoff",
+  "next",
+  "status",
+  "auto",
+  "verified",
+  "v2",
+  "v3",
+  "review",
+  "escalation",
+  "rfc",
+  "adr",
+  "plugin",
+  "l4",
+  "guard",
+  "release",
+  "tooling",
+  "cross-repo",
+  "distribution",
+  "roadmap",
+  "public"
+]);
+var topicTags = (e) => e.tags.filter((t) => !GENERIC_TAGS.has(t));
+var isRuleLine = (e) => e.tags.some((t) => t.startsWith(AUTO_ARCHIVED));
+var createdMs = (e) => Date.parse(e.created);
+function autoCurate(today = todayIso(), opts = {}) {
+  const pastDeadline = () => opts.deadlineMs !== void 0 && (opts.now ?? (() => performance.now()))() >= opts.deadlineMs;
+  return withExclusive(() => {
+    if (pastDeadline()) return { archived: [], repaired: [], stopped: "deadline" };
+    const records = readRecords();
+    const all = materialize(records);
+    const linesById = /* @__PURE__ */ new Map();
+    for (const r of records) {
+      if (!r || typeof r.id !== "string" || isTombstone(r)) continue;
+      const n = normalizeEntry(r);
+      if (!n.ok) continue;
+      const list = linesById.get(r.id) ?? [];
+      list.push(n.entry);
+      linesById.set(r.id, list);
+    }
+    const result = { archived: [], repaired: [] };
+    for (const e of all) {
+      if (e.zone !== "archive" || !isRuleLine(e)) continue;
+      const others = (linesById.get(e.id) ?? []).filter((l) => !isRuleLine(l));
+      let newest;
+      for (const l of others) if (!newest || l.updated >= newest.updated) newest = l;
+      if (!newest || newest.zone === "archive" || !newest.tags.includes(CURATION_KEPT)) continue;
+      result.repaired.push(e.id);
+      if (!opts.dryRun) {
+        const tags = [.../* @__PURE__ */ new Set([...newest.tags.filter((t) => !t.startsWith(AUTO_ARCHIVED)), CURATION_KEPT])];
+        updateEntry(e.id, { zone: newest.zone, tags });
+      }
+    }
+    const superseded = supersededIds(all);
+    const pin = latestHandoff(all, today, superseded);
+    if (!pin) return result;
+    if (!Number.isFinite(createdMs(pin))) {
+      result.skipped = `pin ${pin.id} has an unparseable created (${JSON.stringify(pin.created)}); nothing archived`;
+      return result;
+    }
+    const kept = /* @__PURE__ */ new Set();
+    for (const [id, lines] of linesById) if (lines.some((l) => l.tags.includes(CURATION_KEPT))) kept.add(id);
+    const repaired = new Set(result.repaired);
+    const shaped = all.filter(
+      (e) => !repaired.has(e.id) && isInjectable(e, today, superseded) && isPinCandidate(e) && HANDOFF_SHAPE.test(e.text) && Number.isFinite(createdMs(e))
+    );
+    const live = new Set(shaped.map((e) => e.id));
+    const candidates = shaped.filter((e) => e.id !== pin.id).sort((a, b) => createdMs(b) - createdMs(a));
+    for (const e of candidates) {
+      if (pastDeadline()) {
+        result.stopped = "deadline";
+        break;
+      }
+      if (kept.has(e.id)) continue;
+      if (createdMs(pin) - createdMs(e) < MIN_AGE_DAYS * DAY_MS) continue;
+      const newer = shaped.filter((o) => live.has(o.id) && createdMs(o) > createdMs(e));
+      if (newer.length < MIN_NEWER) continue;
+      const topics = topicTags(e);
+      if (topics.length && !newer.some((o) => topicTags(o).some((t) => topics.includes(t)))) continue;
+      live.delete(e.id);
+      result.archived.push(e.id);
+      if (!opts.dryRun) {
+        updateEntry(e.id, { zone: "archive", tags: [.../* @__PURE__ */ new Set([...e.tags, `${AUTO_ARCHIVED}${AUTO_RULE}@${today}`])] });
+      }
+    }
+    return result;
+  });
+}
+function autoArchiveLog(entries = readAll(), today = todayIso()) {
+  const out = [];
+  for (const e of entries) {
+    if (e.zone !== "archive") continue;
+    const tag = e.tags.find((t) => t.startsWith(AUTO_ARCHIVED));
+    if (!tag) continue;
+    const [rule, date5 = ""] = tag.slice(AUTO_ARCHIVED.length).split("@");
+    out.push({ ...row(e, today), rule, date: date5 });
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
 }
 
 // src/distiller.ts
@@ -20903,233 +21290,33 @@ function isBrainWrite(toolName, input2, brain = brainDir()) {
 var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing files directly (keeps the index, freshness, and no-secrets invariants).";
 
 // src/stop-reminder.ts
-import { execFileSync as execFileSync3 } from "node:child_process";
-import { readFileSync as readFileSync9 } from "node:fs";
-import { isAbsolute, join as join12, relative as relative2 } from "node:path";
-var NUDGE_COOLDOWN_TURNS = 10;
-var STOP_REMINDER = 'vfkb decision-capture check: this turn changed code/docs but no `decision` was recorded to the brain. If a load-bearing decision was made, capture it now via `mcp__vfkb__kb_add` (type=decision, why=<rationale>, role=human) \u2014 or `vfkb add decision "\u2026" --why "\u2026" --role human` \u2014 and add an ADR under docs/adr/ for anything architectural. If NO decision was made this turn, just finish normally.';
-var HANDOFF_MIN_ENTRIES = 3;
-var HANDOFF_REMINDER = 'vfkb handoff check: this session has recorded knowledge but no `handoff`/`next` entry. If you are WRAPPING UP, record a durable handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human) naming what the NEXT session should pick up (a real "next:", not just a summary). If you are still mid-session, ignore this and finish normally \u2014 the SessionEnd floor will leave a fallback if you never do.';
-var STALE_HANDOFF_REMINDER = 'vfkb stale-handoff check: the currently pinned handoff/next entry predates a commit that landed since it was written (e.g. a merged PR, possibly from another session or an autonomous merge) \u2014 a fresh session would start from an out-of-date "what happened" pointer. If you are WRAPPING UP, record a fresh handoff now \u2014 `mcp__vfkb__kb_add` (type=fact, tags=handoff,next, role=human), or /vfkb:handoff if available \u2014 naming what actually changed and what is next now. If you are still mid-session and plan to record one before you finish, it is fine to ignore this for now \u2014 but note that unlike the other nudges, this one has no SessionEnd fallback for a STALE (as opposed to missing) pin, so a fresh handoff/next entry must be recorded before the session ends.';
-function decideStop(input2, ctx) {
-  if (input2?.stop_hook_active) return { block: false };
-  const turnValid = typeof ctx.turn === "number" && Number.isFinite(ctx.turn);
-  const cooling = (key) => {
-    if (!turnValid) return false;
-    const last = ctx.lastNudged?.[key];
-    if (typeof last !== "number" || !Number.isFinite(last) || last < 0 || last > ctx.turn) return false;
-    return ctx.turn - last < NUDGE_COOLDOWN_TURNS;
-  };
-  const reminders = [];
-  const fired = [];
-  const nudge = (key, text) => {
-    if (cooling(key)) return;
-    reminders.push(text);
-    fired.push(key);
-  };
-  if (ctx.uncommittedWork && ctx.newDecisions === 0) nudge("decision", STOP_REMINDER);
-  if (ctx.uncommittedWork && (ctx.newEntries ?? 0) >= HANDOFF_MIN_ENTRIES && (ctx.newHandoffs ?? 0) === 0)
-    nudge("handoff", HANDOFF_REMINDER);
-  if (ctx.handoffStale) nudge("staleHandoff", STALE_HANDOFF_REMINDER);
-  if (reminders.length === 0) return { block: false };
-  return { block: true, reminder: reminders.join("\n\n"), fired };
-}
-function hasUncommittedWork(cwd = process.cwd(), brain = brainDir()) {
-  let out;
-  try {
-    out = execFileSync3("git", ["status", "--porcelain"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  } catch {
-    return false;
-  }
-  const brainRel = relative2(cwd, brain).replace(/\\/g, "/");
-  return out.split("\n").some((line) => {
-    const p = line.slice(3).trim();
-    if (!p) return false;
-    if (brainRel && (p === brainRel || p.startsWith(brainRel + "/"))) return false;
-    return p.startsWith("src/") || p.startsWith("docs/");
-  });
-}
-function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd()) {
-  const file2 = join12(brain, "entries.jsonl");
-  let current2;
-  try {
-    current2 = readFileSync9(file2, "utf8").split("\n").filter(Boolean);
-  } catch {
-    return [];
-  }
-  const rel = relative2(cwd, file2).replace(/\\/g, "/");
-  let headCount = 0;
-  try {
-    const head = execFileSync3("git", ["show", `HEAD:${rel}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    headCount = head.split("\n").filter(Boolean).length;
-  } catch {
-    headCount = 0;
-  }
-  return current2.slice(headCount).map((l) => {
-    try {
-      return JSON.parse(l);
-    } catch {
-      return null;
-    }
-  }).filter((e) => e !== null);
-}
-var isHandoff = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
-function pinnedHandoff(brain) {
-  let lines;
-  try {
-    lines = readFileSync9(join12(brain, "entries.jsonl"), "utf8").split("\n").filter(Boolean);
-  } catch {
-    return void 0;
-  }
-  const records = [];
-  for (const l of lines) {
-    try {
-      records.push(JSON.parse(l));
-    } catch {
-      continue;
-    }
-  }
-  const all = materialize(records);
-  return latestHandoff(all, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), supersededIds(all)) ?? void 0;
-}
-function pinnedHandoffCreated(brain) {
-  return pinnedHandoff(brain)?.created;
-}
-var EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-function handoffIsStale(cwd = process.cwd(), brain = brainDir()) {
-  try {
-    const since = pinnedHandoffCreated(brain);
-    if (!since) return false;
-    const root = execFileSync3("git", ["rev-parse", "--show-toplevel"], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    const brainRel = relativeReal(root, brain);
-    let paths;
-    if (brainRel === "") {
-      paths = [".", ...COMMITTED_BRAIN_PATHS.map((f) => `:(exclude)${f}`)];
-    } else if (brainRel === ".." || brainRel.startsWith("../") || isAbsolute(brainRel)) {
-      paths = ["."];
-    } else {
-      paths = [".", `:(exclude)${brainRel}`];
-    }
-    const anchor2 = execFileSync3("git", ["rev-list", "-1", `--before=${since}`, "HEAD"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    const base = anchor2 || EMPTY_TREE_SHA;
-    try {
-      execFileSync3("git", ["diff", "--quiet", base, "HEAD", "--", ...paths], { cwd: root, stdio: "ignore" });
-      return false;
-    } catch (e) {
-      return e.status === 1;
-    }
-  } catch {
-    return false;
-  }
-}
-function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
-  const fresh = newBrainEntriesSinceHead(brain, cwd);
-  return {
-    uncommittedWork: hasUncommittedWork(cwd, brain),
-    newDecisions: fresh.filter((e) => e.type === "decision").length,
-    newEntries: fresh.length,
-    newHandoffs: fresh.filter(isHandoff).length,
-    handoffStale: handoffIsStale(cwd, brain)
-  };
-}
-
-// src/git.ts
-import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync9, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname8, join as join13 } from "node:path";
-function git(args, cwd) {
-  return execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-}
-function insideSurroundingRepo(brain) {
-  try {
-    return git(["rev-parse", "--is-inside-work-tree"], dirname8(realpathSync2(brain))).trim() === "true";
-  } catch {
-    return false;
-  }
-}
-function isStandaloneBrain(brain) {
-  if (existsSync9(join13(brain, ".git"))) return true;
-  return !insideSurroundingRepo(brain);
-}
-function ensureRepo(brain) {
-  if (!existsSync9(join13(brain, ".git"))) {
-    git(["init", "-q"], brain);
-  }
-}
-function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
-  if (!isStandaloneBrain(brain)) {
-    return {
-      committed: false,
-      refused: true,
-      message: `brain at ${brain} is inside a git worktree \u2014 not committing here (an in-repo brain is committed by the project, via the session-end pathspec commit)`
-    };
-  }
-  ensureRepo(brain);
-  git(["add", "-A"], brain);
-  const status = git(["status", "--porcelain"], brain).trim();
-  if (status.length === 0) return { committed: false, message: "nothing to commit" };
-  git(
-    [
-      "-c",
-      `user.name=vfkb (${role})`,
-      "-c",
-      "user.email=vfkb@vilosource.local",
-      "commit",
-      "-q",
-      "-m",
-      message
-    ],
-    brain
-  );
-  return { committed: true, message };
-}
+import { execFileSync as execFileSync5 } from "node:child_process";
+import { readFileSync as readFileSync11 } from "node:fs";
+import { join as join14, relative as relative2 } from "node:path";
 
 // src/session-end.ts
-import { execFileSync as execFileSync5 } from "node:child_process";
+import { execFileSync as execFileSync4 } from "node:child_process";
 import { readFileSync as readFileSync10 } from "node:fs";
-import { join as join14, isAbsolute as isAbsolute2 } from "node:path";
-var realGit = (args, cwd) => execFileSync5("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+import { join as join13, isAbsolute as isAbsolute2 } from "node:path";
+import { performance as performance2 } from "node:perf_hooks";
+var realGit = (args, cwd) => execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_READ_MAX_BUFFER });
+var SESSION_END_COMMIT_PREFIX = "chore(brain): session-end auto-commit";
+var SESSION_END_CURATION_DEADLINE_MS = 1e3;
 function brainEntriesRelPath(dataDir2) {
-  return join14(dataDir2, "entries.jsonl").replace(/\\/g, "/");
+  return join13(dataDir2, "entries.jsonl").replace(/\\/g, "/");
 }
-function tryGit(git2, args, cwd) {
+function brainHeadSpec(cwd, absEntries) {
+  return `HEAD:./${relativeReal(cwd, absEntries).replace(/\\/g, "/")}`;
+}
+function tryGit(git3, args, cwd) {
   try {
-    return git2(args, cwd).trim();
+    return git3(args, cwd).trim();
   } catch {
     return null;
   }
 }
-function countAdded(git2, cwd, path) {
-  let added = 0;
-  for (const base of [["diff"], ["diff", "--cached"]]) {
-    const out = tryGit(git2, [...base, "--numstat", "--", path], cwd);
-    if (!out) continue;
-    for (const line of out.split("\n")) {
-      const n = Number(line.split("	")[0]);
-      if (Number.isFinite(n)) added += n;
-    }
-  }
-  return added;
-}
-function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
-  let lines;
-  try {
-    lines = readFileSync10(absEntries, "utf8").split("\n").filter(Boolean);
-  } catch {
-    return [];
-  }
-  let headCount = 0;
-  const head = tryGit(git2, ["show", `HEAD:${repoRelEntries}`], cwd);
-  if (head !== null) headCount = head.split("\n").filter(Boolean).length;
-  return lines.slice(headCount).map((l) => {
+function parseLines2(text) {
+  return text.split("\n").filter(Boolean).map((l) => {
     try {
       return JSON.parse(l);
     } catch {
@@ -21137,7 +21324,24 @@ function newEntriesSinceHead(git2, cwd, repoRelEntries, absEntries) {
     }
   }).filter((e) => e !== null);
 }
-var isHandoff2 = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
+function newEntriesSinceHead(git3, cwd, absEntries) {
+  let current2;
+  try {
+    current2 = parseLines2(readFileSync10(absEntries, "utf8"));
+  } catch {
+    return [];
+  }
+  const head = tryGit(git3, ["show", brainHeadSpec(cwd, absEntries)], cwd);
+  const known = new Set(parseLines2(head ?? "").map((e) => e.id));
+  const fresh = /* @__PURE__ */ new Map();
+  for (const e of current2) {
+    if (!e.id || known.has(e.id)) continue;
+    const prev = fresh.get(e.id);
+    if (!prev || String(e.updated ?? "") >= String(prev.updated ?? "")) fresh.set(e.id, e);
+  }
+  return [...fresh.values()].filter((e) => e.deleted !== true);
+}
+var isHandoff = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
 var oneLine = (s) => (s || "").replace(/\s+/g, " ").trim();
 function writeAutoHandoff(absBrain, fresh, sessionId) {
   const CAP = 12;
@@ -21160,68 +21364,444 @@ function writeAutoHandoff(absBrain, fresh, sessionId) {
     else process.env.VFKB_DATA_DIR = prev;
   }
 }
-function defaultBranch(git2, cwd) {
-  const ref = tryGit(git2, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd);
-  if (ref && ref.startsWith("origin/")) return ref.slice("origin/".length);
-  return "main";
+function classifyBranch(git3, cwd) {
+  const branch = tryGit(git3, ["symbolic-ref", "--short", "-q", "HEAD"], cwd) || "";
+  const ref = tryGit(git3, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd);
+  const def = ref && ref.startsWith("origin/") ? ref.slice("origin/".length) : null;
+  if (!branch) return { kind: "detached", branch: null };
+  if (branch === def || branch === "main" || branch === "master") return { kind: "default", branch };
+  return { kind: "topic", branch };
+}
+function isOnDefaultBranch(git3, cwd) {
+  try {
+    return classifyBranch(git3, cwd).kind === "default";
+  } catch {
+    return false;
+  }
 }
 function runSessionEnd(opts = {}) {
-  const git2 = opts.git ?? realGit;
+  const git3 = opts.git ?? realGit;
+  const now2 = opts.now ?? (() => performance2.now());
   const cwd = opts.cwd || process.cwd();
   const dataDir2 = opts.dataDir || process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || ".vfkb";
   const sessionId = opts.sessionId ?? process.env.KB_SESSION_ID;
   const entries = brainEntriesRelPath(dataDir2);
   try {
-    if (tryGit(git2, ["rev-parse", "--is-inside-work-tree"], cwd) !== "true") {
+    if (tryGit(git3, ["rev-parse", "--is-inside-work-tree"], cwd) !== "true") {
       return { committed: false, reason: "not-a-repo" };
     }
-    const status = tryGit(git2, ["status", "--porcelain", "--", entries], cwd);
+    const status = tryGit(git3, ["status", "--porcelain", "--", entries], cwd);
     if (!status) return { committed: false, reason: "brain-clean" };
     const tag = sessionId ? `, session ${sessionId.slice(0, 8)}` : "";
-    const branch = tryGit(git2, ["symbolic-ref", "--short", "-q", "HEAD"], cwd) || "";
-    const def = defaultBranch(git2, cwd);
-    if (!branch) {
-      const added2 = countAdded(git2, cwd, entries);
+    const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join13(cwd, dataDir2);
+    const fresh = newEntriesSinceHead(git3, cwd, join13(absBrain, "entries.jsonl"));
+    const cls = classifyBranch(git3, cwd);
+    if (cls.kind === "detached") {
+      const added2 = fresh.length;
       return {
         committed: false,
         reason: "detached-head",
         added: added2,
-        systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} uncommitted (detached HEAD) \u2014 check out a branch and commit to preserve continuity.`
+        systemMessage: `vfkb: brain changes uncommitted (${added2} new entr${added2 === 1 ? "y" : "ies"}, detached HEAD) \u2014 check out a branch and commit to preserve continuity.`
       };
     }
-    if (branch === def || branch === "main" || branch === "master") {
-      const added2 = countAdded(git2, cwd, entries);
+    const branch = cls.branch ?? "";
+    if (cls.kind === "default") {
+      const added2 = fresh.length;
       return {
         committed: false,
         reason: "on-default-branch",
         branch,
         added: added2,
-        systemMessage: `vfkb: ${added2} new brain entr${added2 === 1 ? "y" : "ies"} on \`${branch}\` left uncommitted \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
+        systemMessage: `vfkb: brain changes on \`${branch}\` left uncommitted (${added2} new entr${added2 === 1 ? "y" : "ies"}) \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
       };
     }
-    const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join14(cwd, dataDir2);
-    const fresh = newEntriesSinceHead(git2, cwd, entries, join14(absBrain, "entries.jsonl"));
+    const needFallback = fresh.length > 0 && !fresh.some(isHandoff);
+    let curated = 0;
+    let curationSkipped;
+    if (fresh.length > 0) {
+      if (now2() >= SESSION_END_CURATION_DEADLINE_MS) {
+        curationSkipped = "deadline";
+      } else {
+        const prev = process.env.VFKB_DATA_DIR;
+        process.env.VFKB_DATA_DIR = absBrain;
+        try {
+          const c = autoCurate(void 0, { now: now2, deadlineMs: SESSION_END_CURATION_DEADLINE_MS });
+          curated = c.archived.length + c.repaired.length;
+          if (c.stopped) curationSkipped = c.stopped;
+        } catch {
+        } finally {
+          if (prev === void 0) delete process.env.VFKB_DATA_DIR;
+          else process.env.VFKB_DATA_DIR = prev;
+        }
+      }
+    }
     let autoHandoff = false;
-    if (fresh.length > 0 && !fresh.some(isHandoff2)) {
+    if (needFallback) {
       try {
         writeAutoHandoff(absBrain, fresh, sessionId);
         autoHandoff = true;
       } catch {
       }
     }
-    const added = countAdded(git2, cwd, entries);
-    const message = `chore(brain): session-end auto-commit (${added} new entr${added === 1 ? "y" : "ies"}${tag})`;
-    git2(["add", "--", entries], cwd);
-    git2(["commit", "-o", "-m", message, "--", entries], cwd);
-    return { committed: true, reason: "committed", branch, added, message, autoHandoff };
+    const added = fresh.length + (autoHandoff ? 1 : 0);
+    const extra = curated ? `, ${curated} curated` : "";
+    const message = `${SESSION_END_COMMIT_PREFIX} (${added} new entr${added === 1 ? "y" : "ies"}${extra}${tag})`;
+    git3(["add", "--", entries], cwd);
+    git3(["commit", "-o", "-m", message, "--", entries], cwd);
+    return { committed: true, reason: "committed", branch, added, message, autoHandoff, curated, curationSkipped };
   } catch {
     return { committed: false, reason: "error" };
   }
 }
 
+// src/stop-reminder.ts
+function isPausedStop(input2) {
+  if (!input2 || typeof input2 !== "object") return false;
+  const live = (v) => Array.isArray(v) && v.length > 0;
+  return live(input2.background_tasks) || live(input2.session_crons);
+}
+var NUDGE_COOLDOWN_TURNS = 10;
+var STALE_HANDOFF_MIN_TURN = 3;
+var STOP_REMINDER = 'vfkb decision-capture check: this turn changed code/docs but no `decision` was recorded to the brain. If a load-bearing decision was made, capture it now via `mcp__vfkb__kb_add` (type=decision, why=<rationale>, role=human) \u2014 or `vfkb add decision "\u2026" --why "\u2026" --role human` \u2014 and add an ADR under docs/adr/ for anything architectural. If NO decision was made this turn, just finish normally.';
+var HANDOFF_MIN_ENTRIES = 3;
+function handoffNudgeDue(ctx) {
+  return ctx.uncommittedWork && ctx.newEntries >= HANDOFF_MIN_ENTRIES && ctx.newHandoffs === 0;
+}
+var STALE_HANDOFF_LEADIN = "vfkb stale-handoff check: ";
+var STALE_HANDOFF_NEXT_SESSION = "The next session's resume lists these same commits under `## Last handoff`, so a handoff written now is optional unless you are wrapping up.";
+function renderStaleHandoffReminder(pin, commits) {
+  const date5 = pin && /^\d{4}-\d{2}-\d{2}/.test(pin.created) ? `, ${pin.created.slice(0, 10)}` : "";
+  const which = pin ? ` (${pin.id}${date5})` : "";
+  return `${STALE_HANDOFF_LEADIN}the pinned handoff/next entry${which} predates commits that landed after it was written.
+` + renderCommitsSince(commits) + `${STALE_HANDOFF_NEXT_SESSION} If you are WRAPPING UP, record a fresh handoff now \u2014 kb_add (type=fact, tags=handoff,next, role=human), or /vfkb:handoff if available \u2014 naming what actually changed and what is next now. If you are still mid-session, ignore this and finish normally.`;
+}
+function decideStop(input2, ctx) {
+  if (input2?.stop_hook_active) return { block: false };
+  if (isPausedStop(input2)) return { block: false };
+  const turnValid = typeof ctx.turn === "number" && Number.isFinite(ctx.turn);
+  const cooling = (key) => {
+    if (!turnValid) return false;
+    const last = ctx.lastNudged?.[key];
+    if (typeof last !== "number" || !Number.isFinite(last) || last < 0 || last > ctx.turn) return false;
+    const window = key === "staleHandoff" ? Infinity : NUDGE_COOLDOWN_TURNS;
+    return ctx.turn - last < window;
+  };
+  const reminders = [];
+  const fired = [];
+  const nudge = (key, text) => {
+    if (cooling(key)) return;
+    reminders.push(text);
+    fired.push(key);
+  };
+  if (ctx.uncommittedWork && ctx.newDecisions === 0) nudge("decision", STOP_REMINDER);
+  const stale = ctx.staleCommits ?? [];
+  if (stale.length > 0 && !(turnValid && ctx.turn < STALE_HANDOFF_MIN_TURN) && !cooling("staleHandoff")) {
+    const defaultBranchIdle = !ctx.uncommittedWork && ctx.newEntries === 0 && probeDefaultBranch(ctx.onDefaultBranch);
+    if (!defaultBranchIdle) nudge("staleHandoff", renderStaleHandoffReminder(ctx.pin, stale));
+  }
+  if (reminders.length === 0) return { block: false };
+  return { block: true, reminder: reminders.join("\n\n"), fired };
+}
+function probeDefaultBranch(probe) {
+  if (typeof probe !== "function") return false;
+  try {
+    return probe() === true;
+  } catch {
+    return false;
+  }
+}
+function hasUncommittedWork(cwd = process.cwd(), brain = brainDir(), opts = {}) {
+  let out;
+  try {
+    out = execFileSync5("git", ["status", "--porcelain"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: opts.timeout
+    });
+  } catch {
+    return false;
+  }
+  const brainRel = relative2(cwd, brain).replace(/\\/g, "/");
+  return out.split("\n").some((line) => {
+    const p = line.slice(3).trim();
+    if (!p) return false;
+    if (brainRel && (p === brainRel || p.startsWith(brainRel + "/"))) return false;
+    return p.startsWith("src/") || p.startsWith("docs/");
+  });
+}
+function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd(), opts = {}) {
+  const file2 = join14(brain, "entries.jsonl");
+  let current2;
+  try {
+    current2 = readFileSync11(file2, "utf8").split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+  const rel = relative2(cwd, file2).replace(/\\/g, "/");
+  let headCount = 0;
+  try {
+    const head = execFileSync5("git", ["show", `HEAD:${rel}`], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: GIT_READ_MAX_BUFFER,
+      // vfkb#384: a >1 MiB brain threw ENOBUFS here
+      timeout: opts.timeout
+    });
+    headCount = head.split("\n").filter(Boolean).length;
+  } catch {
+    headCount = 0;
+  }
+  return current2.slice(headCount).map((l) => {
+    try {
+      return JSON.parse(l);
+    } catch {
+      return null;
+    }
+  }).filter((e) => e !== null);
+}
+var isHandoff2 = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
+function pinnedHandoff(brain) {
+  let lines;
+  try {
+    lines = readFileSync11(join14(brain, "entries.jsonl"), "utf8").split("\n").filter(Boolean);
+  } catch {
+    return void 0;
+  }
+  const records = [];
+  for (const l of lines) {
+    try {
+      records.push(JSON.parse(l));
+    } catch {
+      continue;
+    }
+  }
+  const all = materialize(records);
+  return latestHandoff(all, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), supersededIds(all)) ?? void 0;
+}
+function pinStaleCommits(cwd = process.cwd(), brain = brainDir(), opts = {}) {
+  try {
+    const pin = pinnedHandoff(brain);
+    if (!pin) return null;
+    const r = cachedPinStaleness(cwd, brain, { id: pin.id, created: pin.created }, opts);
+    return r ? { pin, commits: r.commits } : null;
+  } catch {
+    return null;
+  }
+}
+function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
+  const fresh = newBrainEntriesSinceHead(brain, cwd);
+  const stale = pinStaleCommits(cwd, brain);
+  return {
+    uncommittedWork: hasUncommittedWork(cwd, brain),
+    newDecisions: fresh.filter((e) => e.type === "decision").length,
+    newEntries: fresh.length,
+    newHandoffs: fresh.filter(isHandoff2).length,
+    staleCommits: stale?.commits ?? [],
+    pin: stale ? { id: stale.pin.id, created: stale.pin.created } : void 0,
+    onDefaultBranch: () => isOnDefaultBranch(realGit, cwd)
+  };
+}
+
+// src/prompt-nudge.ts
+import { execFileSync as execFileSync6 } from "node:child_process";
+import { mkdirSync as mkdirSync9, readFileSync as readFileSync12, renameSync as renameSync4, rmSync as rmSync2, writeFileSync as writeFileSync7 } from "node:fs";
+import { join as join15 } from "node:path";
+
+// src/harness-prompt.ts
+var HARNESS_PROMPT_LEADINS = [
+  "<task-notification>",
+  "Another Claude session sent a message:",
+  "Your claude.ai usage limit has reset"
+];
+function isHarnessPrompt(prompt) {
+  if (typeof prompt !== "string" || prompt.length === 0) return false;
+  return HARNESS_PROMPT_LEADINS.some((l) => prompt.startsWith(l));
+}
+
+// src/prompt-nudge.ts
+var PROMPT_NUDGE_LEADIN = "vfkb handoff status:";
+var PROMPT_NUDGE_BUDGET_MS = 2e3;
+function promptNudgeKey(pin, head) {
+  return `${pin?.id ?? "-"}|${pin?.created ?? "-"}|${head}`;
+}
+var validTurn = (t) => typeof t === "number" && Number.isFinite(t) && t >= 0;
+function promptNudgeSkip(input2, s) {
+  if (isHarnessPrompt(input2?.prompt)) return "harness-turn";
+  if (s.persisted && validTurn(s.turn) && s.turn === 0) return "first-prompt";
+  return null;
+}
+function decidePromptNudge(input2, ctx, storedKey) {
+  const skip = promptNudgeSkip(input2, ctx);
+  if (skip) return { emit: false, why: skip };
+  if (storedKey !== void 0 && storedKey === ctx.key) return { emit: false, why: "same-key" };
+  const reasons = [];
+  if (ctx.stale && ctx.pin) reasons.push("stale");
+  if (ctx.b1) reasons.push("b1");
+  if (reasons.length === 0) return { emit: false, why: "no-reason" };
+  return { emit: true, text: renderPromptNudge(reasons, ctx), reasons, key: ctx.key };
+}
+function renderPromptNudge(reasons, facts) {
+  const clauses = [];
+  const commits = facts.staleCommits ?? [];
+  const listed = reasons.includes("stale") && !!facts.pin && commits.length > 0;
+  if (reasons.includes("stale") && facts.pin) {
+    const date5 = /^\d{4}-\d{2}-\d{2}/.test(facts.pin.created) ? `, ${facts.pin.created.slice(0, 10)}` : "";
+    const where = facts.branch ? facts.branch : "a detached HEAD";
+    if (listed) {
+      const { shown, more } = boundedCommits(commits);
+      const items = shown.map((c) => `${c.short} ${truncateSubject(c.subject)}`).join("; ");
+      const n = commits.length;
+      clauses.push(
+        `the pinned handoff (${facts.pin.id}${date5}) predates ${n} commit${n === 1 ? "" : "s"} on ${where}: ${items}${more > 0 ? ` (+${more} more)` : ""}`
+      );
+    } else {
+      clauses.push(`the pinned handoff (${facts.pin.id}${date5}) predates a later commit on ${where}`);
+    }
+  }
+  if (reasons.includes("b1")) {
+    clauses.push(`this session has recorded ${facts.newEntries} entries and no handoff/next entry`);
+  }
+  return `${PROMPT_NUDGE_LEADIN} ${clauses.join("; ")}. If this prompt ends the session, a fresh handoff/next entry (kb_add type=fact, tags=handoff,next, role=human) naming what changed and what is next is the one thing worth recording before finishing; otherwise nothing is needed now${listed ? " \u2014 the next session sees this same list at start" : ""}.`;
+}
+var safeKey2 = (id) => id.replace(/[^A-Za-z0-9_-]/g, "_");
+var signalPath = (brain, sessionId) => join15(brain, ".signals", "prompt-nudge", `${safeKey2(sessionId)}.json`);
+function readPromptNudgeSignal(brain, sessionId) {
+  if (!sessionId) return {};
+  try {
+    const raw = JSON.parse(readFileSync12(signalPath(brain, sessionId), "utf8"));
+    const out = {};
+    if (typeof raw.key === "string" && raw.key) out.key = raw.key;
+    if (validTurn(raw.staleAtTurn)) out.staleAtTurn = raw.staleAtTurn;
+    return out;
+  } catch {
+    return {};
+  }
+}
+function writePromptNudgeSignal(brain, sessionId, sig) {
+  const f = signalPath(brain, sessionId);
+  mkdirSync9(join15(brain, ".signals", "prompt-nudge"), { recursive: true });
+  const tmp = `${f}.${process.pid}.tmp`;
+  writeFileSync7(tmp, JSON.stringify(sig), "utf8");
+  renameSync4(tmp, f);
+}
+function clearPromptNudgeKey(brain, sessionId) {
+  if (!sessionId) return;
+  const sig = readPromptNudgeSignal(brain, sessionId);
+  if (sig.key === void 0) return;
+  delete sig.key;
+  try {
+    if (sig.staleAtTurn === void 0) rmSync2(signalPath(brain, sessionId), { force: true });
+    else writePromptNudgeSignal(brain, sessionId, sig);
+  } catch {
+  }
+}
+function readSessionTurn(sessionId) {
+  if (!sessionId) return { persisted: false };
+  try {
+    const raw = storageBackend().readSessionRecord(sessionId);
+    if (raw === null) return { persisted: true, turn: 0 };
+    const t = JSON.parse(raw).turnCount;
+    return { persisted: true, turn: validTurn(t) ? t : void 0 };
+  } catch {
+    return { persisted: true };
+  }
+}
+var ms2 = (t) => Math.max(1, Math.floor(t));
+function git(args, cwd, timeout) {
+  try {
+    return execFileSync6("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: ms2(timeout)
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+function gatherPromptContext(cwd, brain, s, storedKey, deadline) {
+  const left = () => deadline - performance.now();
+  const head = git(["rev-parse", "HEAD"], cwd, left()) ?? "-";
+  const p = pinnedHandoff(brain);
+  const pin = p ? { id: p.id, created: p.created } : void 0;
+  const key = promptNudgeKey(pin, head);
+  const base = {
+    key,
+    stale: false,
+    b1: false,
+    pin,
+    branch: null,
+    newEntries: 0,
+    persisted: s.persisted,
+    turn: s.turn
+  };
+  if (storedKey !== void 0 && storedKey === key) return base;
+  const staleCommits = p ? cachedPinStaleness(cwd, brain, pin, { deadline })?.commits ?? [] : [];
+  const stale = staleCommits.length > 0;
+  const fresh = newBrainEntriesSinceHead(brain, cwd, { timeout: ms2(left()) });
+  const work = hasUncommittedWork(cwd, brain, { timeout: ms2(left()) });
+  const b1 = handoffNudgeDue({ uncommittedWork: work, newEntries: fresh.length, newHandoffs: fresh.filter(isHandoff2).length });
+  const branch = git(["symbolic-ref", "--short", "-q", "HEAD"], cwd, left()) || null;
+  return { ...base, stale, staleCommits, b1, branch, newEntries: fresh.length };
+}
+
+// src/git.ts
+import { execFileSync as execFileSync7 } from "node:child_process";
+import { existsSync as existsSync10, realpathSync as realpathSync2 } from "node:fs";
+import { dirname as dirname9, join as join16 } from "node:path";
+function git2(args, cwd) {
+  return execFileSync7("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+function insideSurroundingRepo(brain) {
+  try {
+    return git2(["rev-parse", "--is-inside-work-tree"], dirname9(realpathSync2(brain))).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function isStandaloneBrain(brain) {
+  if (existsSync10(join16(brain, ".git"))) return true;
+  return !insideSurroundingRepo(brain);
+}
+function ensureRepo(brain) {
+  if (!existsSync10(join16(brain, ".git"))) {
+    git2(["init", "-q"], brain);
+  }
+}
+function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
+  if (!isStandaloneBrain(brain)) {
+    return {
+      committed: false,
+      refused: true,
+      message: `brain at ${brain} is inside a git worktree \u2014 not committing here (an in-repo brain is committed by the project, via the session-end pathspec commit)`
+    };
+  }
+  ensureRepo(brain);
+  git2(["add", "-A"], brain);
+  const status = git2(["status", "--porcelain"], brain).trim();
+  if (status.length === 0) return { committed: false, message: "nothing to commit" };
+  git2(
+    [
+      "-c",
+      `user.name=vfkb (${role})`,
+      "-c",
+      "user.email=vfkb@vilosource.local",
+      "commit",
+      "-q",
+      "-m",
+      message
+    ],
+    brain
+  );
+  return { committed: true, message };
+}
+
 // src/init.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync8, readFileSync as readFileSync11, writeFileSync as writeFileSync6 } from "node:fs";
-import { basename as basename4, join as join15, relative as relative3 } from "node:path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync10, readFileSync as readFileSync13, writeFileSync as writeFileSync8 } from "node:fs";
+import { basename as basename4, join as join17, relative as relative3 } from "node:path";
 var AGENTS_MARKER = "<!-- vfkb:how-we-track-work -->";
 var BOOTSTRAP_REL = ".vfkb/bin/bootstrap.mjs";
 var PI_PACKAGE_SOURCE = "git:github.com/vilosource/vfkb-pi-package";
@@ -21283,6 +21863,8 @@ function settingsHooks(project) {
     PreToolUse: [
       { matcher: "Write|Edit|MultiEdit", hooks: [{ type: "command", command: hookCommand(project, "pre-tool-use") }] }
     ],
+    // ADR-0084 §2 (vfkb#385): the handoff reminder's non-blocking surface. No matcher.
+    UserPromptSubmit: [{ hooks: [{ type: "command", command: hookCommand(project, "user-prompt-submit") }] }],
     Stop: [{ hooks: [{ type: "command", command: hookCommand(project, "stop") }] }],
     SessionEnd: [{ hooks: [{ type: "command", command: hookCommand(project, "session-end") }] }]
   };
@@ -21319,26 +21901,26 @@ If it is unset, a session-start banner tells you; run \`vfkb doctor\` to check.
 `;
 }
 function readJson(path) {
-  if (!existsSync10(path)) return void 0;
+  if (!existsSync11(path)) return void 0;
   try {
-    return JSON.parse(readFileSync11(path, "utf8"));
+    return JSON.parse(readFileSync13(path, "utf8"));
   } catch {
     return void 0;
   }
 }
 function preserveUnparseable(root, path) {
-  if (!existsSync10(path)) return void 0;
+  if (!existsSync11(path)) return void 0;
   if (readJson(path) !== void 0) return void 0;
   const backup = `${path}.corrupt-backup`;
   try {
-    writeFileSync6(backup, readFileSync11(path, "utf8"));
+    writeFileSync8(backup, readFileSync13(path, "utf8"));
     return relative3(root, backup);
   } catch {
     return void 0;
   }
 }
 function writeJson(path, value) {
-  writeFileSync6(path, JSON.stringify(value, null, 2) + "\n");
+  writeFileSync8(path, JSON.stringify(value, null, 2) + "\n");
 }
 function eventHasVfkb(arr2) {
   return JSON.stringify(arr2 ?? "").includes(BOOTSTRAP_REL);
@@ -21346,32 +21928,32 @@ function eventHasVfkb(arr2) {
 function initProject(root, opts = {}) {
   const project = opts.project || basename4(root) || "project";
   const changes = [];
-  const brainDir2 = join15(root, ".vfkb");
-  const entries = join15(brainDir2, "entries.jsonl");
-  if (!existsSync10(entries)) {
-    mkdirSync8(brainDir2, { recursive: true });
-    writeFileSync6(entries, "");
+  const brainDir2 = join17(root, ".vfkb");
+  const entries = join17(brainDir2, "entries.jsonl");
+  if (!existsSync11(entries)) {
+    mkdirSync10(brainDir2, { recursive: true });
+    writeFileSync8(entries, "");
     changes.push({ path: ".vfkb/entries.jsonl", action: "created" });
   } else {
     changes.push({ path: ".vfkb/entries.jsonl", action: "skipped" });
   }
   changes.push({ path: ".vfkb/manifest.json", action: writeManifest(brainDir2) });
   {
-    const binDir = join15(brainDir2, "bin");
-    const path = join15(binDir, "bootstrap.mjs");
-    const existed = existsSync10(path);
-    const same = existed && readFileSync11(path, "utf8") === BOOTSTRAP_SRC;
+    const binDir = join17(brainDir2, "bin");
+    const path = join17(binDir, "bootstrap.mjs");
+    const existed = existsSync11(path);
+    const same = existed && readFileSync13(path, "utf8") === BOOTSTRAP_SRC;
     if (same) {
       changes.push({ path: BOOTSTRAP_REL, action: "skipped" });
     } else {
-      mkdirSync8(binDir, { recursive: true });
-      writeFileSync6(path, BOOTSTRAP_SRC);
+      mkdirSync10(binDir, { recursive: true });
+      writeFileSync8(path, BOOTSTRAP_SRC);
       changes.push({ path: BOOTSTRAP_REL, action: existed ? "updated" : "created" });
     }
   }
   {
-    const path = join15(root, ".mcp.json");
-    const existed = existsSync10(path);
+    const path = join17(root, ".mcp.json");
+    const existed = existsSync11(path);
     const cfg = readJson(path) ?? {};
     cfg.mcpServers = cfg.mcpServers ?? {};
     const desired = mcpConfig(project);
@@ -21385,9 +21967,9 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const dir = join15(root, ".claude");
-    const path = join15(dir, "settings.json");
-    const existed = existsSync10(path);
+    const dir = join17(root, ".claude");
+    const path = join17(dir, "settings.json");
+    const existed = existsSync11(path);
     const cfg = readJson(path) ?? {};
     cfg.hooks = cfg.hooks ?? {};
     const want = settingsHooks(project);
@@ -21402,7 +21984,7 @@ function initProject(root, opts = {}) {
       touched = true;
     }
     if (touched) {
-      mkdirSync8(dir, { recursive: true });
+      mkdirSync10(dir, { recursive: true });
       writeJson(path, cfg);
       changes.push({ path: ".claude/settings.json", action: existed ? "updated" : "created" });
     } else {
@@ -21410,7 +21992,7 @@ function initProject(root, opts = {}) {
     }
   }
   {
-    const path = join15(root, ".gitignore");
+    const path = join17(root, ".gitignore");
     const lines = [
       ".vfkb/index-meta.json",
       ".vfkb/.sessions/",
@@ -21431,8 +22013,8 @@ function initProject(root, opts = {}) {
       "# the vfkb paths below are derived/operational and stay out of git"
     ];
     const STALE_HEADER = /^#\s*vfkb\s*—\s*derived\/operational \(only \.vfkb\/entries\.jsonl is committed\)\s*$/;
-    const existed = existsSync10(path);
-    const cur = existed ? readFileSync11(path, "utf8") : "";
+    const existed = existsSync11(path);
+    const cur = existed ? readFileSync13(path, "utf8") : "";
     const curLines = cur.split(/\r?\n/);
     const missing = lines.filter((l) => !curLines.includes(l));
     const staleAt = curLines.findIndex((l) => STALE_HEADER.test(l));
@@ -21444,22 +22026,22 @@ function initProject(root, opts = {}) {
       let last = staleAt + HEADER.length - 1;
       for (let i = last + 1; i < out.length && /^\.vfkb\//.test(out[i].trim()); i++) last = i;
       out.splice(last + 1, 0, ...missing);
-      writeFileSync6(path, out.join("\n"));
+      writeFileSync8(path, out.join("\n"));
       changes.push({ path: ".gitignore", action: "updated" });
     } else {
       const prefix = cur && !cur.endsWith("\n") ? "\n" : "";
       const block = `${prefix}${cur ? "\n" : ""}${HEADER.join("\n")}
 ${missing.join("\n")}
 `;
-      writeFileSync6(path, cur + block);
+      writeFileSync8(path, cur + block);
       changes.push({ path: ".gitignore", action: existed ? "updated" : "created" });
     }
   }
   {
-    const path = join15(root, ".gitattributes");
+    const path = join17(root, ".gitattributes");
     const line = ".vfkb/entries.jsonl merge=union";
-    const existed = existsSync10(path);
-    const cur = existed ? readFileSync11(path, "utf8") : "";
+    const existed = existsSync11(path);
+    const cur = existed ? readFileSync13(path, "utf8") : "";
     if (cur.split(/\r?\n/).includes(line)) {
       changes.push({ path: ".gitattributes", action: "skipped" });
     } else {
@@ -21467,14 +22049,14 @@ ${missing.join("\n")}
       const block = `${prefix}${cur ? "\n" : ""}# vfkb \u2014 the append-only brain unions across branches (ADR-0041)
 ${line}
 `;
-      writeFileSync6(path, cur + block);
+      writeFileSync8(path, cur + block);
       changes.push({ path: ".gitattributes", action: existed ? "updated" : "created" });
     }
   }
   if (opts.pi !== false) {
-    const dir = join15(root, ".pi");
-    const path = join15(dir, "settings.json");
-    const existed = existsSync10(path);
+    const dir = join17(root, ".pi");
+    const path = join17(dir, "settings.json");
+    const existed = existsSync11(path);
     const rescued = preserveUnparseable(root, path);
     if (rescued) changes.push({ path: rescued, action: "created" });
     const cfg = readJson(path) ?? {};
@@ -21486,20 +22068,20 @@ ${line}
       changes.push({ path: ".pi/settings.json", action: "skipped" });
     } else {
       cfg.packages = [...cur, PI_PACKAGE_SOURCE];
-      mkdirSync8(dir, { recursive: true });
+      mkdirSync10(dir, { recursive: true });
       writeJson(path, cfg);
       changes.push({ path: ".pi/settings.json", action: existed ? "updated" : "created" });
     }
   }
   {
-    const path = join15(root, "AGENTS.md");
-    const existed = existsSync10(path);
-    const cur = existed ? readFileSync11(path, "utf8") : "";
+    const path = join17(root, "AGENTS.md");
+    const existed = existsSync11(path);
+    const cur = existed ? readFileSync13(path, "utf8") : "";
     if (cur.includes(AGENTS_MARKER)) {
       changes.push({ path: "AGENTS.md", action: "skipped" });
     } else {
       const sep2 = cur && !cur.endsWith("\n") ? "\n\n" : cur ? "\n" : "";
-      writeFileSync6(path, cur + sep2 + agentsSnippet(project, opts.pi !== false));
+      writeFileSync8(path, cur + sep2 + agentsSnippet(project, opts.pi !== false));
       changes.push({ path: "AGENTS.md", action: existed ? "updated" : "created" });
     }
   }
@@ -21519,14 +22101,14 @@ function approvalNotice(project, changes) {
 }
 
 // src/doctor.ts
-import { execFileSync as execFileSync6 } from "node:child_process";
+import { execFileSync as execFileSync8 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { existsSync as existsSync11, readFileSync as readFileSync12, writeFileSync as writeFileSync7, mkdirSync as mkdirSync9, unlinkSync as unlinkSync2 } from "node:fs";
-import { join as join16, dirname as dirname9, relative as relative4, isAbsolute as isAbsolute3 } from "node:path";
+import { existsSync as existsSync12, readFileSync as readFileSync14, readdirSync as readdirSync3, writeFileSync as writeFileSync9, mkdirSync as mkdirSync11, unlinkSync as unlinkSync2 } from "node:fs";
+import { join as join18, dirname as dirname10, relative as relative4, isAbsolute as isAbsolute3 } from "node:path";
 function readJson2(path) {
-  if (!existsSync11(path)) return void 0;
+  if (!existsSync12(path)) return void 0;
   try {
-    return JSON.parse(readFileSync12(path, "utf8"));
+    return JSON.parse(readFileSync14(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -21559,16 +22141,16 @@ function detectPluginWiring(settings, root, pluginsFile) {
 }
 function claudeConfigDir(env) {
   if (env.CLAUDE_CONFIG_DIR) return env.CLAUDE_CONFIG_DIR;
-  return env.HOME ? join16(env.HOME, ".claude") : void 0;
+  return env.HOME ? join18(env.HOME, ".claude") : void 0;
 }
 function localHeadSha(cloneDir) {
-  const head = readFileMaybe(join16(cloneDir, ".git", "HEAD"));
+  const head = readFileMaybe(join18(cloneDir, ".git", "HEAD"));
   if (!head) return void 0;
   const ref = head.trim().match(/^ref:\s*(\S+)$/)?.[1];
   if (!ref) return /^[0-9a-f]{40}$/.test(head.trim()) ? head.trim() : void 0;
-  const loose = readFileMaybe(join16(cloneDir, ".git", ...ref.split("/")));
+  const loose = readFileMaybe(join18(cloneDir, ".git", ...ref.split("/")));
   if (loose) return loose.trim();
-  const packed = readFileMaybe(join16(cloneDir, ".git", "packed-refs"));
+  const packed = readFileMaybe(join18(cloneDir, ".git", "packed-refs"));
   for (const line of packed?.split("\n") ?? []) {
     const [sha, name] = line.trim().split(/\s+/);
     if (name === ref) return sha;
@@ -21577,28 +22159,30 @@ function localHeadSha(cloneDir) {
 }
 function readFileMaybe(path) {
   try {
-    return readFileSync12(path, "utf8");
+    return readFileSync14(path, "utf8");
   } catch {
     return void 0;
   }
 }
-var realGit2 = (args, cwd) => execFileSync6("git", args, {
+var realGit2 = (args, cwd) => execFileSync8("git", args, {
   cwd,
   encoding: "utf8",
   timeout: 5e3,
   stdio: ["ignore", "pipe", "pipe"],
+  maxBuffer: GIT_READ_MAX_BUFFER,
+  // vfkb#384: the session-end check reads HEAD's brain
   env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: "ssh -oBatchMode=yes" }
 });
 function checkCurrency(plugin, opts, configDir) {
   const marketplace = plugin.key.split("@")[1];
-  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join16(configDir, "plugins", "known_marketplaces.json") : void 0);
+  const kmFile = opts.knownMarketplacesFile ?? (configDir ? join18(configDir, "plugins", "known_marketplaces.json") : void 0);
   const entry = kmFile ? readJson2(kmFile)?.[marketplace] : void 0;
   const skip = (detail) => ({ status: "skip", detail });
   if (!entry) return skip(`no marketplace "${marketplace}" in ${kmFile ?? "the plugin registry"} \u2014 cannot check currency`);
   if (entry.source?.source !== "github") {
     return skip(`marketplace "${marketplace}" is a ${entry.source?.source ?? "unknown"}-source \u2014 no clone to compare`);
   }
-  if (!entry.installLocation || !existsSync11(join16(entry.installLocation, ".git"))) {
+  if (!entry.installLocation || !existsSync12(join18(entry.installLocation, ".git"))) {
     return skip(`marketplace clone not found at ${entry.installLocation ?? "(unset installLocation)"}`);
   }
   const clone2 = entry.installLocation;
@@ -21629,7 +22213,7 @@ var NPM_REGISTRY_URL = "https://registry.npmjs.org/@viloforge%2Fvfkb/latest";
 var NPM_CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var NPM_CACHE_FILE = "npm-currency-cache.json";
 function npmCacheFilePath(opts) {
-  return opts.cacheFile ?? join16(opts.brainDir, ".signals", NPM_CACHE_FILE);
+  return opts.cacheFile ?? join18(opts.brainDir, ".signals", NPM_CACHE_FILE);
 }
 function readNpmCache(path) {
   const raw = readJson2(path);
@@ -21639,8 +22223,8 @@ function readNpmCache(path) {
 }
 function writeNpmCache(path, entry) {
   try {
-    mkdirSync9(dirname9(path), { recursive: true });
-    writeFileSync7(path, JSON.stringify(entry));
+    mkdirSync11(dirname10(path), { recursive: true });
+    writeFileSync9(path, JSON.stringify(entry));
   } catch {
   }
 }
@@ -21681,10 +22265,10 @@ function renderCurrencyVerdict(installed, latest, sourceSuffix) {
   };
 }
 async function checkNpmCurrency(opts) {
-  const cachePath = npmCacheFilePath(opts);
+  const cachePath2 = npmCacheFilePath(opts);
   const now2 = opts.now ?? Date.now;
   const nowMs = now2();
-  const cached2 = readNpmCache(cachePath);
+  const cached2 = readNpmCache(cachePath2);
   if (cached2) {
     const ageMs = nowMs - Date.parse(cached2.fetchedAt);
     if (ageMs >= 0 && ageMs < NPM_CACHE_TTL_MS) {
@@ -21709,7 +22293,7 @@ async function checkNpmCurrency(opts) {
     if (!latest) {
       return { status: "skip", detail: "skipped (registry unreachable)" };
     }
-    writeNpmCache(cachePath, { version: latest, fetchedAt: new Date(nowMs).toISOString() });
+    writeNpmCache(cachePath2, { version: latest, fetchedAt: new Date(nowMs).toISOString() });
     return renderCurrencyVerdict(opts.installedVersion, latest, "(live)");
   } catch {
     return { status: "skip", detail: "skipped (registry unreachable)" };
@@ -21717,7 +22301,7 @@ async function checkNpmCurrency(opts) {
     clearTimeout(timer);
   }
 }
-var HOOK_SUBCOMMANDS = ["session-start", "pre-tool-use", "post-tool-use", "stop", "session-end"];
+var HOOK_SUBCOMMANDS = ["session-start", "pre-tool-use", "post-tool-use", "user-prompt-submit", "stop", "session-end"];
 function isEngineWiring(hookJson) {
   const text = hookJson.replace(/\\[tnr]/g, " ").replace(/\\(.)/g, "$1");
   if (/bootstrap\.mjs/.test(text)) return true;
@@ -21730,7 +22314,7 @@ function engineDrift(manifestCommit, runningCommit) {
 }
 function repoToplevel(root) {
   try {
-    return execFileSync6("git", ["-C", root, "rev-parse", "--show-toplevel"], {
+    return execFileSync8("git", ["-C", root, "rev-parse", "--show-toplevel"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
@@ -21813,9 +22397,9 @@ function runDoctor(opts) {
   const checks = [];
   const add = (name, status, detail) => checks.push({ name, status, detail });
   add("engine", "ok", `version ${ENGINE_VERSION} \xB7 commit ${runningCommit} \xB7 schema v${SCHEMA_VERSION}`);
-  const settings = readJson2(join16(root, ".claude", "settings.json"));
+  const settings = readJson2(join18(root, ".claude", "settings.json"));
   const configDir = claudeConfigDir(env);
-  const pluginsFile = opts.pluginsFile ?? (configDir ? join16(configDir, "plugins", "installed_plugins.json") : void 0);
+  const pluginsFile = opts.pluginsFile ?? (configDir ? join18(configDir, "plugins", "installed_plugins.json") : void 0);
   const plugin = detectPluginWiring(settings, root, pluginsFile);
   const mf = readManifest(brainDir2);
   if (!mf) {
@@ -21847,18 +22431,18 @@ function runDoctor(opts) {
     }
   }
   {
-    const probe = join16(brainDir2, `.write-probe-${process.pid}-${randomBytes3(4).toString("hex")}`);
+    const probe = join18(brainDir2, `.write-probe-${process.pid}-${randomBytes3(4).toString("hex")}`);
     const payload = `vfkb write-probe ${process.pid} ${Date.now()}`;
     let failure;
     try {
-      mkdirSync9(brainDir2, { recursive: true });
-      writeFileSync7(probe, payload);
-      if (readFileSync12(probe, "utf8") !== payload) failure = "wrote the probe file but read back different bytes";
+      mkdirSync11(brainDir2, { recursive: true });
+      writeFileSync9(probe, payload);
+      if (readFileSync14(probe, "utf8") !== payload) failure = "wrote the probe file but read back different bytes";
     } catch (e) {
       failure = e.message;
     } finally {
       try {
-        if (existsSync11(probe)) unlinkSync2(probe);
+        if (existsSync12(probe)) unlinkSync2(probe);
       } catch {
       }
     }
@@ -21886,14 +22470,14 @@ function runDoctor(opts) {
     } else {
       add("journal", "ok", `${js.walLines} line(s) in the uncommitted window, nothing to restore`);
     }
-    if (existsSync11(join16(brainDir2, ".journal")) && isUnder(repoToplevel(root), join16(brainDir2, ".journal"))) {
+    if (existsSync12(join18(brainDir2, ".journal")) && isUnder(repoToplevel(root), join18(brainDir2, ".journal"))) {
       try {
-        execFileSync6("git", ["-C", root, "check-ignore", "-q", join16(brainDir2, ".journal", "wal.jsonl")], {
+        execFileSync8("git", ["-C", root, "check-ignore", "-q", join18(brainDir2, ".journal", "wal.jsonl")], {
           stdio: "ignore"
         });
       } catch {
         try {
-          execFileSync6("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], { stdio: "ignore" });
+          execFileSync8("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], { stdio: "ignore" });
           add(
             "journal gitignore",
             "warn",
@@ -21911,7 +22495,7 @@ function runDoctor(opts) {
     } else {
       add("$VFKB_BUNDLE_DIR", "warn", "unset \u2014 set it once per machine to the vfkb bundles dir (so the wiring resolves the engine)");
     }
-  } else if (!existsSync11(join16(home, "vfkb.mjs")) || !existsSync11(join16(home, "vfkb-mcp.mjs"))) {
+  } else if (!existsSync12(join18(home, "vfkb.mjs")) || !existsSync12(join18(home, "vfkb-mcp.mjs"))) {
     add("$VFKB_BUNDLE_DIR", "warn", `set to ${home} but vfkb.mjs / vfkb-mcp.mjs not found there (run \`npm run build:bundles\`)`);
   } else {
     add("$VFKB_BUNDLE_DIR", "ok", home);
@@ -21922,7 +22506,7 @@ function runDoctor(opts) {
   if (env.VFKB_HOME && !env.VFKB_BUNDLE_DIR) {
     add("env (deprecated)", "warn", "VFKB_HOME is a deprecated alias \u2014 rename it to VFKB_BUNDLE_DIR");
   }
-  const mcp = readJson2(join16(root, ".mcp.json"));
+  const mcp = readJson2(join18(root, ".mcp.json"));
   const mcpProject = mcp?.mcpServers?.vfkb?.env?.VFKB_PROJECT;
   const mcpPresent = Boolean(mcp?.mcpServers?.vfkb);
   if (plugin && mcpPresent) {
@@ -21935,7 +22519,7 @@ function runDoctor(opts) {
     add(".mcp.json", "ok", `vfkb server present (project ${mcpProject ?? "?"})`);
   }
   const hooks = settings?.hooks ?? {};
-  const expected = ["SessionStart", "PreToolUse", "Stop", "SessionEnd"];
+  const expected = ["SessionStart", "PreToolUse", "UserPromptSubmit", "Stop", "SessionEnd"];
   const have = expected.filter((e) => isEngineWiring(JSON.stringify(hooks[e] ?? "")));
   if (plugin && have.length > 0) {
     add(".claude/settings.json", "warn", `vfkb hooks present ALONGSIDE the plugin (double wiring) \u2014 remove them; the plugin's hooks are primary (ADR-0045)`);
@@ -21944,7 +22528,12 @@ function runDoctor(opts) {
   } else if (have.length === 0) {
     add(".claude/settings.json", "warn", "no vfkb hooks \u2014 run `vfkb init`");
   } else if (have.length < expected.length) {
-    add(".claude/settings.json", "warn", `only ${have.join(", ")} wired (expected ${expected.join(", ")})`);
+    const missing = expected.filter((e) => !have.includes(e));
+    add(
+      ".claude/settings.json",
+      "warn",
+      `${missing.join(", ")} not wired (have ${have.join(", ")}) \u2014 re-run \`vfkb init\` (idempotent; merges, keeps your own hooks)`
+    );
   } else {
     add(".claude/settings.json", "ok", `${have.join(", ")} wired`);
   }
@@ -21952,7 +22541,7 @@ function runDoctor(opts) {
   if (!plugin && have.length > 0 && hooksBlob.includes("bootstrap.mjs") && !hooksBlob.includes("CLAUDE_PROJECT_DIR")) {
     add("hooks anchor", "warn", "vfkb hooks use a CWD-relative bootstrap path \u2014 they break when the session cd's out of the repo root; re-run `vfkb init` to anchor them to $CLAUDE_PROJECT_DIR (issue #22)");
   }
-  if (existsSync11(join16(root, ".vfkb", "bin", "bootstrap.mjs"))) {
+  if (existsSync12(join18(root, ".vfkb", "bin", "bootstrap.mjs"))) {
     add("bootstrap", "ok", ".vfkb/bin/bootstrap.mjs present");
   } else if (!plugin && (mcpPresent || have.length > 0)) {
     add("bootstrap", "warn", "wiring present but .vfkb/bin/bootstrap.mjs is missing \u2014 run `vfkb init`");
@@ -21982,12 +22571,12 @@ function runDoctor(opts) {
     add("VFKB_PROJECT", "ok", `${mcpProject ?? settingsProject}`);
   }
   {
-    const embedded = join16(brainDir2, ".git");
+    const embedded = join18(brainDir2, ".git");
     const inRepo = isUnder(repoToplevel(root), brainDir2);
     const top = repoToplevel(root);
     const brainIsRoot = top !== void 0 && samePathReal(brainDir2, top);
-    if (inRepo && !brainIsRoot && existsSync11(embedded)) {
-      const rel = relative4(root, join16(brainDir2, "entries.jsonl"));
+    if (inRepo && !brainIsRoot && existsSync12(embedded)) {
+      const rel = relative4(root, join18(brainDir2, "entries.jsonl"));
       const brainRel = relative4(root, brainDir2);
       const gitRun = opts.git ?? realGit2;
       const q = (args) => {
@@ -22026,15 +22615,110 @@ function runDoctor(opts) {
     }
   }
   {
-    const piSettingsPath = join16(root, ".pi", "settings.json");
+    const git3 = realGit2;
+    const inRepo = (() => {
+      try {
+        return git3(["rev-parse", "--is-inside-work-tree"], root).trim() === "true";
+      } catch {
+        return false;
+      }
+    })();
+    let brainDirty;
+    let headTimeMs;
+    if (inRepo) {
+      try {
+        brainDirty = git3(["status", "--porcelain", "--", join18(brainDir2, "entries.jsonl")], root).trim() !== "";
+      } catch {
+        brainDirty = void 0;
+      }
+      try {
+        const t = Date.parse(git3(["log", "-1", "--format=%cI"], root).trim());
+        headTimeMs = Number.isFinite(t) ? t : void 0;
+      } catch {
+        headTimeMs = void 0;
+      }
+    }
+    const local = readJson2(join18(root, ".claude", "settings.local.json"));
+    const budgetOverride = local?.env?.[SESSION_END_BUDGET_ENV] ?? settings?.env?.[SESSION_END_BUDGET_ENV] ?? env[SESSION_END_BUDGET_ENV];
+    const c = checkSessionEnd({
+      records: readSessionRecords(brainDir2),
+      brainDirty,
+      headTimeMs,
+      budgetOverride: budgetOverride === void 0 ? void 0 : String(budgetOverride)
+    });
+    add("session-end", c.status, c.detail);
+  }
+  {
+    const piSettingsPath = join18(root, ".pi", "settings.json");
     const piSettings = readJson2(piSettingsPath);
-    const piMcpPath = join16(brainDir2, "mcp.json");
+    const piMcpPath = join18(brainDir2, "mcp.json");
     const piMcp = readJson2(piMcpPath);
-    for (const c of checkPiWiring(piSettings, piMcp, existsSync11(piSettingsPath), existsSync11(piMcpPath), !!plugin)) {
+    for (const c of checkPiWiring(piSettings, piMcp, existsSync12(piSettingsPath), existsSync12(piMcpPath), !!plugin)) {
       add(c.name, c.status, c.detail);
     }
   }
   return { checks, ok: !checks.some((c) => c.status === "fail") };
+}
+var SESSION_END_BUDGET_ENV = "CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS";
+function checkSessionEnd(i) {
+  const marked = i.records.filter((r) => r.sessionEnd && typeof r.sessionEnd.startedAt === "string");
+  if (marked.length === 0) {
+    return {
+      status: "skip",
+      detail: `no session record carries a SessionEnd marker (${i.records.length} record(s); the marker is written by plugin releases carrying vfkb#384) \u2014 nothing to compare`
+    };
+  }
+  const id8 = (r) => (r.sessionId ?? "?").slice(0, 8);
+  const resumed = (r) => typeof r.sessionEnd.turnAtEnd === "number" && (r.turnCount ?? 0) > r.sessionEnd.turnAtEnd;
+  const open2 = marked.filter((r) => !r.sessionEnd.outcome && !resumed(r));
+  const after = (r) => {
+    const t = Date.parse(r.sessionEnd.startedAt);
+    return i.headTimeMs === void 0 || !Number.isFinite(t) || t > i.headTimeMs;
+  };
+  const actionable = open2.filter((r) => i.brainDirty !== false && after(r));
+  if (actionable.length > 0) {
+    const newest = actionable.sort((a, b) => b.sessionEnd.startedAt.localeCompare(a.sessionEnd.startedAt))[0];
+    const remedy = i.budgetOverride ? `${SESSION_END_BUDGET_ENV}=${i.budgetOverride} is already set in .claude settings \u2014 look for a slow git (hooks, a large repo) or lock contention` : `if this recurs, raise the budget in the project's .claude/settings.json: "env": { "${SESSION_END_BUDGET_ENV}": "5000" } (Claude Code v2.1.268 or later)`;
+    return {
+      status: "warn",
+      detail: `SessionEnd began ${newest.sessionEnd.startedAt} for session ${id8(newest)} and never finished (${actionable.length} such session(s); no commit since, brain ${i.brainDirty ? "has uncommitted changes" : "state unknown"}) \u2014 likely cut off by Claude Code's SessionEnd time budget. Commit the brain by hand: \`git commit -o -m "chore(brain): commit brain" -- .vfkb/entries.jsonl\` on a topic branch; ${remedy}`
+    };
+  }
+  const last = marked.sort((a, b) => b.sessionEnd.startedAt.localeCompare(a.sessionEnd.startedAt))[0];
+  const o = last.sessionEnd.outcome;
+  if (i.brainDirty && (o === "on-default-branch" || o === "detached-head" || o === "error") && after(last)) {
+    const why = o === "error" ? "the auto-commit failed (git identity, a commit hook, or a lock)" : o === "detached-head" ? "it ran on a detached HEAD, where vfkb never auto-commits" : "it ran on the default branch, where vfkb never auto-commits";
+    return {
+      status: "warn",
+      detail: `the last SessionEnd (session ${id8(last)}, ${last.sessionEnd.startedAt}) finished as "${o}": ${why}, and entries.jsonl still has uncommitted changes \u2014 move them to a topic branch and commit (Claude Code does not display SessionEnd messages, so this is the only place that says so)`
+    };
+  }
+  const closed = marked.filter((r) => r.sessionEnd.outcome);
+  const slow = closed.filter((r) => (r.sessionEnd.elapsedMs ?? 0) > 1e3).length;
+  const slowNote = slow ? `; ${slow} took over 1000 ms of the 1500 ms default budget` : "";
+  const stale = open2.length - actionable.length;
+  const staleNote = stale ? `; ${stale} earlier unfinished one(s) are followed by a commit or a clean brain` : "";
+  return {
+    status: "ok",
+    detail: `last SessionEnd (session ${id8(last)}) finished as "${o ?? "unfinished"}"; ${closed.length} of ${marked.length} marked session(s) finished${slowNote}${staleNote}`
+  };
+}
+function readSessionRecords(brainDir2) {
+  const dir = join18(brainDir2, ".sessions");
+  let names;
+  try {
+    names = readdirSync3(dir).filter((n) => n.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const n of names) {
+    try {
+      out.push(JSON.parse(readFileSync14(join18(dir, n), "utf8")));
+    } catch {
+    }
+  }
+  return out;
 }
 var ICON = { ok: "OK  ", warn: "WARN", fail: "FAIL", skip: "SKIP" };
 function renderDoctor(report) {
@@ -22045,9 +22729,9 @@ function renderDoctor(report) {
 }
 
 // src/import.ts
-import { existsSync as existsSync12, readdirSync as readdirSync3, readFileSync as readFileSync13, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync13, readdirSync as readdirSync4, readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename5, extname, join as join17 } from "node:path";
+import { basename as basename5, extname, join as join19 } from "node:path";
 var MYKB_FILES = {
   "decisions.jsonl": "decision",
   "facts.jsonl": "fact",
@@ -22072,16 +22756,16 @@ function mykbText(type, e) {
   return parts.filter(Boolean).join("\n\n");
 }
 function resolveMykbArea(nameOrDir) {
-  if (existsSync12(nameOrDir) && statSync3(nameOrDir).isDirectory()) return nameOrDir;
-  return join17(homedir2(), ".mykb", "areas", nameOrDir);
+  if (existsSync13(nameOrDir) && statSync3(nameOrDir).isDirectory()) return nameOrDir;
+  return join19(homedir2(), ".mykb", "areas", nameOrDir);
 }
 function fromMykb(areaDir) {
-  if (!existsSync12(areaDir)) throw new Error(`mykb area not found: ${areaDir}`);
+  if (!existsSync13(areaDir)) throw new Error(`mykb area not found: ${areaDir}`);
   const out = [];
   for (const [file2, type] of Object.entries(MYKB_FILES)) {
-    const path = join17(areaDir, file2);
-    if (!existsSync12(path)) continue;
-    for (const line of readFileSync13(path, "utf8").split(/\r?\n/)) {
+    const path = join19(areaDir, file2);
+    if (!existsSync13(path)) continue;
+    for (const line of readFileSync15(path, "utf8").split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       let e;
@@ -22100,24 +22784,24 @@ function fromMykb(areaDir) {
 }
 function mdTitle(path) {
   try {
-    const heading = readFileSync13(path, "utf8").split(/\r?\n/).find((l) => l.startsWith("# "));
+    const heading = readFileSync15(path, "utf8").split(/\r?\n/).find((l) => l.startsWith("# "));
     if (heading) return heading.replace(/^#\s+/, "").trim();
   } catch {
   }
   return basename5(path, extname(path));
 }
 function fromAdr(dir = "docs/adr") {
-  if (!existsSync12(dir)) throw new Error(`ADR dir not found: ${dir}`);
+  if (!existsSync13(dir)) throw new Error(`ADR dir not found: ${dir}`);
   const out = [];
-  for (const file2 of readdirSync3(dir).sort()) {
+  for (const file2 of readdirSync4(dir).sort()) {
     if (extname(file2) !== ".md" || /readme/i.test(file2)) continue;
-    const rel = join17(dir, file2);
+    const rel = join19(dir, file2);
     out.push(stamp("link", `${mdTitle(rel)} \u2192 ${rel}`, ["adr"], false));
   }
   return out;
 }
 function fromMarkdown(file2) {
-  if (!existsSync12(file2)) throw new Error(`markdown file not found: ${file2}`);
+  if (!existsSync13(file2)) throw new Error(`markdown file not found: ${file2}`);
   return [stamp("link", `${mdTitle(file2)} \u2192 ${file2}`, ["doc"], false)];
 }
 
@@ -22196,13 +22880,13 @@ var ENTRY_TYPES = ["fact", "decision", "gotcha", "pattern", "link"];
 var DECISION_STATUSES = ["proposed", "accepted", "deprecated", "superseded"];
 
 // src/cli.ts
-import { readFileSync as readFileSync14 } from "node:fs";
+import { readFileSync as readFileSync16 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { dirname as dirname10, join as join18 } from "node:path";
+import { dirname as dirname11, join as join20 } from "node:path";
 function packageVersion() {
   try {
-    const here = dirname10(fileURLToPath2(import.meta.url));
-    const pkg = JSON.parse(readFileSync14(join18(here, "..", "package.json"), "utf8"));
+    const here = dirname11(fileURLToPath2(import.meta.url));
+    const pkg = JSON.parse(readFileSync16(join20(here, "..", "package.json"), "utf8"));
     return pkg.version || ENGINE_VERSION;
   } catch {
     return ENGINE_VERSION;
@@ -22253,7 +22937,7 @@ ${USAGE}`);
     throw err;
   }
 }
-var USAGE = "usage: vfkb <add|broadcast|journal purge|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook stop|hook session-end>\n";
+var USAGE = "usage: vfkb <add|broadcast|journal purge|list|search|query|map|context|context init|resume|resume-note|curate|distill|save|export|import|init|doctor|supersede|context-block|context-block-naive|--version|hook session-start|hook pre-tool-use|hook post-tool-use|hook user-prompt-submit|hook stop|hook session-end>\n";
 async function dispatch() {
   const [cmd, sub, ...rest] = process.argv.slice(2);
   if (cmd === "--help" || cmd === "-h" || cmd === "help") {
@@ -22450,7 +23134,11 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
   if (cmd === "context-block") {
     const p = parseArgs("context-block", argsOf(sub, rest), {});
     if (p.positionals.length > 1) throw new UsageError("context-block: at most one [project] argument");
-    process.stdout.write(renderContextBundle(p.positionals[0] || defaultProject()));
+    process.stdout.write(
+      renderContextBundle(p.positionals[0] || defaultProject(), void 0, {
+        pinStaleness: gitPinStalenessProvider(process.cwd(), brainDir())
+      })
+    );
     return;
   }
   if (cmd === "map") {
@@ -22478,7 +23166,7 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     return;
   }
   if (cmd === "curate") {
-    const p = parseArgs("curate", argsOf(sub, rest), { by: "value", days: "value" });
+    const p = parseArgs("curate", argsOf(sub, rest), { by: "value", days: "value", "dry-run": "boolean" });
     const [action, id1, id2] = p.positionals;
     const need = (n, usage) => {
       if (p.positionals.length - 1 !== n) throw new UsageError(`usage: vfkb curate ${usage}`);
@@ -22557,6 +23245,24 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
           for (const c of r.candidates) process.stdout.write(`vfkb curate archive ${c.id}
 `);
         }
+      } else if (action === "auto") {
+        need(0, "auto [--dry-run]");
+        const dry = p.flags.get("dry-run") === true;
+        const r = autoCurate(void 0, { dryRun: dry });
+        const verb = dry ? "would archive" : "archived";
+        process.stdout.write(`${verb} ${r.archived.length} old handoff(s)${r.archived.length ? `: ${r.archived.join(" ")}` : ""}
+`);
+        if (r.skipped) process.stdout.write(`skipped: ${r.skipped}
+`);
+        if (r.repaired.length) process.stdout.write(`${dry ? "would restore" : "restored"} ${r.repaired.length} kept entr(ies) a branch re-archived: ${r.repaired.join(" ")}
+`);
+      } else if (action === "log") {
+        need(0, "log");
+        const rows = autoArchiveLog();
+        process.stdout.write(`${rows.length} entr(ies) archived by the background-curation rule (undo: vfkb curate restore <id>):
+`);
+        for (const x of rows) process.stdout.write(`${x.date}	${x.rule}	${x.id}	${x.firstLine}
+`);
       } else if (action === "stale") {
         need(0, "stale [--days N]");
         const days = flagInt(p, "days") ?? 30;
@@ -22572,7 +23278,7 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
         section("non-handoff status facts", r.status);
       } else {
         process.stderr.write(
-          "usage: vfkb curate <dups|promote <id>|promote-auto <id>|archive <id>|merge <loser> <winner>|signal <id> <helpful|harmful>|retire <old> --by <new>|restore <id>|handoffs|stale [--days N]>\n"
+          "usage: vfkb curate <dups|promote <id>|promote-auto <id>|archive <id>|merge <loser> <winner>|signal <id> <helpful|harmful>|retire <old> --by <new>|restore <id>|handoffs|stale [--days N]|auto [--dry-run]|log>\n"
         );
         process.exit(1);
       }
@@ -22627,15 +23333,17 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
   }
   if (cmd === "supersede") {
     if (!sub || sub.startsWith("--")) {
-      throw new UsageError("usage: vfkb supersede <oldId> <text\u2026> [--role r] [--why w]");
+      throw new UsageError("usage: vfkb supersede <oldId> <text\u2026> [--role r] [--why w] [--tag a,b]");
     }
-    const p = parseArgs("supersede", rest, { role: "value", why: "value" });
+    const p = parseArgs("supersede", rest, { role: "value", why: "value", tag: "value" });
     const newText = p.positionals.join(" ").trim();
     if (!newText) throw new UsageError("supersede: missing new text");
     try {
       const e = supersede(sub, newText, {
         role: flagValue(p, "role") || "human",
-        why: flagValue(p, "why")
+        why: flagValue(p, "why"),
+        // absent → the engine inherits the predecessor's tags
+        tags: flagList(p, "tag")
       });
       process.stdout.write(`${e.id}	supersedes ${sub}	${e.text}
 `);
@@ -22687,16 +23395,25 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
     if (sub === "session-start") {
       const raw = await readStdin();
       let payloadId;
+      let source;
       try {
         const p = JSON.parse(raw || "{}");
         if (typeof p.session_id === "string") payloadId = p.session_id;
+        if (typeof p.source === "string") source = p.source;
       } catch {
+      }
+      if (source === "compact") {
+        try {
+          clearPromptNudgeKey(brainDir(), effectiveSessionId(payloadId));
+        } catch {
+        }
       }
       const project = defaultProject();
       const lim = flag(rest, "limit");
       const session = SessionState.load(effectiveSessionId(payloadId));
+      session.clearSessionEnd();
       const restoreNote = healBrain({ sessionId: effectiveSessionId(payloadId) });
-      const additionalContext = restoreNote + (rest.includes("--naive") ? renderNaiveDump(project, void 0, lim ? Number(lim) : void 0) : renderResume(project, session));
+      const additionalContext = restoreNote + (rest.includes("--naive") ? renderNaiveDump(project, void 0, lim ? Number(lim) : void 0) : renderResume(project, session, { pinStaleness: gitPinStalenessProvider(process.cwd(), brainDir()) }));
       session.save();
       process.stdout.write(
         JSON.stringify({
@@ -22739,10 +23456,15 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
       const raw = await readStdin();
       let input2 = {};
       try {
-        input2 = JSON.parse(raw || "{}");
+        const parsed = JSON.parse(raw || "{}");
+        if (parsed && typeof parsed === "object") input2 = parsed;
       } catch {
       }
       if (input2.stop_hook_active) {
+        process.stdout.write("{}");
+        return;
+      }
+      if (isPausedStop(input2)) {
         process.stdout.write("{}");
         return;
       }
@@ -22755,11 +23477,22 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
         );
         session.bumpTurn();
         session.save();
-        turn = session.turnCount;
-        lastNudged = session.nudgedAtTurn;
+        if (session.isPersisted) {
+          turn = session.turnCount;
+          lastNudged = session.nudgedAtTurn;
+          const delivered = readPromptNudgeSignal(brainDir(), session.sessionId).staleAtTurn;
+          if (delivered !== void 0 && delivered <= turn) {
+            const raw2 = lastNudged?.staleHandoff;
+            const prev = typeof raw2 === "number" && Number.isFinite(raw2) && raw2 >= 0 && raw2 <= turn ? raw2 : void 0;
+            if (prev === void 0 || delivered > prev) lastNudged = { ...lastNudged, staleHandoff: delivered };
+          }
+        }
       } catch {
       }
-      const d = decideStop({ stop_hook_active: false }, { ...gatherStopContext(), turn, lastNudged });
+      const d = decideStop(
+        { stop_hook_active: false, background_tasks: input2.background_tasks, session_crons: input2.session_crons },
+        { ...gatherStopContext(), turn, lastNudged }
+      );
       try {
         if (d.block && session) {
           for (const key of d.fired) session.markNudged(key);
@@ -22778,20 +23511,74 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
       );
       return;
     }
+    if (sub === "user-prompt-submit") {
+      const deadline = PROMPT_NUDGE_BUDGET_MS - 200;
+      try {
+        const raw = await readStdin();
+        let input2 = {};
+        try {
+          const parsed = JSON.parse(raw || "{}");
+          if (parsed && typeof parsed === "object") input2 = parsed;
+        } catch {
+          return;
+        }
+        const sessionId = effectiveSessionId(typeof input2.session_id === "string" ? input2.session_id : void 0);
+        const s = readSessionTurn(sessionId);
+        if (promptNudgeSkip(input2, s)) return;
+        if (performance.now() > deadline) return;
+        const brain = brainDir();
+        const stored = s.persisted ? readPromptNudgeSignal(brain, sessionId) : {};
+        const ctx = gatherPromptContext(process.cwd(), brain, s, stored.key, deadline);
+        if (performance.now() > deadline) return;
+        const d = decidePromptNudge(input2, ctx, stored.key);
+        if (!d.emit) return;
+        if (s.persisted && sessionId) {
+          try {
+            writePromptNudgeSignal(brain, sessionId, {
+              key: d.key,
+              staleAtTurn: d.reasons.includes("stale") && s.turn !== void 0 ? s.turn : stored.staleAtTurn
+            });
+          } catch {
+          }
+        }
+        process.stdout.write(
+          JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: d.text } })
+        );
+      } catch {
+      }
+      return;
+    }
     if (sub === "session-end") {
       const raw = await readStdin();
       let cwd;
       let sessionId;
+      let reason;
       try {
         const payload = JSON.parse(raw || "{}");
         if (typeof payload.cwd === "string") cwd = payload.cwd;
         if (typeof payload.session_id === "string") sessionId = payload.session_id;
+        if (typeof payload.reason === "string") reason = payload.reason;
       } catch {
       }
+      let marker;
+      try {
+        marker = SessionState.load(effectiveSessionId(sessionId));
+        marker.openSessionEnd(reason);
+        marker.save();
+      } catch {
+        marker = void 0;
+      }
       let systemMessage;
+      let outcome = "error";
       try {
         const r = runSessionEnd({ cwd, sessionId: effectiveSessionId(sessionId) });
         systemMessage = r.systemMessage;
+        outcome = r.reason;
+      } catch {
+      }
+      try {
+        marker?.closeSessionEnd(outcome, performance.now());
+        marker?.save();
       } catch {
       }
       process.stdout.write(systemMessage ? JSON.stringify({ systemMessage }) : "{}");
@@ -22818,6 +23605,7 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
       process.stdout.write("{}");
       return;
     }
+    return;
   }
   if (cmd === "save") {
     const p = parseArgs("save", argsOf(sub, rest), {});

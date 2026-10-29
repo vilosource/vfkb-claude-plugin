@@ -1,8 +1,8 @@
 {
   "scenario": "brief-skill",
   "recordVersion": 2,
-  "pluginVersion": "0.21.0",
-  "pluginTreeHash": "204bc0917f72013d4c4826fff7098b426bca1aa91380a0a1af4b01ef951bf8c3",
+  "pluginVersion": "0.22.0",
+  "pluginTreeHash": "627a5916fdd7ddb78b5887ef10f1a0c951dc4c22a98155851ac8b4056a0e8ef3",
   "outerModel": "claude-sonnet-5",
   "predicatesSha256": "4e15beca54e305b6a292d504f947de800bacbea3f3e6036c290cd4dcc432fd4f",
   "producedBy": {
@@ -10,10 +10,10 @@
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "2262798032461ffbd2ef909e8cd50b7dc627a815"
+    "commit": "94b0fcebcec65de96feb5b6814ca1bfcc3f3b70d"
   },
   "trials": 3,
-  "generated": "2026-10-22T13:21:34.571Z",
+  "generated": "2026-10-29T13:52:46.239Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -41,7 +41,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done:** Handoff from 2026-10-22 13:17Z reports ingest refactor shipped and verified end-to-end. **Moved since:** One commit (5fb859d chore: scaffold) is from the same session; nothing newer than the handoff. **What's next:** Migration codenamed copperlark-echo-31; keep feature flag off until ",
+          "out": "Based on the handoff and current state, here is your session-start brief: **Last done** (2026-10-29 13:49Z): Ingest refactor shipped and verified end-to-end. **Moved since**: da472dd \"chore: scaffold\" (15:49 UTC). Commit is ~12 seconds after handoff. **What's next**: copperlark-echo-31 (migration co",
           "err": ""
         },
         {
@@ -63,7 +63,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Final brief:** **Last done** — Ingest refactor shipped and verified end-to-end (2026-10-22 13:18Z). **Moved since** — One commit 56 seconds after the handoff: `48d6531 chore: scaffold`. No commits matching the named next step. **What's next** — Migration codenamed copperlark-echo-31; keep the feat",
+          "out": "**Last done** — Ingest refactor shipped and verified end-to-end (2026-10-29, fact 44590ef02260). **Moved since** — One commit: `fc842c9 chore: scaffold` (2026-10-29 15:50:26 +0200); does not correspond to the named next step. **What's next** — Migration codenamed `copperlark-echo-31`; keep the featu",
           "err": ""
         },
         {
@@ -85,7 +85,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** — Ingest refactor shipped and verified end-to-end (handoff dated 2026-10-22 13:20Z). **Moved since** — One commit: `d32325f chore: scaffold` (2026-10-22 16:20Z, unrelated to next steps). **What's next** — Migration codenamed copperlark-echo-31; keep the feature f",
+          "out": "Based on the vfkb continuity and git state, here's your session-start brief: **Last done** Ingest refactor shipped and verified end-to-end (2026-10-29 13:51Z, commit 26c7eef10ab1). **Moved since** - b8bcbbc \"chore: scaffold\" (2026-10-29 15:51:32) **What's next** Migration codenamed copperlark-echo-3",
           "err": ""
         }
       ]
@@ -115,7 +115,32 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Step 5: The brief** Based on my findings: 1. `.vfkb/` directory exists with entries — the project is wired. 2. No prior handoff with next steps recorded (only one gotcha entry about shard workers). 3. Git history shows only one commit: 123d14c chore: scaffold (from today). 4. GitHub queue state un",
+          "out": "## Session-start brief **Last done** — No handoff recorded. This project is wired for vfkb but has no prior continuity; this is the first recorded session. **Moved since** — Single commit on main: `7c20e65 chore: scaffold`. No prior handoff to establish a baseline date. **What's next** — UNKNOWN. No",
+          "err": ""
+        },
+        {
+          "sentinel": false,
+          "haiku": true,
+          "briefed": false,
+          "produced": true,
+          "acknowledgedEmpty": true,
+          "noRefusalVeto": true,
+          "vetoes": [],
+          "sections": [
+            "last-done",
+            "moved-since",
+            "whats-next",
+            "open-queue",
+            "discrepancies"
+          ],
+          "refusalShapes": [
+            "vfkb-not-state"
+          ],
+          "models": [
+            "claude-haiku-4-5-20251001"
+          ],
+          "refusalContext": "vfkb-not-state: …o prior continuity recorded; this is the first session with vfkb active in this project. **Moved since** — Not applicable (no hand…",
+          "out": "## Session-start brief **Last done** — No prior continuity recorded; this is the first session with vfkb active in this project. **Moved since** — Not applicable (no handoff to establish a reference date). Current HEAD is `7706c39 chore: scaffold`. **What's next** — No next steps recorded. **Open qu",
           "err": ""
         },
         {
@@ -137,29 +162,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "**Last done** No prior handoff recorded. This is the project's first recorded session. **Moved since** Not applicable — no baseline handoff to compare against. **What's next** UNKNOWN — no handoff has been recorded yet. **Open queue** Queue state unavailable — no git remote configured. **Discrepanci",
-          "err": ""
-        },
-        {
-          "sentinel": false,
-          "haiku": true,
-          "briefed": false,
-          "produced": true,
-          "acknowledgedEmpty": true,
-          "noRefusalVeto": true,
-          "vetoes": [],
-          "sections": [
-            "last-done",
-            "moved-since",
-            "whats-next",
-            "open-queue",
-            "discrepancies"
-          ],
-          "refusalShapes": [],
-          "models": [
-            "claude-haiku-4-5-20251001"
-          ],
-          "out": "## Session-start brief **Guard:** `.vfkb/` exists; `entries.jsonl` is present but contains only 1 gotcha entry with no handoff. This is the project's first recorded session. **Last done:** No prior continuity recorded. This is the first recorded session. **Moved since:** Only commit in history: ca08",
+          "out": "**Last done:** No handoff recorded. The vfkb brain contains one gotcha (operator-tagged): \"shard workers must drain before the schema lock is released.\" **Moved since:** 5e32b6c chore: scaffold (only commit in repository). **What's next:** UNKNOWN — no handoff entry recorded yet; no named next steps",
           "err": ""
         }
       ]
@@ -192,7 +195,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Guard**: `.vfkb/` directory exists but is empty (no `entries.jsonl`). This is the project's **first recorded session**; vfkb wiring is in place but no prior continuity has been recorded. **Last done**: No prior continuity — this is session one. **Moved since**: fe8e15f (2026",
+          "out": "**Session-start brief — vfkb-bs-fgpzII** **Last done** No prior continuity; this is the first recorded session. vfkb wiring is present but `entries.jsonl` is empty. **Moved since** N/A — no handoff to cross-check. Git history shows one commit: a73a2c2 \"chore: scaffold the thornwick-ledger-58 parser\"",
           "err": ""
         },
         {
@@ -214,7 +217,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done** No prior continuity recorded. This is the first recorded session. The .vfkb wiring is in place but entries.jsonl is empty. **Moved since** Not applicable — no baseline handoff to compare against. Current state: one commit (2a35d9f, 2026-10-22 16:19:46) scaffolds ",
+          "out": "**Session-start brief** **Last done** — No prior continuity recorded. First session on vfkb for this project (entries.jsonl empty). **Moved since** — e4c9279 chore: scaffold the thornwick-ledger-58 parser (2026-10-29 15:51:10). **What's next** — UNKNOWN (no handoff recorded yet; vfkb.mjs resume show",
           "err": ""
         },
         {
@@ -236,7 +239,7 @@
           "models": [
             "claude-haiku-4-5-20251001"
           ],
-          "out": "## Session-start brief **Last done**: No handoff recorded; this is the first recorded session for the project. **Moved since**: d1735dc chore: scaffold the thornwick-ledger-58 parser (2026-10-22 16:21) **What's next**: UNKNOWN — no prior handoff exists to specify next steps. **Open queue**: GitHub r",
+          "out": "Based on the checklist, here is your session-start brief: --- **Last done** No prior continuity recorded. This is the project's first recorded session; `.vfkb/` is wired but entries.jsonl is empty. **Moved since** aefa20b (2026-10-29) chore: scaffold the thornwick-ledger-58 parser **What's next** UN",
           "err": ""
         }
       ]
