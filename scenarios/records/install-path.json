@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.21.0",
+  "pluginVersion": "0.22.0",
   "outerModel": "claude-sonnet-5",
   "trials": 3,
-  "generated": "2026-10-22T13:32:12.627Z",
+  "generated": "2026-10-29T14:05:41.109Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "feat/handoff-retires",
-  "headSha": "2262798032461ffbd2ef909e8cd50b7dc627a815",
-  "pluginTreeHash": "204bc0917f72013d4c4826fff7098b426bca1aa91380a0a1af4b01ef951bf8c3",
+  "ref": "release/v0.22.0",
+  "headSha": "c95175659b60ade9490b467cb3f6e392bbc40e11",
+  "pluginTreeHash": "627a5916fdd7ddb78b5887ef10f1a0c951dc4c22a98155851ac8b4056a0e8ef3",
   "producedBy": {
     "ranOn": "laptop",
     "credentialKind": "claude-oauth",
     "authBase": "anthropic-production",
     "runUrl": null,
-    "commit": "2262798032461ffbd2ef909e8cd50b7dc627a815"
+    "commit": "c95175659b60ade9490b467cb3f6e392bbc40e11"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "--- ## Session-Start Brief **Last done** — Handoff dated 2026-10-22 13:27Z: delivery refactor shippe",
+          "out": "**Last done** — The delivery refactor shipped and verified end-to-end (handoff dated 2026-10-29 14:0",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Session-start brief for `proj`** **Last done:** Delivery refactor shipped and verified end-to-end ",
+          "out": "Based on my review of the project's recorded continuity: **Last done** (2026-10-29 14:02Z): The hand",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "Based on the vfkb handoff and git history, here is the session-start brief: --- **Last done:** The d",
+          "out": "## Session-start Brief **Last done** — The handoff (2026-10-29 14:04Z) records the delivery refactor",
           "err": ""
         }
       ]
@@ -62,24 +62,24 @@
           "absentBefore": true,
           "presentAfter": true,
           "treeVerifiedAfter": true,
-          "beforeOut": "`/vfkb:brief` isn't installed in this session — only `/vfkb:vfkb` is available here. I won't guess a",
-          "afterOut": "Queue state unavailable (gh CLI requires authentication). ## Session-start brief **Last done** — The",
+          "beforeOut": "Note: `/vfkb:brief` isn't an installed command in this session — only `/vfkb:vfkb` is available, so ",
+          "afterOut": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end (handof",
           "err": ""
         },
         {
           "absentBefore": true,
           "presentAfter": true,
           "treeVerifiedAfter": true,
-          "beforeOut": "`/vfkb:brief` isn't installed in this session — only `/vfkb:vfkb` is available here. I didn't run an",
-          "afterOut": "**Last done:** The delivery refactor shipped and verified end-to-end (2026-10-22 13:29Z). **Moved si",
+          "beforeOut": "`/vfkb:brief` isn't installed in this session — only `/vfkb:vfkb` is available here. You could add `",
+          "afterOut": "## Step 5: Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end",
           "err": ""
         },
         {
           "absentBefore": true,
           "presentAfter": true,
           "treeVerifiedAfter": true,
-          "beforeOut": "`/vfkb:brief` isn't an installed command in this session — only `/vfkb:vfkb` is available, so I used",
-          "afterOut": "**Last done:** The delivery refactor shipped and verified end-to-end (2026-10-22 13:31Z). **Moved si",
+          "beforeOut": "`/vfkb:brief` isn't installed in this session — only `/vfkb:vfkb` is available here. I haven't run a",
+          "afterOut": "## Session-start brief **Last done** — Per handoff from 2026-10-29 14:04Z: the delivery refactor shi",
           "err": ""
         }
       ]
@@ -94,21 +94,21 @@
           "present": false,
           "sentinel": true,
           "haiku": false,
-          "out": "`/vfkb:brief` isn't installed in this session, so I ran `/vfkb:vfkb resume` instead, which covers th",
+          "out": "`/vfkb:brief` isn't installed in this session — the available vfkb commands here are `/vfkb:handoff`",
           "err": ""
         },
         {
           "present": false,
           "sentinel": true,
           "haiku": false,
-          "out": "Here's the current project brief from the knowledge base (vfkb): **Last handoff:** The delivery refa",
+          "out": "/vfkb:brief isn't installed in this session — only /vfkb:handoff, /vfkb:update, and /vfkb:vfkb are a",
           "err": ""
         },
         {
           "present": false,
           "sentinel": true,
           "haiku": false,
-          "out": "`/vfkb:brief` isn't installed in this session, so it didn't run — only `/vfkb:handoff`, `/vfkb:updat",
+          "out": "`/vfkb:brief` isn't installed in this session, but here's the equivalent resume digest from vfkb: **",
           "err": ""
         }
       ]
