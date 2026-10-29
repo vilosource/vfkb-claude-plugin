@@ -314,7 +314,7 @@ export function redactSecrets(text) {
   for (const tok of [process.env.DEEPSEEK_TOKEN, oauthToken, process.env.CLAUDE_CODE_OAUTH_TOKEN]) {
     if (tok && tok.length >= 8) out = out.split(tok).join('***REDACTED***');
   }
-  return out.replace(/sk-[A-Za-z0-9_-]{16,}/g, '***REDACTED***');
+  return out.replace(/\bsk-[A-Za-z0-9_-]{16,}/g, '***REDACTED***');
 }
 
 /** The ADR-0067 D5 provenance block. Credential KIND only — never a value. */
