@@ -339,6 +339,16 @@ const CASES = [
     break: (r) => rmSync(join(r, 'plugin/dist/bundles/vfkb-mcp.mjs')),
   },
   {
+    // 479fad1: a re-vendor built with node_modules symlinked to a sibling
+    // checkout bakes '../<dir>/node_modules/...' into esbuild's module-map keys.
+    // The code runs, but the bytes are not what vfkb main builds, so
+    // bundle-drift (and engine-staleness) can never report CLEAN against it.
+    name: 'a vendored bundle was built against a node_modules outside the build root',
+    expect: /\[packaging\].*plugin\/dist\/bundles\/vfkb\.mjs.*node_modules outside the build root/s,
+    break: (r) => write(r, 'plugin/dist/bundles/vfkb.mjs',
+      '// ../vfkb-wt-vendor/node_modules/zod/v4/core/index.js\nvar x = { "../vfkb-wt-vendor/node_modules/ajv/dist/core.js"(exports) {} };\n'),
+  },
+  {
     name: 'hooks.json does not parse',
     expect: /\[packaging\].*hooks\.json does not parse/s,
     break: (r) => write(r, 'plugin/hooks/hooks.json', '{ not json'),

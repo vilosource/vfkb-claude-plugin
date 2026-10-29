@@ -558,6 +558,21 @@ function checkPackaging(repo) {
     }
   }
 
+  // A canonical build (vfkb `npm ci && npm run build:bundles`) names its deps
+  // `node_modules/...`. A '../<dir>/node_modules/...' path means the bundle was
+  // built against a node_modules outside the build root (a symlinked one, as in
+  // 479fad1): the code runs, but the bytes are not what vfkb main builds, so
+  // bundle-drift and engine-staleness can never report CLEAN against it.
+  const escaped = /(?:^|[\s"'`])(?:\.\.\/)+[^\s"'`]*node_modules\//gm;
+  for (const rel of referenced) {
+    const f = join(P, rel);
+    if (!nonEmptyFile(f)) continue;
+    const n = (readFileSync(f, 'utf8').match(escaped) ?? []).length;
+    if (n > 0) {
+      fails.push(`plugin/${rel} has ${n} '../…/node_modules/' path(s): it was built against a node_modules outside the build root — re-vendor from a build with a real node_modules (npm ci)`);
+    }
+  }
+
   // The marketplace must point at a plugin that exists. It must also parse —
   // an unparseable manifest is a reportable packaging failure, not a stack trace.
   const mp = join(repo, '.claude-plugin', 'marketplace.json');
