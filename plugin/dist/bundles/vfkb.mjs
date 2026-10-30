@@ -20774,7 +20774,7 @@ import { dirname as dirname8, join as join11 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.9.1" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "e2ac6e9" : "dev";
+var ENGINE_COMMIT = true ? "7a9348a" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -21300,6 +21300,15 @@ import { readFileSync as readFileSync10 } from "node:fs";
 import { join as join13, isAbsolute as isAbsolute2 } from "node:path";
 import { performance as performance2 } from "node:perf_hooks";
 var realGit = (args, cwd) => execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_READ_MAX_BUFFER });
+function boundedGit(timeout) {
+  return (args, cwd) => execFileSync4("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    maxBuffer: GIT_READ_MAX_BUFFER,
+    timeout: timeout === void 0 ? void 0 : Math.max(1, Math.floor(timeout))
+  });
+}
 var SESSION_END_COMMIT_PREFIX = "chore(brain): session-end auto-commit";
 var SESSION_END_CURATION_DEADLINE_MS = 1e3;
 function brainEntriesRelPath(dataDir2) {
@@ -21308,12 +21317,40 @@ function brainEntriesRelPath(dataDir2) {
 function brainHeadSpec(cwd, absEntries) {
   return `HEAD:./${relativeReal(cwd, absEntries).replace(/\\/g, "/")}`;
 }
+var GitUnobserved = class extends Error {
+};
 function tryGit(git3, args, cwd) {
   try {
     return git3(args, cwd).trim();
-  } catch {
+  } catch (e) {
+    if (e instanceof GitUnobserved) throw e;
     return null;
   }
+}
+function deadlineGit(deadline) {
+  return (args, cwd) => {
+    const left = Math.floor(deadline - performance2.now());
+    if (left < 1) throw new GitUnobserved("deadline");
+    try {
+      return execFileSync4("git", args, {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        maxBuffer: GIT_READ_MAX_BUFFER,
+        timeout: left
+      });
+    } catch (e) {
+      const err = e;
+      if (err && (err.signal || typeof err.status !== "number")) throw new GitUnobserved(String(err.signal ?? "spawn"));
+      throw e;
+    }
+  };
+}
+var NO_AUTOCOMMIT_LEADIN = "vfkb will not auto-commit";
+function renderNoAutocommitMessage(kind, branch, added) {
+  const what = added >= 1 ? `the ${added} new brain entr${added === 1 ? "y" : "ies"}` : "the edits to existing brain entries";
+  const where = kind === "detached" || !branch ? "a detached HEAD" : `${branch} (the default branch)`;
+  return `${NO_AUTOCOMMIT_LEADIN} ${what} on ${where}. Fix: git switch -c <name>; vfkb then commits the brain on exit.`;
 }
 function parseLines2(text) {
   return text.split("\n").filter(Boolean).map((l) => {
@@ -21379,6 +21416,15 @@ function isOnDefaultBranch(git3, cwd) {
     return false;
   }
 }
+function brainCommitOutcome(git3, cwd, dataDir2) {
+  if (tryGit(git3, ["rev-parse", "--is-inside-work-tree"], cwd) !== "true") return { outcome: "not-a-repo" };
+  if (!tryGit(git3, ["status", "--porcelain", "--", brainEntriesRelPath(dataDir2)], cwd)) return { outcome: "brain-clean" };
+  const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join13(cwd, dataDir2);
+  const fresh = newEntriesSinceHead(git3, cwd, join13(absBrain, "entries.jsonl"));
+  const cls = classifyBranch(git3, cwd);
+  const outcome = cls.kind === "detached" ? "detached-head" : cls.kind === "default" ? "on-default-branch" : "topic";
+  return { outcome, branch: cls.branch, fresh };
+}
 function runSessionEnd(opts = {}) {
   const git3 = opts.git ?? realGit;
   const now2 = opts.now ?? (() => performance2.now());
@@ -21387,33 +21433,24 @@ function runSessionEnd(opts = {}) {
   const sessionId = opts.sessionId ?? process.env.KB_SESSION_ID;
   const entries = brainEntriesRelPath(dataDir2);
   try {
-    if (tryGit(git3, ["rev-parse", "--is-inside-work-tree"], cwd) !== "true") {
-      return { committed: false, reason: "not-a-repo" };
-    }
-    const status = tryGit(git3, ["status", "--porcelain", "--", entries], cwd);
-    if (!status) return { committed: false, reason: "brain-clean" };
+    const oc = brainCommitOutcome(git3, cwd, dataDir2);
+    if (oc.outcome === "not-a-repo" || oc.outcome === "brain-clean") return { committed: false, reason: oc.outcome };
     const tag = sessionId ? `, session ${sessionId.slice(0, 8)}` : "";
     const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join13(cwd, dataDir2);
-    const fresh = newEntriesSinceHead(git3, cwd, join13(absBrain, "entries.jsonl"));
-    const cls = classifyBranch(git3, cwd);
-    if (cls.kind === "detached") {
+    const fresh = oc.fresh ?? [];
+    if (oc.outcome === "detached-head") {
       const added2 = fresh.length;
-      return {
-        committed: false,
-        reason: "detached-head",
-        added: added2,
-        systemMessage: `vfkb: brain changes uncommitted (${added2} new entr${added2 === 1 ? "y" : "ies"}, detached HEAD) \u2014 check out a branch and commit to preserve continuity.`
-      };
+      return { committed: false, reason: "detached-head", added: added2, systemMessage: renderNoAutocommitMessage("detached", null, added2) };
     }
-    const branch = cls.branch ?? "";
-    if (cls.kind === "default") {
+    const branch = oc.branch ?? "";
+    if (oc.outcome === "on-default-branch") {
       const added2 = fresh.length;
       return {
         committed: false,
         reason: "on-default-branch",
         branch,
         added: added2,
-        systemMessage: `vfkb: brain changes on \`${branch}\` left uncommitted (${added2} new entr${added2 === 1 ? "y" : "ies"}) \u2014 branch + commit to preserve continuity (vfkb never auto-commits the default branch).`
+        systemMessage: renderNoAutocommitMessage("default", branch, added2)
       };
     }
     const needFallback = fresh.length > 0 && !fresh.some(isHandoff);
@@ -21532,35 +21569,7 @@ function hasUncommittedWork(cwd = process.cwd(), brain = brainDir(), opts = {}) 
   });
 }
 function newBrainEntriesSinceHead(brain = brainDir(), cwd = process.cwd(), opts = {}) {
-  const file2 = join14(brain, "entries.jsonl");
-  let current2;
-  try {
-    current2 = readFileSync11(file2, "utf8").split("\n").filter(Boolean);
-  } catch {
-    return [];
-  }
-  const rel = relative2(cwd, file2).replace(/\\/g, "/");
-  let headCount = 0;
-  try {
-    const head = execFileSync5("git", ["show", `HEAD:${rel}`], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: GIT_READ_MAX_BUFFER,
-      // vfkb#384: a >1 MiB brain threw ENOBUFS here
-      timeout: opts.timeout
-    });
-    headCount = head.split("\n").filter(Boolean).length;
-  } catch {
-    headCount = 0;
-  }
-  return current2.slice(headCount).map((l) => {
-    try {
-      return JSON.parse(l);
-    } catch {
-      return null;
-    }
-  }).filter((e) => e !== null);
+  return newEntriesSinceHead(boundedGit(opts.timeout), cwd, join14(brain, "entries.jsonl"));
 }
 var isHandoff2 = (e) => (e.tags ?? []).some((t) => t === "handoff" || t === "next");
 function pinnedHandoff(brain) {
@@ -21675,6 +21684,7 @@ function readPromptNudgeSignal(brain, sessionId) {
     const out = {};
     if (typeof raw.key === "string" && raw.key) out.key = raw.key;
     if (validTurn(raw.staleAtTurn)) out.staleAtTurn = raw.staleAtTurn;
+    if (typeof raw.smKey === "string" && raw.smKey) out.smKey = raw.smKey;
     return out;
   } catch {
     return {};
@@ -21687,15 +21697,38 @@ function writePromptNudgeSignal(brain, sessionId, sig) {
   writeFileSync7(tmp, JSON.stringify(sig), "utf8");
   renameSync4(tmp, f);
 }
+var emptySignal = (sig) => sig.key === void 0 && sig.staleAtTurn === void 0 && sig.smKey === void 0;
+function savePromptNudgeSignal(brain, sessionId, sig) {
+  if (emptySignal(sig)) rmSync2(signalPath(brain, sessionId), { force: true });
+  else writePromptNudgeSignal(brain, sessionId, sig);
+}
 function clearPromptNudgeKey(brain, sessionId) {
   if (!sessionId) return;
   const sig = readPromptNudgeSignal(brain, sessionId);
   if (sig.key === void 0) return;
   delete sig.key;
   try {
-    if (sig.staleAtTurn === void 0) rmSync2(signalPath(brain, sessionId), { force: true });
-    else writePromptNudgeSignal(brain, sessionId, sig);
+    savePromptNudgeSignal(brain, sessionId, sig);
   } catch {
+  }
+}
+function upsWarningKey(f) {
+  return `${f.outcome}|${f.branch ?? ""}`;
+}
+function decideUpsWarning(input2, facts, storedSmKey) {
+  if (isHarnessPrompt(input2?.prompt) || !facts) return { emit: false };
+  const kind = facts.outcome === "on-default-branch" ? "default" : facts.outcome === "detached-head" ? "detached" : null;
+  if (!kind) return storedSmKey !== void 0 ? { emit: false, clear: true } : { emit: false };
+  const smKey = upsWarningKey(facts);
+  if (storedSmKey === smKey) return { emit: false };
+  return { emit: true, text: renderNoAutocommitMessage(kind, facts.branch, facts.added), smKey };
+}
+function gatherUpsWarning(cwd, brain, deadline) {
+  try {
+    const oc = brainCommitOutcome(deadlineGit(deadline), cwd, brain);
+    return { outcome: oc.outcome, branch: oc.branch ?? null, added: oc.fresh?.length ?? 0, fresh: oc.fresh };
+  } catch {
+    return void 0;
   }
 }
 function readSessionTurn(sessionId) {
@@ -21722,7 +21755,7 @@ function git(args, cwd, timeout) {
     return null;
   }
 }
-function gatherPromptContext(cwd, brain, s, storedKey, deadline) {
+function gatherPromptContext(cwd, brain, s, storedKey, deadline, pre) {
   const left = () => deadline - performance.now();
   const head = git(["rev-parse", "HEAD"], cwd, left()) ?? "-";
   const p = pinnedHandoff(brain);
@@ -21741,10 +21774,10 @@ function gatherPromptContext(cwd, brain, s, storedKey, deadline) {
   if (storedKey !== void 0 && storedKey === key) return base;
   const staleCommits = p ? cachedPinStaleness(cwd, brain, pin, { deadline })?.commits ?? [] : [];
   const stale = staleCommits.length > 0;
-  const fresh = newBrainEntriesSinceHead(brain, cwd, { timeout: ms2(left()) });
+  const fresh = pre?.fresh ?? newBrainEntriesSinceHead(brain, cwd, { timeout: ms2(left()) });
   const work = hasUncommittedWork(cwd, brain, { timeout: ms2(left()) });
   const b1 = handoffNudgeDue({ uncommittedWork: work, newEntries: fresh.length, newHandoffs: fresh.filter(isHandoff2).length });
-  const branch = git(["symbolic-ref", "--short", "-q", "HEAD"], cwd, left()) || null;
+  const branch = pre && pre.outcome !== "not-a-repo" && pre.outcome !== "brain-clean" ? pre.branch : git(["symbolic-ref", "--short", "-q", "HEAD"], cwd, left()) || null;
   return { ...base, stale, staleCommits, b1, branch, newEntries: fresh.length };
 }
 
@@ -23524,26 +23557,43 @@ ${r.unpinnable.length} non-fact entr(ies) tagged handoff/next \u2014 never pinne
         }
         const sessionId = effectiveSessionId(typeof input2.session_id === "string" ? input2.session_id : void 0);
         const s = readSessionTurn(sessionId);
-        if (promptNudgeSkip(input2, s)) return;
+        const skip = promptNudgeSkip(input2, s);
+        if (skip === "harness-turn") return;
         if (performance.now() > deadline) return;
         const brain = brainDir();
+        const cwd = process.cwd();
         const stored = s.persisted ? readPromptNudgeSignal(brain, sessionId) : {};
-        const ctx = gatherPromptContext(process.cwd(), brain, s, stored.key, deadline);
-        if (performance.now() > deadline) return;
-        const d = decidePromptNudge(input2, ctx, stored.key);
-        if (!d.emit) return;
-        if (s.persisted && sessionId) {
+        const next = { ...stored };
+        const out = {};
+        const facts = gatherUpsWarning(cwd, brain, deadline);
+        const w = decideUpsWarning(input2, facts, stored.smKey);
+        if (w.emit) {
+          out.systemMessage = w.text;
+          next.smKey = w.smKey;
+        } else if (w.clear) {
+          delete next.smKey;
+        }
+        if (!skip && performance.now() <= deadline) {
+          const ctx = gatherPromptContext(cwd, brain, s, stored.key, deadline, facts);
+          if (performance.now() <= deadline) {
+            const d = decidePromptNudge(input2, ctx, stored.key);
+            if (d.emit) {
+              out.hookSpecificOutput = { hookEventName: "UserPromptSubmit", additionalContext: d.text };
+              next.key = d.key;
+              next.staleAtTurn = d.reasons.includes("stale") && s.turn !== void 0 ? s.turn : stored.staleAtTurn;
+            }
+          }
+        }
+        const changed = next.key !== stored.key || next.staleAtTurn !== stored.staleAtTurn || next.smKey !== stored.smKey;
+        if (s.persisted && sessionId && changed) {
           try {
-            writePromptNudgeSignal(brain, sessionId, {
-              key: d.key,
-              staleAtTurn: d.reasons.includes("stale") && s.turn !== void 0 ? s.turn : stored.staleAtTurn
-            });
+            savePromptNudgeSignal(brain, sessionId, next);
           } catch {
           }
         }
-        process.stdout.write(
-          JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: d.text } })
-        );
+        if (out.systemMessage !== void 0 || out.hookSpecificOutput !== void 0) {
+          process.stdout.write(JSON.stringify(out));
+        }
       } catch {
       }
       return;
