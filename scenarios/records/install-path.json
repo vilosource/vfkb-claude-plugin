@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.22.0",
-  "outerModel": "claude-sonnet-5",
+  "pluginVersion": "0.23.0",
+  "outerModel": "deepseek-v4-pro",
   "trials": 3,
-  "generated": "2026-10-29T14:05:41.109Z",
+  "generated": "2026-11-01T07:29:16.253Z",
   "upgradeFrom": "vfkb--v0.3.0",
-  "ref": "release/v0.22.0",
-  "headSha": "c95175659b60ade9490b467cb3f6e392bbc40e11",
-  "pluginTreeHash": "627a5916fdd7ddb78b5887ef10f1a0c951dc4c22a98155851ac8b4056a0e8ef3",
+  "ref": "re-vendor/engine",
+  "headSha": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099",
+  "pluginTreeHash": "1aabda74fbe3a866da7d0358c96cba2e9790733012cc1ee6bde5d7d3059420b4",
   "producedBy": {
-    "ranOn": "laptop",
-    "credentialKind": "claude-oauth",
-    "authBase": "anthropic-production",
-    "runUrl": null,
-    "commit": "c95175659b60ade9490b467cb3f6e392bbc40e11"
+    "ranOn": "github-runner",
+    "credentialKind": "deepseek-env",
+    "authBase": "https://api.deepseek.com/anthropic",
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/41284034920",
+    "commit": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "**Last done** — The delivery refactor shipped and verified end-to-end (handoff dated 2026-10-29 14:0",
+          "out": "- **Last done** — Handoff dated 2026-11-01 (entry `42d649a630c7`) says the delivery refactor shipped",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "Based on my review of the project's recorded continuity: **Last done** (2026-10-29 14:02Z): The hand",
+          "out": "- **Last done** — Per the handoff dated 2026-11-01, the delivery refactor shipped and was verified e",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "## Session-start Brief **Last done** — The handoff (2026-10-29 14:04Z) records the delivery refactor",
+          "out": "- **Last done** — Per the handoff dated 2026-11-01, the delivery refactor shipped and was verified e",
           "err": ""
         }
       ]
@@ -62,24 +62,24 @@
           "absentBefore": true,
           "presentAfter": true,
           "treeVerifiedAfter": true,
-          "beforeOut": "Note: `/vfkb:brief` isn't an installed command in this session — only `/vfkb:vfkb` is available, so ",
-          "afterOut": "## Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end (handof",
+          "beforeOut": "Unknown command: /vfkb:brief",
+          "afterOut": "**Last done** — The handoff, recorded 2026-11-01 (07:27:40Z), states that the delivery refactor ship",
           "err": ""
         },
         {
           "absentBefore": true,
           "presentAfter": true,
           "treeVerifiedAfter": true,
-          "beforeOut": "`/vfkb:brief` isn't installed in this session — only `/vfkb:vfkb` is available here. You could add `",
-          "afterOut": "## Step 5: Session-start brief **Last done** — The delivery refactor shipped and verified end-to-end",
+          "beforeOut": "Unknown command: /vfkb:brief",
+          "afterOut": "Brief from this project's recorded continuity. **Last done** — Handoff dated 2026-11-01 (recorded 20",
           "err": ""
         },
         {
           "absentBefore": true,
           "presentAfter": true,
           "treeVerifiedAfter": true,
-          "beforeOut": "`/vfkb:brief` isn't installed in this session — only `/vfkb:vfkb` is available here. I haven't run a",
-          "afterOut": "## Session-start brief **Last done** — Per handoff from 2026-10-29 14:04Z: the delivery refactor shi",
+          "beforeOut": "Unknown command: /vfkb:brief",
+          "afterOut": "## Last done Handoff dated 2026-11-01 (recorded 07:28:53Z) states the delivery refactor shipped and ",
           "err": ""
         }
       ]
@@ -92,23 +92,23 @@
       "trials": [
         {
           "present": false,
-          "sentinel": true,
+          "sentinel": false,
           "haiku": false,
-          "out": "`/vfkb:brief` isn't installed in this session — the available vfkb commands here are `/vfkb:handoff`",
+          "out": "Unknown command: /vfkb:brief",
           "err": ""
         },
         {
           "present": false,
-          "sentinel": true,
+          "sentinel": false,
           "haiku": false,
-          "out": "/vfkb:brief isn't installed in this session — only /vfkb:handoff, /vfkb:update, and /vfkb:vfkb are a",
+          "out": "Unknown command: /vfkb:brief",
           "err": ""
         },
         {
           "present": false,
-          "sentinel": true,
+          "sentinel": false,
           "haiku": false,
-          "out": "`/vfkb:brief` isn't installed in this session, but here's the equivalent resume digest from vfkb: **",
+          "out": "Unknown command: /vfkb:brief",
           "err": ""
         }
       ]
