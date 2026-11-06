@@ -35261,7 +35261,8 @@ function testHoldForRace() {
   const ms2 = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
   if (ms2 > 0) sleepSync(ms2);
 }
-function withBrainLock(fn) {
+function withBrainLock(fn, opts = {}) {
+  const acquireTimeoutMs = opts.acquireTimeoutMs ?? ACQUIRE_TIMEOUT_MS;
   if (process.env.VFKB_LOCK_DISABLED === "1") return fn();
   if (depth > 0) {
     depth++;
@@ -35320,9 +35321,10 @@ function withBrainLock(fn) {
         );
         continue;
       }
-      if (Date.now() - started > ACQUIRE_TIMEOUT_MS) {
+      if (Date.now() - started > acquireTimeoutMs) {
+        if (opts.onTimeout) return opts.onTimeout();
         process.stderr.write(
-          `vfkb: brain lock busy >${ACQUIRE_TIMEOUT_MS}ms (pid ${holder?.pid ?? "?"}${holder?.session_id ? `, session ${holder.session_id}` : ""}) \u2014 proceeding without the lock (fail-open)
+          `vfkb: brain lock busy >${acquireTimeoutMs}ms (pid ${holder?.pid ?? "?"}${holder?.session_id ? `, session ${holder.session_id}` : ""}) \u2014 proceeding without the lock (fail-open)
 `
         );
         return fn();
@@ -35414,8 +35416,8 @@ var JsonlFsBackend = class {
     writeFileSync(tmp, json2, "utf8");
     renameSync(tmp, f);
   }
-  withExclusive(fn) {
-    return withBrainLock(fn);
+  withExclusive(fn, opts) {
+    return withBrainLock(fn, opts);
   }
 };
 var jsonl = new JsonlFsBackend();
@@ -35636,14 +35638,14 @@ function defaultProject() {
   })();
   return raw.replace(/["<>&]/g, "") || "spike";
 }
-function appendRecord(rec) {
+function appendRecord(rec, opts = {}) {
   const be = storageBackend();
   if (be.name === "jsonl-fs") journalAppend(be.location(), rec);
   be.append(rec);
-  writeMeta();
+  if (opts.meta !== false) writeMeta();
 }
-function withExclusive(fn) {
-  return storageBackend().withExclusive(fn);
+function withExclusive(fn, opts) {
+  return storageBackend().withExclusive(fn, opts);
 }
 function readContextSpine() {
   return storageBackend().readSpine();
@@ -36062,7 +36064,7 @@ function addEntry(type, text2, opts = {}) {
   const retires = [...new Set(opts.retires ?? [])];
   if (retires.length === 0) {
     const entry = buildEntry(type, text2, opts);
-    appendRecord(entry);
+    appendRecord(entry, { meta: !opts.deferMeta });
     return entry;
   }
   return withExclusive(() => {
