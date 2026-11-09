@@ -1,18 +1,18 @@
 {
   "scenario": "hooks-smoke",
   "recordVersion": 2,
-  "pluginVersion": "0.23.0",
-  "pluginTreeHash": "1aabda74fbe3a866da7d0358c96cba2e9790733012cc1ee6bde5d7d3059420b4",
+  "pluginVersion": "0.24.0",
+  "pluginTreeHash": "e3eebb64eb7654f07df83138cab8843c5a7657a9e74c7d7d2e306727abeb1986",
   "outerModel": "deepseek-v4-pro",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/41284034920",
-    "commit": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/42581370481",
+    "commit": "08709389578298851269b20d1441c50dc434ffab"
   },
   "trials": 3,
-  "generated": "2026-11-01T07:26:46.387Z",
+  "generated": "2026-11-09T08:04:02.837Z",
   "arms": {
     "wired": {
       "role": "positive",
@@ -90,8 +90,8 @@
           "promptLineInSession": false,
           "transcriptCliVersion": "2.1.220",
           "t1": "NONE",
-          "t3": "FAILED — the `kb_add` MCP tool is not wired up in this session (it's not in my available t",
-          "err": ""
+          "t3": "",
+          "err": "spawnSync claude ETIMEDOUT"
         },
         {
           "resumeInjected": false,
@@ -118,7 +118,7 @@
           "promptLineInSession": false,
           "transcriptCliVersion": "2.1.220",
           "t1": "NONE",
-          "t3": "FAILED — I don't have access to a `kb_add` MCP tool, nor a `ToolSearch` tool in this sessi",
+          "t3": "FAILED The `kb_add` MCP tool is not wired up in this session, and `ToolSearch` (the tool I",
           "err": ""
         }
       ]

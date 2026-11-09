@@ -51,7 +51,8 @@ function testHoldForRace() {
   const ms3 = Number(process.env.VFKB_TEST_LOCK_HOLD_MS || 0);
   if (ms3 > 0) sleepSync(ms3);
 }
-function withBrainLock(fn) {
+function withBrainLock(fn, opts = {}) {
+  const acquireTimeoutMs = opts.acquireTimeoutMs ?? ACQUIRE_TIMEOUT_MS;
   if (process.env.VFKB_LOCK_DISABLED === "1") return fn();
   if (depth > 0) {
     depth++;
@@ -110,9 +111,10 @@ function withBrainLock(fn) {
         );
         continue;
       }
-      if (Date.now() - started > ACQUIRE_TIMEOUT_MS) {
+      if (Date.now() - started > acquireTimeoutMs) {
+        if (opts.onTimeout) return opts.onTimeout();
         process.stderr.write(
-          `vfkb: brain lock busy >${ACQUIRE_TIMEOUT_MS}ms (pid ${holder?.pid ?? "?"}${holder?.session_id ? `, session ${holder.session_id}` : ""}) \u2014 proceeding without the lock (fail-open)
+          `vfkb: brain lock busy >${acquireTimeoutMs}ms (pid ${holder?.pid ?? "?"}${holder?.session_id ? `, session ${holder.session_id}` : ""}) \u2014 proceeding without the lock (fail-open)
 `
         );
         return fn();
@@ -204,8 +206,8 @@ var JsonlFsBackend = class {
     writeFileSync(tmp, json2, "utf8");
     renameSync(tmp, f);
   }
-  withExclusive(fn) {
-    return withBrainLock(fn);
+  withExclusive(fn, opts) {
+    return withBrainLock(fn, opts);
   }
 };
 var jsonl = new JsonlFsBackend();
@@ -19168,14 +19170,14 @@ function defaultProject() {
   })();
   return raw.replace(/["<>&]/g, "") || "spike";
 }
-function appendRecord(rec) {
+function appendRecord(rec, opts = {}) {
   const be = storageBackend();
   if (be.name === "jsonl-fs") journalAppend(be.location(), rec);
   be.append(rec);
-  writeMeta();
+  if (opts.meta !== false) writeMeta();
 }
-function withExclusive(fn) {
-  return storageBackend().withExclusive(fn);
+function withExclusive(fn, opts) {
+  return storageBackend().withExclusive(fn, opts);
 }
 function contextSpinePath() {
   return storageBackend().spinePath();
@@ -19607,7 +19609,7 @@ function addEntry(type, text, opts = {}) {
   const retires = [...new Set(opts.retires ?? [])];
   if (retires.length === 0) {
     const entry = buildEntry(type, text, opts);
-    appendRecord(entry);
+    appendRecord(entry, { meta: !opts.deferMeta });
     return entry;
   }
   return withExclusive(() => {
@@ -19667,15 +19669,18 @@ function updateEntry(id, patch) {
   return withExclusive(() => {
     const cur = readAll().find((e) => e.id === id);
     if (!cur) throw new Error(`no such entry: ${id}`);
-    if (!FLUID_TYPES.has(cur.type)) {
-      throw new Error(
-        `entry ${id} is a ${cur.type} (decision family) \u2014 immutable; supersede it, don't edit (ADR-0004)`
-      );
-    }
-    const next = { ...cur, ...patch, updated: nowIso() };
-    appendRecord(next);
-    return next;
+    return applyFluidEdit(cur, patch);
   });
+}
+function applyFluidEdit(cur, patch, opts = {}) {
+  if (!FLUID_TYPES.has(cur.type)) {
+    throw new Error(
+      `entry ${cur.id} is a ${cur.type} (decision family) \u2014 immutable; supersede it, don't edit (ADR-0004)`
+    );
+  }
+  const next = { ...cur, ...patch, updated: nowIso() };
+  appendRecord(next, opts);
+  return next;
 }
 var RETIRED_BY = "retired-by:";
 var AUTO_ARCHIVED = "auto-archived:";
@@ -20774,7 +20779,7 @@ import { dirname as dirname8, join as join11 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.9.1" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "7a9348a" : "dev";
+var ENGINE_COMMIT = true ? "4328950" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -21049,13 +21054,38 @@ var isRuleLine = (e) => e.tags.some((t) => t.startsWith(AUTO_ARCHIVED));
 var createdMs = (e) => Date.parse(e.created);
 function autoCurate(today = todayIso(), opts = {}) {
   const pastDeadline = () => opts.deadlineMs !== void 0 && (opts.now ?? (() => performance.now()))() >= opts.deadlineMs;
+  const skipped = () => ({ archived: [], repaired: [], stopped: "deadline" });
+  const lockOpts = opts.deadlineMs === void 0 ? void 0 : {
+    acquireTimeoutMs: Math.max(0, opts.deadlineMs - (opts.now ?? (() => performance.now()))()),
+    onTimeout: () => {
+      process.stderr.write("vfkb: brain lock busy at the curation deadline; curation skipped\n");
+      return skipped();
+    }
+  };
+  let wrote = false;
+  const edit = (e, patch) => {
+    applyFluidEdit(e, patch, { meta: false });
+    wrote = true;
+  };
   return withExclusive(() => {
-    if (pastDeadline()) return { archived: [], repaired: [], stopped: "deadline" };
+    try {
+      return curateLocked();
+    } finally {
+      if (wrote && !opts.deferMeta) writeMeta();
+    }
+  }, lockOpts);
+  function curateLocked() {
+    if (pastDeadline()) return skipped();
     const records = readRecords();
     const all = materialize(records);
+    const askedAbout = /* @__PURE__ */ new Set();
+    for (const r of records) {
+      const tags = r?.tags;
+      if (typeof r?.id === "string" && Array.isArray(tags) && tags.includes(CURATION_KEPT)) askedAbout.add(r.id);
+    }
     const linesById = /* @__PURE__ */ new Map();
     for (const r of records) {
-      if (!r || typeof r.id !== "string" || isTombstone(r)) continue;
+      if (!r || typeof r.id !== "string" || !askedAbout.has(r.id) || isTombstone(r)) continue;
       const n = normalizeEntry(r);
       if (!n.ok) continue;
       const list = linesById.get(r.id) ?? [];
@@ -21072,7 +21102,7 @@ function autoCurate(today = todayIso(), opts = {}) {
       result.repaired.push(e.id);
       if (!opts.dryRun) {
         const tags = [.../* @__PURE__ */ new Set([...newest.tags.filter((t) => !t.startsWith(AUTO_ARCHIVED)), CURATION_KEPT])];
-        updateEntry(e.id, { zone: newest.zone, tags });
+        edit(e, { zone: newest.zone, tags });
       }
     }
     const superseded = supersededIds(all);
@@ -21104,11 +21134,11 @@ function autoCurate(today = todayIso(), opts = {}) {
       live.delete(e.id);
       result.archived.push(e.id);
       if (!opts.dryRun) {
-        updateEntry(e.id, { zone: "archive", tags: [.../* @__PURE__ */ new Set([...e.tags, `${AUTO_ARCHIVED}${AUTO_RULE}@${today}`])] });
+        edit(e, { zone: "archive", tags: [.../* @__PURE__ */ new Set([...e.tags, `${AUTO_ARCHIVED}${AUTO_RULE}@${today}`])] });
       }
     }
     return result;
-  });
+  }
 }
 function autoArchiveLog(entries = readAll(), today = todayIso()) {
   const out = [];
@@ -21361,15 +21391,29 @@ function parseLines2(text) {
     }
   }).filter((e) => e !== null);
 }
+var LINE_ID = /^\{"id":"([^"\\]+)"/;
+function lineId(line) {
+  const m = line.endsWith("}") ? LINE_ID.exec(line) : null;
+  return m ? m[1] : null;
+}
 function newEntriesSinceHead(git3, cwd, absEntries) {
-  let current2;
+  let currentText;
   try {
-    current2 = parseLines2(readFileSync10(absEntries, "utf8"));
+    currentText = readFileSync10(absEntries, "utf8");
   } catch {
     return [];
   }
   const head = tryGit(git3, ["show", brainHeadSpec(cwd, absEntries)], cwd);
-  const known = new Set(parseLines2(head ?? "").map((e) => e.id));
+  const known = /* @__PURE__ */ new Set();
+  for (const l of (head ?? "").split("\n")) {
+    if (l) known.add(lineId(l) ?? parseLines2(l)[0]?.id);
+  }
+  const current2 = parseLines2(
+    currentText.split("\n").filter((l) => {
+      const id = l ? lineId(l) : null;
+      return !id || !known.has(id);
+    }).join("\n")
+  );
   const fresh = /* @__PURE__ */ new Map();
   for (const e of current2) {
     if (!e.id || known.has(e.id)) continue;
@@ -21386,16 +21430,24 @@ function writeAutoHandoff(absBrain, fresh, sessionId) {
   const more = fresh.length > CAP ? ` (+${fresh.length - CAP} more)` : "";
   const n = fresh.length;
   const text = `Auto-handoff (session-end): no explicit handoff was recorded, but this session added ${n} brain entr${n === 1 ? "y" : "ies"} since the last commit \u2014 ${list}${more}. Next session: review these and record an explicit \`next:\` if continuing.`;
-  const prev = process.env.VFKB_DATA_DIR;
-  process.env.VFKB_DATA_DIR = absBrain;
-  try {
-    addEntry("fact", text, {
+  inBrain(
+    absBrain,
+    () => addEntry("fact", text, {
       role: "executor",
       zone: "established",
       tags: ["handoff", "next", "auto"],
-      sessionId
+      sessionId,
       // ADR-0039: attribute the fallback handoff to the ending session
-    });
+      deferMeta: true
+      // runSessionEnd writes it once, after the commit (vfkb#448)
+    })
+  );
+}
+function inBrain(absBrain, fn) {
+  const prev = process.env.VFKB_DATA_DIR;
+  process.env.VFKB_DATA_DIR = absBrain;
+  try {
+    return fn();
   } finally {
     if (prev === void 0) delete process.env.VFKB_DATA_DIR;
     else process.env.VFKB_DATA_DIR = prev;
@@ -21418,12 +21470,13 @@ function isOnDefaultBranch(git3, cwd) {
 }
 function brainCommitOutcome(git3, cwd, dataDir2) {
   if (tryGit(git3, ["rev-parse", "--is-inside-work-tree"], cwd) !== "true") return { outcome: "not-a-repo" };
-  if (!tryGit(git3, ["status", "--porcelain", "--", brainEntriesRelPath(dataDir2)], cwd)) return { outcome: "brain-clean" };
+  const status = tryGit(git3, ["status", "--porcelain", "--", brainEntriesRelPath(dataDir2)], cwd);
+  if (!status) return { outcome: "brain-clean" };
   const absBrain = isAbsolute2(dataDir2) ? dataDir2 : join13(cwd, dataDir2);
   const fresh = newEntriesSinceHead(git3, cwd, join13(absBrain, "entries.jsonl"));
   const cls = classifyBranch(git3, cwd);
   const outcome = cls.kind === "detached" ? "detached-head" : cls.kind === "default" ? "on-default-branch" : "topic";
-  return { outcome, branch: cls.branch, fresh };
+  return { outcome, branch: cls.branch, fresh, tracked: !/^(\?\?|D)/.test(status) };
 }
 function runSessionEnd(opts = {}) {
   const git3 = opts.git ?? realGit;
@@ -21432,6 +21485,7 @@ function runSessionEnd(opts = {}) {
   const dataDir2 = opts.dataDir || process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || ".vfkb";
   const sessionId = opts.sessionId ?? process.env.KB_SESSION_ID;
   const entries = brainEntriesRelPath(dataDir2);
+  let metaBrain;
   try {
     const oc = brainCommitOutcome(git3, cwd, dataDir2);
     if (oc.outcome === "not-a-repo" || oc.outcome === "brain-clean") return { committed: false, reason: oc.outcome };
@@ -21460,22 +21514,20 @@ function runSessionEnd(opts = {}) {
       if (now2() >= SESSION_END_CURATION_DEADLINE_MS) {
         curationSkipped = "deadline";
       } else {
-        const prev = process.env.VFKB_DATA_DIR;
-        process.env.VFKB_DATA_DIR = absBrain;
         try {
-          const c = autoCurate(void 0, { now: now2, deadlineMs: SESSION_END_CURATION_DEADLINE_MS });
+          const c = inBrain(absBrain, () => autoCurate(void 0, { now: now2, deadlineMs: SESSION_END_CURATION_DEADLINE_MS, deferMeta: true }));
           curated = c.archived.length + c.repaired.length;
+          if (curated) metaBrain = absBrain;
           if (c.stopped) curationSkipped = c.stopped;
         } catch {
-        } finally {
-          if (prev === void 0) delete process.env.VFKB_DATA_DIR;
-          else process.env.VFKB_DATA_DIR = prev;
+          metaBrain = absBrain;
         }
       }
     }
     let autoHandoff = false;
     if (needFallback) {
       try {
+        metaBrain = absBrain;
         writeAutoHandoff(absBrain, fresh, sessionId);
         autoHandoff = true;
       } catch {
@@ -21484,11 +21536,18 @@ function runSessionEnd(opts = {}) {
     const added = fresh.length + (autoHandoff ? 1 : 0);
     const extra = curated ? `, ${curated} curated` : "";
     const message = `${SESSION_END_COMMIT_PREFIX} (${added} new entr${added === 1 ? "y" : "ies"}${extra}${tag})`;
-    git3(["add", "--", entries], cwd);
+    if (!oc.tracked) git3(["add", "--", entries], cwd);
     git3(["commit", "-o", "-m", message, "--", entries], cwd);
     return { committed: true, reason: "committed", branch, added, message, autoHandoff, curated, curationSkipped };
   } catch {
     return { committed: false, reason: "error" };
+  } finally {
+    if (metaBrain) {
+      try {
+        inBrain(metaBrain, writeMeta);
+      } catch {
+      }
+    }
   }
 }
 

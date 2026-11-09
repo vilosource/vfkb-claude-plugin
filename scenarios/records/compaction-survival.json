@@ -1,24 +1,45 @@
 {
   "scenario": "compaction-survival",
   "recordVersion": 2,
-  "pluginVersion": "0.23.0",
-  "pluginTreeHash": "1aabda74fbe3a866da7d0358c96cba2e9790733012cc1ee6bde5d7d3059420b4",
+  "pluginVersion": "0.24.0",
+  "pluginTreeHash": "e3eebb64eb7654f07df83138cab8843c5a7657a9e74c7d7d2e306727abeb1986",
   "outerModel": "deepseek-v4-pro",
   "cliVersion": "2.1.220",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/41284034920",
-    "commit": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/42581370481",
+    "commit": "08709389578298851269b20d1441c50dc434ffab"
   },
-  "generated": "2026-11-01T07:32:37.009Z",
+  "generated": "2026-11-09T08:10:57.392Z",
   "trigger": "manual",
   "arms": {
     "compacted": {
       "role": "positive",
       "attempts": [
         {
+          "noLeak": false,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": true,
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
+          "sentinels": [
+            "quartzcd7866",
+            "harborc4549"
+          ],
+          "timedOut": false,
+          "wallMs": 33155,
+          "monoMs": 33155,
+          "err": ""
+        },
+        {
           "noLeak": true,
           "noToolUse": true,
           "compacted": true,
@@ -27,16 +48,37 @@
           "answered": true,
           "awake": true,
           "emitted": true,
-          "received": true,
-          "receivedAny": true,
-          "finalAnswer": "quartzca5004\nharborbad9036",
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
           "sentinels": [
-            "quartzca5004",
-            "harborbad9036"
+            "quartzad2778",
+            "harbora8234"
           ],
           "timedOut": false,
-          "wallMs": 27467,
-          "monoMs": 27467,
+          "wallMs": 27802,
+          "monoMs": 27802,
+          "err": ""
+        },
+        {
+          "noLeak": false,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": true,
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
+          "sentinels": [
+            "quartzcdff9557",
+            "harborc5386"
+          ],
+          "timedOut": false,
+          "wallMs": 33836,
+          "monoMs": 33836,
           "err": ""
         },
         {
@@ -50,14 +92,14 @@
           "emitted": true,
           "received": true,
           "receivedAny": true,
-          "finalAnswer": "quartzddfca4779\nharbordab9710",
+          "finalAnswer": "quartza9698\nharborbe5960",
           "sentinels": [
-            "quartzddfca4779",
-            "harbordab9710"
+            "quartza9698",
+            "harborbe5960"
           ],
           "timedOut": false,
-          "wallMs": 25106,
-          "monoMs": 25105,
+          "wallMs": 23175,
+          "monoMs": 23175,
           "err": ""
         },
         {
@@ -71,14 +113,14 @@
           "emitted": true,
           "received": true,
           "receivedAny": true,
-          "finalAnswer": "quartzcaea1277\nharborad1298",
+          "finalAnswer": "quartzcbd2380\nharborcd3133",
           "sentinels": [
-            "quartzcaea1277",
-            "harborad1298"
+            "quartzcbd2380",
+            "harborcd3133"
           ],
           "timedOut": false,
-          "wallMs": 29540,
-          "monoMs": 29540,
+          "wallMs": 34655,
+          "monoMs": 34655,
           "err": ""
         }
       ]
@@ -87,6 +129,27 @@
       "role": "contrast",
       "attempts": [
         {
+          "noLeak": true,
+          "noToolUse": true,
+          "compacted": true,
+          "compactionOk": true,
+          "engaged": true,
+          "answered": true,
+          "awake": true,
+          "emitted": false,
+          "received": false,
+          "receivedAny": false,
+          "finalAnswer": "NONE",
+          "sentinels": [
+            "quartz5616",
+            "harborec8781"
+          ],
+          "timedOut": false,
+          "wallMs": 26966,
+          "monoMs": 26966,
+          "err": ""
+        },
+        {
           "noLeak": false,
           "noToolUse": true,
           "compacted": true,
@@ -99,33 +162,12 @@
           "receivedAny": false,
           "finalAnswer": "NONE",
           "sentinels": [
-            "quartzc3041",
-            "harbora9579"
+            "quartzcafb4943",
+            "harbor2787"
           ],
           "timedOut": false,
-          "wallMs": 21005,
-          "monoMs": 21005,
-          "err": ""
-        },
-        {
-          "noLeak": false,
-          "noToolUse": true,
-          "compacted": true,
-          "compactionOk": true,
-          "engaged": true,
-          "answered": true,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "NONE",
-          "sentinels": [
-            "quartzf5127",
-            "harbordc6463"
-          ],
-          "timedOut": false,
-          "wallMs": 25307,
-          "monoMs": 25307,
+          "wallMs": 25099,
+          "monoMs": 25099,
           "err": ""
         },
         {
@@ -141,12 +183,12 @@
           "receivedAny": false,
           "finalAnswer": "NONE",
           "sentinels": [
-            "quartzcad2150",
-            "harbore4047"
+            "quartzeee5658",
+            "harboraec4781"
           ],
           "timedOut": false,
-          "wallMs": 20102,
-          "monoMs": 20102,
+          "wallMs": 25399,
+          "monoMs": 25400,
           "err": ""
         },
         {
@@ -162,33 +204,12 @@
           "receivedAny": false,
           "finalAnswer": "NONE",
           "sentinels": [
-            "quartze3508",
-            "harbordfe4791"
+            "quartzcffb3634",
+            "harbordb6322"
           ],
           "timedOut": false,
-          "wallMs": 20927,
-          "monoMs": 20928,
-          "err": ""
-        },
-        {
-          "noLeak": true,
-          "noToolUse": true,
-          "compacted": true,
-          "compactionOk": true,
-          "engaged": true,
-          "answered": true,
-          "awake": true,
-          "emitted": false,
-          "received": false,
-          "receivedAny": false,
-          "finalAnswer": "NONE",
-          "sentinels": [
-            "quartzcae1533",
-            "harborfdb5135"
-          ],
-          "timedOut": false,
-          "wallMs": 21861,
-          "monoMs": 21861,
+          "wallMs": 25038,
+          "monoMs": 25037,
           "err": ""
         }
       ]

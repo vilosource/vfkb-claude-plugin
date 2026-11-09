@@ -1,20 +1,20 @@
 {
   "scenario": "install-path",
   "recordVersion": 2,
-  "pluginVersion": "0.23.0",
+  "pluginVersion": "0.24.0",
   "outerModel": "deepseek-v4-pro",
   "trials": 3,
-  "generated": "2026-11-01T07:29:16.253Z",
+  "generated": "2026-11-09T08:06:33.011Z",
   "upgradeFrom": "vfkb--v0.3.0",
   "ref": "re-vendor/engine",
-  "headSha": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099",
-  "pluginTreeHash": "1aabda74fbe3a866da7d0358c96cba2e9790733012cc1ee6bde5d7d3059420b4",
+  "headSha": "08709389578298851269b20d1441c50dc434ffab",
+  "pluginTreeHash": "e3eebb64eb7654f07df83138cab8843c5a7657a9e74c7d7d2e306727abeb1986",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/41284034920",
-    "commit": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/42581370481",
+    "commit": "08709389578298851269b20d1441c50dc434ffab"
   },
   "arms": {
     "fresh": {
@@ -29,7 +29,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "- **Last done** — Handoff dated 2026-11-01 (entry `42d649a630c7`) says the delivery refactor shipped",
+          "out": "**Last done** — Per the handoff recorded 2026-11-09, the delivery refactor shipped and was verified ",
           "err": ""
         },
         {
@@ -37,7 +37,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "- **Last done** — Per the handoff dated 2026-11-01, the delivery refactor shipped and was verified e",
+          "out": "**Last done** — Handoff recorded 2026-11-09 08:05Z: the delivery refactor shipped and verified end-t",
           "err": ""
         },
         {
@@ -45,7 +45,7 @@
           "treeVerified": true,
           "sentinel": true,
           "haiku": true,
-          "out": "- **Last done** — Per the handoff dated 2026-11-01, the delivery refactor shipped and was verified e",
+          "out": "## Session brief - **Last done** — Handoff dated 2026-11-09: \"the delivery refactor shipped and veri",
           "err": ""
         }
       ]
@@ -63,7 +63,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "**Last done** — The handoff, recorded 2026-11-01 (07:27:40Z), states that the delivery refactor ship",
+          "afterOut": "**Last done** — Handoff dated 2026-11-09 (recorded 08:04:55Z, fact `a3f8d49a329c`): the delivery ref",
           "err": ""
         },
         {
@@ -71,7 +71,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "Brief from this project's recorded continuity. **Last done** — Handoff dated 2026-11-01 (recorded 20",
+          "afterOut": "## Last done Handoff dated 2026-11-09 (entry `c48e26e5160b`): the delivery refactor shipped and veri",
           "err": ""
         },
         {
@@ -79,7 +79,7 @@
           "presentAfter": true,
           "treeVerifiedAfter": true,
           "beforeOut": "Unknown command: /vfkb:brief",
-          "afterOut": "## Last done Handoff dated 2026-11-01 (recorded 07:28:53Z) states the delivery refactor shipped and ",
+          "afterOut": "**Guard note:** `.vfkb/` exists with one recorded entry, so the project is wired; prior continuity e",
           "err": ""
         }
       ]
