@@ -1,19 +1,19 @@
 {
   "scenario": "handoff-retires",
   "recordVersion": 2,
-  "pluginVersion": "0.23.0",
-  "pluginTreeHash": "1aabda74fbe3a866da7d0358c96cba2e9790733012cc1ee6bde5d7d3059420b4",
+  "pluginVersion": "0.24.0",
+  "pluginTreeHash": "e3eebb64eb7654f07df83138cab8843c5a7657a9e74c7d7d2e306727abeb1986",
   "outerModel": "deepseek-v4-pro",
   "contrastSkillSha256": "c60c4c89256212ecbefddb0ba220bf1d52d1eeafbaf859ac5bf05adbed759d84",
   "producedBy": {
     "ranOn": "github-runner",
     "credentialKind": "deepseek-env",
     "authBase": "https://api.deepseek.com/anthropic",
-    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/41284034920",
-    "commit": "c40c59cd1d9e08d05ef02c84423d28cdeb3b0099"
+    "runUrl": "https://github.com/vilosource/vfkb-claude-plugin/actions/runs/42581370481",
+    "commit": "08709389578298851269b20d1441c50dc434ffab"
   },
   "trials": 3,
-  "generated": "2026-11-01T07:52:12.623Z",
+  "generated": "2026-11-09T08:58:30.499Z",
   "arms": {
     "positive": {
       "role": "positive",
@@ -40,8 +40,8 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 25247d335f77` undoes it), or **no** to keep it live.",
-          "turn2": "`retired 25247d335f77 (archived, retired-by:8fef271c795b)` The previous handoff is archived and `8fef271c795b` is now the live pin. As before, nothing is committed or pushed yet — the auto-commit or a manual `git add .vfkb && git commit` still needs to happen for the retirement (and the new handoff)",
+          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore a9eada090d45` undoes it), or **no** to keep it live.",
+          "turn2": "`retired a9eada090d45 (archived, retired-by:2c89f96c4fc1)` The previous handoff is now archived, and `2c89f96c4fc1` is the live pin. Undo anytime with `vfkb curate restore a9eada090d45`. Still not committed — remember the `git add .vfkb && git commit` (or SessionEnd auto-commit) for it to persist on",
           "err": "",
           "modelObserved": true
         },
@@ -58,28 +58,26 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 8845edcbc657` undoes it), or **no** to keep it live.",
-          "turn2": "`retired 8845edcbc657 (archived, retired-by:3cbadb027153)` The previous handoff is now archived, and `3cbadb027153` is the live pin. Restore with `vfkb curate restore 8845edcbc657` if needed.",
+          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 9ea014644409` undoes it), or **no** to keep it live.",
+          "turn2": "Retired. Output verbatim: ``` retired 9ea014644409 (archived, retired-by:25c500fef87a) ``` The previous handoff is now archived (not deleted) and the new handoff `25c500fef87a` is the live pin. Undo with `vfkb curate restore 9ea014644409` if ever needed.",
           "err": "",
           "modelObserved": true
         },
         {
-          "newPin": true,
+          "newPin": false,
           "turn1Clean": true,
-          "retiredByPin": true,
+          "retiredByPin": false,
           "textIdentical": true,
           "othersUntouched": true,
-          "zonesUnchanged": false,
-          "sentinelNotLive": true,
-          "asked": true,
+          "zonesUnchanged": true,
+          "sentinelNotLive": false,
+          "asked": false,
           "resumed": true,
-          "models": [
-            "deepseek-v4-pro"
-          ],
-          "turn1": "g is currently pushed. The previous handoff **`fac2bed2c34f`** (\"HANDOFF: the type checker landed and is verified…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore fac2bed2c34f` undoes it), or **no** to keep it live.",
-          "turn2": "`retired fac2bed2c34f (archived, retired-by:2807b9fcfba1)` The previous handoff is now retired (archived, not deleted) and the new handoff `2807b9fcfba1` is the live pin. Nothing is committed or pushed yet — `git add .vfkb && git commit` still needs to happen for this to survive `/exit` on a fresh c",
-          "err": "",
-          "modelObserved": true
+          "models": [],
+          "turn1": "API Error: 402 Insufficient Balance (request_id: d1579c82-dc6b-42d3-b246-bdaf96c4819e)",
+          "turn2": "API Error: 402 Insufficient Balance (request_id: c835a8e9-3a1d-4ddd-927d-01bfb174a376)",
+          "err": "Command failed: claude -p /vfkb:handoff --plugin-dir /home/runner/work/vfkb-claude-plugin/vfkb-claude-plugin/plugin --output-format json --strict-mcp-config --d | Command failed: claude -p yes --plugin-dir /home/runner/work/vfkb-claude-plugin/vfkb-claude-plugin/plugin --output-format json --strict-mcp-config --dangerously",
+          "modelObserved": false
         }
       ]
     },
@@ -106,8 +104,8 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 59d3ae938f84` undoes it), or **no** to keep it live.",
-          "turn2": "Understood — nothing retired. The previous handoff `59d3ae938f84` stays live as the pin, and the new entry `3a771227d8fd` stands alongside it.",
+          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 4267610af0e3` undoes it), or **no** to keep it live.",
+          "turn2": "The previous handoff `4267610af0e3` stays live — nothing retired.",
           "err": "",
           "modelObserved": true
         },
@@ -124,28 +122,26 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 1b32cf413193` undoes it), or **no** to keep it live.",
-          "turn2": "Understood — `1b32cf413193` stays live; nothing is retired.",
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 3db7c9924628` undoes it), or **no** to keep it live.",
+          "turn2": "Previous handoff `3db7c9924628` stays live — nothing retired. One thing to flag: my new entry `30ba5a59c102` frames that chain as seed data that \"does not match any code\" — that conflicts with your saying it's still current, so if you'd like I can correct that entry (or retire it) to match. Say the ",
           "err": "",
           "modelObserved": true
         },
         {
-          "newPin": true,
+          "newPin": false,
           "turn1Clean": true,
           "retiredByPin": false,
           "textIdentical": true,
           "othersUntouched": true,
           "zonesUnchanged": true,
           "sentinelNotLive": false,
-          "asked": true,
+          "asked": false,
           "resumed": true,
-          "models": [
-            "deepseek-v4-pro"
-          ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 0b9620dbedd1` undoes it), or **no** to keep it live.",
-          "turn2": "Previous handoff `0b9620dbedd1` stays live; nothing was retired.",
-          "err": "",
-          "modelObserved": true
+          "models": [],
+          "turn1": "API Error: 402 Insufficient Balance (request_id: 3c9e9b0e-1533-4fe1-88cb-069fab3a3394)",
+          "turn2": "API Error: 402 Insufficient Balance (request_id: c3743eef-6e79-46c2-b414-52f6927c9f8d)",
+          "err": "Command failed: claude -p /vfkb:handoff --plugin-dir /home/runner/work/vfkb-claude-plugin/vfkb-claude-plugin/plugin --output-format json --strict-mcp-config --d | Command failed: claude -p no — keep the previous handoff live, it is still current --plugin-dir /home/runner/work/vfkb-claude-plugin/vfkb-claude-plugin/plugin -",
+          "modelObserved": false
         }
       ]
     },
@@ -172,7 +168,7 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 00957d5f4526` undoes it), or **no** to keep it live.",
+          "turn1": "NDOFF: the type checker landed and is verified. The single next step is the migration codenamed quillfen-arbor-44…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore e1565721cf21` undoes it), or **no** to keep it live.",
           "turn2": null,
           "err": "",
           "modelObserved": true
@@ -190,27 +186,27 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 4245adea4965` undoes it), or **no** to keep it live.",
+          "turn1": " is local-only regardless. The previous handoff `bf3288ab8e1b` (\"HANDOFF: the type checker landed and is verified…\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore bf3288ab8e1b` undoes it), or **no** to keep it live.",
           "turn2": null,
           "err": "",
           "modelObserved": true
         },
         {
-          "newPin": true,
+          "newPin": false,
           "turn1Clean": true,
           "retiredByPin": false,
           "textIdentical": true,
           "othersUntouched": true,
           "zonesUnchanged": true,
           "sentinelNotLive": false,
-          "asked": true,
+          "asked": false,
           "resumed": false,
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "is the migration codenamed quillfen-arbor-44; keep the feature flag off until the backfill verifier reports clean.\") is still live. Does this new handoff replace it? Reply **yes** to retire it (it is archived, not deleted, and `vfkb curate restore 5b7d0540ab03` undoes it), or **no** to keep it live.",
+          "turn1": "API Error: 402 Insufficient Balance (request_id: d820d022-fe7e-4250-80df-bd948237dcc6)",
           "turn2": null,
-          "err": "",
+          "err": "Command failed: claude -p /vfkb:handoff --plugin-dir /home/runner/work/vfkb-claude-plugin/vfkb-claude-plugin/plugin --output-format json --strict-mcp-config --d",
           "modelObserved": true
         }
       ]
@@ -234,8 +230,8 @@
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "nded in `.vfkb/entries.jsonl` (plus journal WAL churn), but it only survives `/exit` on a fresh clone once it's committed — either by the SessionEnd auto-commit (ADR-0033) or by your own `git add .vfkb && git commit`. Also note `main` has no upstream configured, so nothing here has ever been pushed.",
-          "turn2": "Committed. - **Commit `9345324`** — `chore: record session handoff`, containing `.vfkb/entries.jsonl` (the new handoff `6d88dce66ee0`) and `.vfkb/index-meta.json`. - I set the repo-local git identity to `t <t@t>` to match the existing history (nothing written to your global config). Still uncommitte",
+          "turn1": "st handoff.\" **Not yet persisted:** Nothing is committed or pushed by this. The `.vfkb/entries.jsonl` change (and the new entry) only survive `/exit` on a fresh clone once either the SessionEnd auto-commit (ADR-0033) runs or you do it manually: ``` git add .vfkb && git commit -m \"chore: handoff\" ```",
+          "turn2": "Committed. - **Commit:** `3b83ba2` `chore: handoff` — staged the knowledge files (`entries.jsonl`, `index-meta.json`, `.journal/wal.jsonl`), which now persist the new handoff entry `67e9dad3a00b`. - **Identity:** used the repo's existing `t <t@t>` (via `-c`, no config written), since this repo's pri",
           "err": "",
           "modelObserved": true
         },
@@ -247,33 +243,31 @@
           "othersUntouched": true,
           "zonesUnchanged": true,
           "sentinelNotLive": false,
-          "asked": true,
+          "asked": false,
           "resumed": true,
           "models": [
             "deepseek-v4-pro"
           ],
-          "turn1": "inder:** this did not commit or push anything. The `.vfkb/entries.jsonl` change (plus the dirty vfkb runtime artifacts) still needs to be persisted — either by the SessionEnd auto-commit (ADR-0033) or manually via `git add .vfkb && git commit` — or the handoff won't survive `/exit` on a fresh clone.",
-          "turn2": "Committed. - **Commit:** `9c2b53e chore: brain` — records the handoff entry `36d57ff0a7a5` in `.vfkb/entries.jsonl` (plus the index and WAL journal). Matched the repo's existing identity (`t <t@t>`, set locally) to keep history consistent. - **Working tree:** clean of tracked changes. The remaining ",
-          "err": "",
-          "modelObserved": true
+          "turn1": "API Error: 402 Insufficient Balance (request_id: df18f745-83f8-4bd7-a725-ac495bcbe593)",
+          "turn2": "API Error: 402 Insufficient Balance (request_id: 16ed9583-4968-40b7-903e-028c61291993)",
+          "err": "Command failed: claude -p /vfkb:handoff --plugin-dir /tmp/vfkb-hr-plugin-HZjq2v/plugin --output-format json --strict-mcp-config --dangerously-skip-permissions - | Command failed: claude -p yes --plugin-dir /tmp/vfkb-hr-plugin-HZjq2v/plugin --output-format json --strict-mcp-config --dangerously-skip-permissions --model dee",
+          "modelObserved": false
         },
         {
-          "newPin": true,
+          "newPin": false,
           "turn1Clean": true,
           "retiredByPin": false,
           "textIdentical": true,
           "othersUntouched": true,
           "zonesUnchanged": true,
           "sentinelNotLive": false,
-          "asked": true,
+          "asked": false,
           "resumed": true,
-          "models": [
-            "deepseek-v4-pro"
-          ],
-          "turn1": ". The CLI fallback wrote it as `zone: incoming` / `provenance: unverified` (author `executor`), unlike the three prior handoffs which are `established`/`verified` (author `human`). It'll surface as an incoming entry until an operator verifies it — that's expected for the fallback path, not an error.",
-          "turn2": "Committed as **`376abfb`** — `chore: brain — session handoff bfa26aca30dd`, staging only the knowledge files (`.vfkb/entries.jsonl` + `.vfkb/index-meta.json`). Two things worth knowing: 1. **Identity**: git had no user configured, so I used a one-off `-c user.name=\"t\" -c user.email=\"t@t\"` override t",
-          "err": "",
-          "modelObserved": true
+          "models": [],
+          "turn1": "API Error: 402 Insufficient Balance (request_id: ea4eb426-692f-487e-8bc3-d5235b0a85a2)",
+          "turn2": "API Error: 402 Insufficient Balance (request_id: 07b973ea-0e9a-470c-a2d0-526d87f90a28)",
+          "err": "Command failed: claude -p /vfkb:handoff --plugin-dir /tmp/vfkb-hr-plugin-HZjq2v/plugin --output-format json --strict-mcp-config --dangerously-skip-permissions - | Command failed: claude -p yes --plugin-dir /tmp/vfkb-hr-plugin-HZjq2v/plugin --output-format json --strict-mcp-config --dangerously-skip-permissions --model dee",
+          "modelObserved": false
         }
       ]
     }
